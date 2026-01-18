@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>ARSENAL: Autonomous Missile Logistics</name>
+  <author>YourName</author>
+  <packageId>yourname.arsenal</packageId>
+  <description>A sophisticated cruise missile logistics system featuring autonomous global delivery.
+
+Features:
+- ARSENAL: Automated manufacturing facility that produces cruise missiles
+- HUB: Staging platforms for vertical missile storage and launch
+- HOP: Refueling stations for extended range operations
+- Autonomous routing: Missiles automatically navigate to undersupplied HUBs
+- Global strike capability: Launch precision strikes from strategically positioned HUBs
+
+The missiles intelligently path through HOP refueling stations to achieve true global reach.</description>
+  <supportedVersions>
+    <li>1.5</li>
+  </supportedVersions>
+  <modDependencies>
+  </modDependencies>
+  <loadAfter>
+    <li>Ludeon.RimWorld</li>
+    <li>Ludeon.RimWorld.Royalty</li>
+  </loadAfter>
+</ModMetaData>

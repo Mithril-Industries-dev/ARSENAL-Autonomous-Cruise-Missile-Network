@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- Missile Launching (leaving map - going UP) -->
+  <ThingDef ParentName="SkyfallerBase">
+    <defName>Arsenal_MissileLaunching</defName>
+    <label>cruise missile (launching)</label>
+    <thingClass>Arsenal.MissileLaunchingSkyfaller</thingClass>
+    <graphicData>
+      <texPath>Arsenal/MITHRIL_Dagger_N</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(3,3)</drawSize>
+    </graphicData>
+    <skyfaller>
+      <movementType>Decelerate</movementType>
+      <reversed>true</reversed>
+      <ticksToImpactRange>120~120</ticksToImpactRange>
+      <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
+      <shadowSize>(1.5, 1.5)</shadowSize>
+    </skyfaller>
+    <drawerType>RealtimeOnly</drawerType>
+    <rotatable>false</rotatable>
+  </ThingDef>
+
+  <!-- Missile Landing (arriving at HUB/HOP) - VTOL nose up -->
+  <ThingDef ParentName="SkyfallerBase">
+    <defName>Arsenal_MissileLanding</defName>
+    <label>cruise missile (landing)</label>
+    <thingClass>Arsenal.MissileLandingSkyfaller</thingClass>
+    <graphicData>
+      <texPath>Arsenal/MITHRIL_Dagger_N</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(3,3)</drawSize>
+    </graphicData>
+    <skyfaller>
+      <movementType>Decelerate</movementType>
+      <ticksToImpactRange>120~120</ticksToImpactRange>
+      <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
+      <shadowSize>(1.5, 1.5)</shadowSize>
+      <impactSound>DropPod_Land</impactSound>
+    </skyfaller>
+    <drawerType>RealtimeOnly</drawerType>
+    <rotatable>false</rotatable>
+  </ThingDef>
+
+  <!-- Missile Strike (incoming attack) - nose down, FAST -->
+  <ThingDef ParentName="SkyfallerBase">
+    <defName>Arsenal_MissileStrikeIncoming</defName>
+    <label>cruise missile (incoming!)</label>
+    <thingClass>Arsenal.MissileStrikeSkyfaller</thingClass>
+    <graphicData>
+      <texPath>Arsenal/MITHRIL_Dagger_S</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(4,4)</drawSize>
+    </graphicData>
+    <skyfaller>
+      <movementType>Accelerate</movementType>
+      <ticksToImpactRange>80~80</ticksToImpactRange>
+      <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
+      <shadowSize>(2, 2)</shadowSize>
+      <impactSound>Explosion_Bomb</impactSound>
+    </skyfaller>
+    <drawerType>RealtimeOnly</drawerType>
+    <rotatable>false</rotatable>
+  </ThingDef>
+
+</Defs>

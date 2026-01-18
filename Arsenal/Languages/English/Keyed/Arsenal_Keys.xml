@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <!-- ARSENAL -->
+  <Arsenal_ConfigureArsenal>Configure ARSENAL</Arsenal_ConfigureArsenal>
+  <Arsenal_ConfigureHubs>Configure HUBs</Arsenal_ConfigureHubs>
+  <Arsenal_ConfigureHubsDesc>Set stock limits for HUB staging platforms. The ARSENAL will automatically manufacture and deliver missiles to maintain these levels.</Arsenal_ConfigureHubsDesc>
+  <Arsenal_ConfigureDesc>Configure which HUBs this ARSENAL should supply and their stock limits.</Arsenal_ConfigureDesc>
+  <Arsenal_NoHubsAvailable>No HUBs available on the world map.</Arsenal_NoHubsAvailable>
+  <Arsenal_StockLimit>Stock limit</Arsenal_StockLimit>
+  <Arsenal_Clear>Clear</Arsenal_Clear>
+  <Arsenal_View>View</Arsenal_View>
+  <Arsenal_Manufacturing>Manufacturing: {0}% complete</Arsenal_Manufacturing>
+  <Arsenal_StartedManufacturing>ARSENAL started manufacturing missile for {0}.</Arsenal_StartedManufacturing>
+  <Arsenal_NoHubAvailable>Missile manufactured but no HUB available for delivery.</Arsenal_NoHubAvailable>
+  <Arsenal_MissileLaunched>Cruise missile launched to {0}.</Arsenal_MissileLaunched>
+
+  <!-- HUB -->
+  <Arsenal_LaunchStrike>Launch strike</Arsenal_LaunchStrike>
+  <Arsenal_LaunchStrikeDesc>Launch a cruise missile at a target within {0} tiles.</Arsenal_LaunchStrikeDesc>
+  <Arsenal_EjectMissile>Eject missile</Arsenal_EjectMissile>
+  <Arsenal_EjectMissileDesc>Remove a missile from storage and place it on the ground.</Arsenal_EjectMissileDesc>
+  <Arsenal_SelectTarget>Select strike target</Arsenal_SelectTarget>
+  <Arsenal_NoMissilesStored>No missiles in storage.</Arsenal_NoMissilesStored>
+  <Arsenal_TargetOutOfRange>Target is out of range (max {0} tiles).</Arsenal_TargetOutOfRange>
+  <Arsenal_InsufficientFuel>Missile has insufficient fuel for this range.</Arsenal_InsufficientFuel>
+  <Arsenal_StrikeLaunched>Missile strike launched!</Arsenal_StrikeLaunched>
+  <Arsenal_StoredMissiles>Stored missiles: {0} / {1}</Arsenal_StoredMissiles>
+  <Arsenal_FuelStored>Fuel stored: {0}</Arsenal_FuelStored>
+
+  <!-- HOP -->
+  <Arsenal_MissileRefueled>Missile refueled with {0} chemfuel.</Arsenal_MissileRefueled>
+  <Arsenal_FuelAvailable>Fuel available: {0} / {1}</Arsenal_FuelAvailable>
+
+  <!-- Traveling -->
+  <Arsenal_MissileArrived>Cruise missile arrived at {0}.</Arsenal_MissileArrived>
+  <Arsenal_InsufficientHops>Warning: Insufficient HOP coverage for route. Missile may not reach destination.</Arsenal_InsufficientHops>
+  <Arsenal_WaypointsRemaining>Waypoints remaining: {0}</Arsenal_WaypointsRemaining>
+  <Arsenal_MissileFuel>Fuel: {0} / {1}</Arsenal_MissileFuel>
+
+  <!-- Strike -->
+  <Arsenal_StrikeImpact>Cruise missile impact!</Arsenal_StrikeImpact>
+  <Arsenal_SettlementStruck>Cruise missile struck {0}!</Arsenal_SettlementStruck>
+  <Arsenal_StrikeCompleted>Cruise missile strike completed.</Arsenal_StrikeCompleted>
+  <Arsenal_TimeToImpact>Time to impact: {0}</Arsenal_TimeToImpact>
+
+</LanguageData>

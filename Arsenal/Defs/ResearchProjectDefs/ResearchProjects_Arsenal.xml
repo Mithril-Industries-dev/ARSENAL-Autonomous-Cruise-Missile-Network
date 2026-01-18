@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <ResearchProjectDef>
+    <defName>Arsenal_CruiseMissiles</defName>
+    <label>autonomous missile logistics</label>
+    <description>Develop the technology to manufacture cruise missiles and build the infrastructure for global autonomous delivery. Unlocks the ARSENAL manufacturing facility, HUB staging platforms, and HOP refueling stations.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>6000</baseCost>
+    <prerequisites>
+      <li>TransportPod</li>
+      <li>Fabrication</li>
+    </prerequisites>
+    <researchViewX>12.00</researchViewX>
+    <researchViewY>4.50</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
+</Defs>

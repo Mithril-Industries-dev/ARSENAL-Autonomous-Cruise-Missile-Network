@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="1024" viewBox="0 0 512 1024">
+  <!-- Base structure -->
+  <rect x="0" y="0" width="512" height="1024" fill="#2a2a2a"/>
+  
+  <!-- Main factory building -->
+  <rect x="50" y="100" width="412" height="800" fill="#3a3a3a"/>
+  
+  <!-- Manufacturing Bay 1 -->
+  <rect x="80" y="150" width="352" height="220" fill="#454545"/>
+  <rect x="100" y="170" width="150" height="180" fill="#5a5a5a"/>
+  <rect x="262" y="170" width="150" height="180" fill="#5a5a5a"/>
+  <!-- Warning stripes -->
+  <rect x="80" y="150" width="40" height="10" fill="#ff9a00"/>
+  <rect x="160" y="150" width="40" height="10" fill="#ff9a00"/>
+  <rect x="240" y="150" width="40" height="10" fill="#ff9a00"/>
+  <rect x="320" y="150" width="40" height="10" fill="#ff9a00"/>
+  <rect x="392" y="150" width="40" height="10" fill="#ff9a00"/>
+  
+  <!-- Manufacturing Bay 2 -->
+  <rect x="80" y="420" width="352" height="220" fill="#454545"/>
+  <rect x="100" y="440" width="150" height="180" fill="#5a5a5a"/>
+  <rect x="262" y="440" width="150" height="180" fill="#5a5a5a"/>
+  <!-- Warning stripes -->
+  <rect x="80" y="420" width="40" height="10" fill="#ff9a00"/>
+  <rect x="160" y="420" width="40" height="10" fill="#ff9a00"/>
+  <rect x="240" y="420" width="40" height="10" fill="#ff9a00"/>
+  <rect x="320" y="420" width="40" height="10" fill="#ff9a00"/>
+  <rect x="392" y="420" width="40" height="10" fill="#ff9a00"/>
+  
+  <!-- Manufacturing Bay 3 -->
+  <rect x="80" y="690" width="352" height="220" fill="#454545"/>
+  <rect x="100" y="710" width="150" height="180" fill="#5a5a5a"/>
+  <rect x="262" y="710" width="150" height="180" fill="#5a5a5a"/>
+  <!-- Warning stripes -->
+  <rect x="80" y="690" width="40" height="10" fill="#ff9a00"/>
+  <rect x="160" y="690" width="40" height="10" fill="#ff9a00"/>
+  <rect x="240" y="690" width="40" height="10" fill="#ff9a00"/>
+  <rect x="320" y="690" width="40" height="10" fill="#ff9a00"/>
+  <rect x="392" y="690" width="40" height="10" fill="#ff9a00"/>
+  
+  <!-- Launch gantry -->
+  <rect x="420" y="200" width="60" height="700" fill="#505050"/>
+  <!-- Gantry details -->
+  <rect x="425" y="220" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="290" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="360" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="430" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="500" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="570" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="640" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="710" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="780" width="50" height="5" fill="#4a9eff"/>
+  <rect x="425" y="850" width="50" height="5" fill="#4a9eff"/>
+  
+  <!-- Control tower -->
+  <rect x="180" y="50" width="152" height="80" fill="#3a3a3a"/>
+  <rect x="200" y="60" width="40" height="40" fill="#4a9eff"/>
+  <rect x="272" y="60" width="40" height="40" fill="#4a9eff"/>
+  
+  <!-- Power connections -->
+  <line x1="30" y1="920" x2="30" y2="980" stroke="#ff9a00" stroke-width="4"/>
+  <line x1="30" y1="980" x2="256" y2="980" stroke="#ff9a00" stroke-width="4"/>
+  
+  <!-- Vents and details -->
+  <rect x="70" y="180" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="150" y="320" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="280" y="250" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="350" y="400" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="120" y="550" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="200" y="650" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="300" y="750" width="8" height="8" fill="#1a1a1a"/>
+  <rect x="380" y="820" width="8" height="8" fill="#1a1a1a"/>
+</svg>

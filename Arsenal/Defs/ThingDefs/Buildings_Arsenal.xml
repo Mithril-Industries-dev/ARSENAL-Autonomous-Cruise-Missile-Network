@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ARSENAL Manufacturing Facility -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_MissileFactory</defName>
+    <label>ARSENAL missile factory</label>
+    <description>A massive automated manufacturing facility that produces cruise missiles. When configured with HUB destinations, it will automatically manufacture and dispatch missiles to maintain stock levels across your global network. Requires continuous chemfuel to operate.</description>
+    <thingClass>Arsenal.Building_Arsenal</thingClass>
+    <graphicData>
+      <texPath>ArsenalFactory</texPath>
+      <graphicClass>Graphic_Multi</graphicClass>
+      <drawSize>(8,16)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>true</blockWind>
+    <fillPercent>1</fillPercent>
+    <blockLight>true</blockLight>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>800</MaxHitPoints>
+      <WorkToBuild>45000</WorkToBuild>
+      <Mass>500</Mass>
+      <Flammability>0.5</Flammability>
+    </statBases>
+    <size>(8,16)</size>
+    <costList>
+      <Steel>800</Steel>
+      <Plasteel>200</Plasteel>
+      <ComponentIndustrial>30</ComponentIndustrial>
+      <ComponentSpacer>5</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>2000</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Refuelable">
+        <fuelConsumptionRate>50.0</fuelConsumptionRate>
+        <fuelCapacity>500.0</fuelCapacity>
+        <fuelFilter>
+          <thingDefs>
+            <li>Chemfuel</li>
+          </thingDefs>
+        </fuelFilter>
+        <consumeFuelOnlyWhenUsed>true</consumeFuelOnlyWhenUsed>
+        <showAllowAutoRefuelToggle>true</showAllowAutoRefuelToggle>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_CruiseMissiles</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+  <!-- HUB Staging Platform -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_MissileHub</defName>
+    <label>HUB missile staging platform</label>
+    <description>A staging platform for vertical storage and launch of cruise missiles. Configure stock limits and the ARSENAL will automatically supply this location. Missiles can be launched at targets within range. Includes refueling capability.</description>
+    <thingClass>Arsenal.Building_Hub</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_HUB</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(5,5)</drawSize>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>false</blockWind>
+    <fillPercent>0.5</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>400</MaxHitPoints>
+      <WorkToBuild>18000</WorkToBuild>
+      <Mass>200</Mass>
+      <Flammability>0.5</Flammability>
+    </statBases>
+    <size>(5,5)</size>
+    <costList>
+      <Steel>250</Steel>
+      <Plasteel>50</Plasteel>
+      <ComponentIndustrial>8</ComponentIndustrial>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Refuelable">
+        <fuelConsumptionRate>0</fuelConsumptionRate>
+        <fuelCapacity>1500.0</fuelCapacity>
+        <fuelFilter>
+          <thingDefs>
+            <li>Chemfuel</li>
+          </thingDefs>
+        </fuelFilter>
+        <consumeFuelOnlyWhenUsed>false</consumeFuelOnlyWhenUsed>
+        <showAllowAutoRefuelToggle>true</showAllowAutoRefuelToggle>
+      </li>
+      <!-- Red glow for HUB -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>6</glowRadius>
+        <glowColor>(255,80,80,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>8</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_CruiseMissiles</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+  <!-- HOP Refueling Station -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_RefuelStation</defName>
+    <label>HOP refueling station</label>
+    <description>A waypoint refueling station for cruise missiles. Place these strategically around the globe to enable long-range missile routing. Automatically refuels passing missiles. Only one missile can refuel at a time.</description>
+    <thingClass>Arsenal.Building_Hop</thingClass>
+    <graphicData>
+      <texPath>Arsenal/ARSENAL_HOP</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(3,3)</drawSize>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>PassThroughOnly</passability>
+    <blockWind>false</blockWind>
+    <fillPercent>0.3</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>250</MaxHitPoints>
+      <WorkToBuild>8000</WorkToBuild>
+      <Mass>80</Mass>
+      <Flammability>0.8</Flammability>
+    </statBases>
+    <size>(3,3)</size>
+    <costList>
+      <Steel>120</Steel>
+      <ComponentIndustrial>4</ComponentIndustrial>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Refuelable">
+        <fuelConsumptionRate>0</fuelConsumptionRate>
+        <fuelCapacity>5000.0</fuelCapacity>
+        <fuelFilter>
+          <thingDefs>
+            <li>Chemfuel</li>
+          </thingDefs>
+        </fuelFilter>
+        <consumeFuelOnlyWhenUsed>false</consumeFuelOnlyWhenUsed>
+        <showAllowAutoRefuelToggle>true</showAllowAutoRefuelToggle>
+      </li>
+      <!-- Blue glow for HOP -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>5</glowRadius>
+        <glowColor>(80,150,255,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Normal</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>6</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_CruiseMissiles</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+</Defs>

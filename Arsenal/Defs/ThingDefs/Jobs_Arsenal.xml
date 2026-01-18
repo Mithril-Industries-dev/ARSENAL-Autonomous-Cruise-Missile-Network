@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- Job: Haul resources to ARSENAL -->
+  <JobDef>
+    <defName>Arsenal_HaulToArsenal</defName>
+    <driverClass>Arsenal.JobDriver_HaulToArsenal</driverClass>
+    <reportString>hauling resources to ARSENAL.</reportString>
+    <allowOpportunisticPrefix>true</allowOpportunisticPrefix>
+  </JobDef>
+
+  <!-- WorkGiver: Haul to ARSENAL -->
+  <WorkGiverDef>
+    <defName>Arsenal_HaulToArsenal</defName>
+    <label>haul resources to ARSENAL</label>
+    <giverClass>Arsenal.WorkGiver_HaulToArsenal</giverClass>
+    <workType>Hauling</workType>
+    <priorityInType>90</priorityInType>
+    <scanThings>true</scanThings>
+    <scanCells>false</scanCells>
+  </WorkGiverDef>
+
+</Defs>

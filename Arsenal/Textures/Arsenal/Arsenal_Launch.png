@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Background -->
+  <circle cx="32" cy="32" r="28" fill="#2a2a2a"/>
+  
+  <!-- Missile body -->
+  <polygon points="32,12 28,20 28,45 36,45 36,20" fill="#ff6a00"/>
+  
+  <!-- Nose cone -->
+  <polygon points="32,12 28,20 36,20" fill="#ff8844"/>
+  
+  <!-- Flames -->
+  <polygon points="28,45 24,52 28,50 32,55 36,50 40,52 36,45" fill="#ffaa00"/>
+  
+  <!-- Fins -->
+  <rect x="24" y="28" width="4" height="8" fill="#ff4400"/>
+  <rect x="36" y="28" width="4" height="8" fill="#ff4400"/>
+</svg>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- Cruise Missile Item/Projectile -->
+  <ThingDef ParentName="ResourceBase">
+    <defName>Arsenal_CruiseMissile</defName>
+    <label>MITHRIL Dagger cruise missile</label>
+    <description>An autonomous vertical take-off and landing cruise missile. Can fly globally to HUB staging platforms and be launched at targets. Carries 300 chemfuel for propulsion.</description>
+    <graphicData>
+      <texPath>Arsenal/MITHRIL_Dagger_S</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(1.5,1.5)</drawSize>
+    </graphicData>
+    <soundInteract>Metal_Drop</soundInteract>
+    <soundDrop>Metal_Drop</soundDrop>
+    <stackLimit>1</stackLimit>
+    <statBases>
+      <MaxHitPoints>150</MaxHitPoints>
+      <Mass>85</Mass>
+      <MarketValue>8000</MarketValue>
+      <Flammability>0.2</Flammability>
+    </statBases>
+    <thingCategories>
+      <li>Arsenal_Missiles</li>
+    </thingCategories>
+    <tradeTags>
+      <li>ExoticMisc</li>
+    </tradeTags>
+    <comps>
+      <li Class="Arsenal.CompProperties_MissileFuel">
+        <fuelCapacity>300</fuelCapacity>
+      </li>
+    </comps>
+  </ThingDef>
+
+  <!-- Missile Explosion -->
+  <ThingDef ParentName="BaseBullet">
+    <defName>Arsenal_MissileExplosion</defName>
+    <label>cruise missile strike</label>
+    <thingClass>Projectile_Explosive</thingClass>
+    <graphicData>
+      <texPath>Things/Projectile/Bullet_Big</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <shaderType>TransparentPostLight</shaderType>
+    </graphicData>
+    <projectile>
+      <damageDef>Bomb</damageDef>
+      <damageAmountBase>180</damageAmountBase>
+      <explosionRadius>8.9</explosionRadius>
+      <speed>80</speed>
+    </projectile>
+  </ThingDef>
+
+  <!-- Thing Category -->
+  <ThingCategoryDef>
+    <defName>Arsenal_Missiles</defName>
+    <label>cruise missiles</label>
+    <parent>Manufactured</parent>
+    <iconPath>Arsenal/MITHRIL_Dagger_S</iconPath>
+  </ThingCategoryDef>
+
+</Defs>
