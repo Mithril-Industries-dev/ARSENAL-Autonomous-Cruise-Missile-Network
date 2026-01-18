@@ -33,6 +33,7 @@ namespace Arsenal
 
         // Properties
         public int DartCount => dartCount;
+        public int MaxCapacity => MAX_CAPACITY;
         public int EmptySlots => MAX_CAPACITY - dartCount;
         public bool IsFull => dartCount >= MAX_CAPACITY;
         public bool IsInert => isInert;
@@ -42,6 +43,11 @@ namespace Arsenal
             set => priority = Mathf.Clamp(value, 1, 10);
         }
         public Building_Lattice LinkedLattice => linkedLattice;
+
+        public void SetPriority(int newPriority)
+        {
+            priority = Mathf.Clamp(newPriority, 1, 10);
+        }
 
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {

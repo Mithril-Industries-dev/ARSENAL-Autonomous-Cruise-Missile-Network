@@ -21,9 +21,6 @@ namespace Arsenal
 
         public static ResearchProjectDef Arsenal_CruiseMissiles;
 
-        // Jobs
-        public static JobDef Arsenal_HaulToArsenal;
-
         // LATTICE system - Drone swarm defense
         public static ThingDef Arsenal_Lattice;
         public static ThingDef Arsenal_Quiver;
@@ -32,6 +29,10 @@ namespace Arsenal
 
         // Research for LATTICE system
         public static ResearchProjectDef Arsenal_DroneSwarm;
+
+        // MithrilProducts for manufacturing
+        public static MithrilProductDef MITHRIL_Product_DAGGER;
+        public static MithrilProductDef MITHRIL_Product_DART;
 
         static ArsenalDefOf()
         {

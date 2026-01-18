@@ -10,23 +10,46 @@ namespace Arsenal
     public class Building_Hop : Building
     {
         private CompRefuelable refuelableComp;
-        
+        private CompPowerTrader powerComp;
+
         private string customName;
         private static int hopCounter = 1;
-        
+
         // Refueling system
         private Thing missileBeingRefueled;
         private int destinationTile = -1;
         private Building_Hub destinationHub;
         private int refuelTicksRemaining = 0;
         private const int REFUEL_TICKS = 3600; // 1 minute real time
-        
+
+        // Range extension for DAGGER network
+        public int RangeExtension = 12;
+
         public bool IsRefueling => missileBeingRefueled != null;
+
+        // Properties for UI
+        public bool IsPoweredOn()
+        {
+            return powerComp == null || powerComp.PowerOn;
+        }
+
+        public bool HasFuel => refuelableComp != null && refuelableComp.Fuel >= 50f;
+
+        public float FuelPercent
+        {
+            get
+            {
+                if (refuelableComp == null) return 0f;
+                float maxFuel = refuelableComp.Props.fuelCapacity;
+                return maxFuel > 0 ? refuelableComp.Fuel / maxFuel : 0f;
+            }
+        }
 
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
+            powerComp = GetComp<CompPowerTrader>();
             if (!respawningAfterLoad)
             {
                 ArsenalNetworkManager.RegisterHop(this);

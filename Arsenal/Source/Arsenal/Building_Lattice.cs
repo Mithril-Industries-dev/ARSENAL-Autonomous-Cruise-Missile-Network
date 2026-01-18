@@ -60,9 +60,52 @@ namespace Arsenal
         public List<Building_Quiver> RegisteredQuivers => registeredQuivers;
         public int TotalAvailableDarts => registeredQuivers.Where(q => !q.IsInert).Sum(q => q.DartCount);
 
+        // Properties for UI
+        private CompPowerTrader powerComp;
+
+        public bool IsPoweredOn()
+        {
+            return powerComp == null || powerComp.PowerOn;
+        }
+
+        public int ActiveThreatCount
+        {
+            get
+            {
+                if (Map == null) return 0;
+                return Map.mapPawns.AllPawnsSpawned
+                    .Count(p => p.HostileTo(Faction.OfPlayer) && !p.Dead && !p.Downed);
+            }
+        }
+
+        public int DartsInFlight
+        {
+            get
+            {
+                if (Map == null) return 0;
+                return Map.listerThings.ThingsOfDef(ArsenalDefOf.Arsenal_DART_Flyer)
+                    .Cast<DART_Flyer>()
+                    .Count(d => d.state == DartState.Engaging);
+            }
+        }
+
+        public int DartsReturning
+        {
+            get
+            {
+                if (Map == null) return 0;
+                return Map.listerThings.ThingsOfDef(ArsenalDefOf.Arsenal_DART_Flyer)
+                    .Cast<DART_Flyer>()
+                    .Count(d => d.state == DartState.Returning);
+            }
+        }
+
+        public int DartsAwaiting => awaitingReassignment.Count;
+
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
+            powerComp = GetComp<CompPowerTrader>();
 
             // Check for existing LATTICE on this map
             Building_Lattice existingLattice = ArsenalNetworkManager.GetLatticeOnMap(map);

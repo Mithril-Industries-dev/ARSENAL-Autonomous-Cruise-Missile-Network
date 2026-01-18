@@ -15,16 +15,48 @@ namespace Arsenal
         private const float LAUNCH_RADIUS = 100f;
 
         private CompRefuelable refuelableComp;
-        
+        private CompPowerTrader powerComp;
+
         private string customName;
         private static int hubCounter = 1;
-        
+
         private int pendingStrikeTile = -1;
+
+        // Priority for auto-selection (1-10, lower = higher priority)
+        public int priority = 5;
+
+        // Range properties for DAGGER delivery
+        public int BaseRange = 18;
+        private const int RANGE_PER_HOP = 12;
+
+        // Properties for UI and manufacturing
+        public int MaxCapacity => MAX_STORED;
+        public int CurrentCount => storedMissiles.Count;
+        public int EmptySlots => MAX_STORED - storedMissiles.Count;
+        public bool IsFull => storedMissiles.Count >= MAX_STORED;
+
+        public bool IsPoweredOn()
+        {
+            return powerComp == null || powerComp.PowerOn;
+        }
+
+        public int GetExtendedRange(List<Building_Hop> hopChain)
+        {
+            if (hopChain == null || hopChain.Count == 0) return BaseRange;
+
+            int range = BaseRange;
+            foreach (var hop in hopChain)
+            {
+                range += hop.RangeExtension;
+            }
+            return range;
+        }
 
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
+            powerComp = GetComp<CompPowerTrader>();
             if (!respawningAfterLoad)
             {
                 ArsenalNetworkManager.RegisterHub(this);
@@ -292,6 +324,7 @@ namespace Arsenal
         {
             base.ExposeData();
             Scribe_Values.Look(ref customName, "customName");
+            Scribe_Values.Look(ref priority, "priority", 5);
             Scribe_Collections.Look(ref storedMissiles, "storedMissiles", LookMode.Deep);
             if (storedMissiles == null) storedMissiles = new List<Thing>();
         }

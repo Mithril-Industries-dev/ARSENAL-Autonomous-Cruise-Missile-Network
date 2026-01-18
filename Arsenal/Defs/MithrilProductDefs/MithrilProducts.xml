@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+    <!-- DAGGER - Long-range cruise missile -->
+    <Arsenal.MithrilProductDef>
+        <defName>MITHRIL_Product_DAGGER</defName>
+        <label>DAGGER</label>
+        <productLabel>DAGGER</productLabel>
+        <productDescription>Long-range cruise missile for strategic strikes against remote targets.</productDescription>
+        <workAmount>5000</workAmount>
+        <costList>
+            <Plasteel>75</Plasteel>
+            <ComponentIndustrial>2</ComponentIndustrial>
+            <Chemfuel>50</Chemfuel>
+        </costList>
+        <outputFlyer>Arsenal_CruiseMissile</outputFlyer>
+        <destinationType>Arsenal.Building_Hub</destinationType>
+        <showRouteInfo>true</showRouteInfo>
+        <networkTabLabel>DAGGER Network</networkTabLabel>
+        <fuelCost>50</fuelCost>
+    </Arsenal.MithrilProductDef>
+
+    <!-- DART - One-way attack drone -->
+    <Arsenal.MithrilProductDef>
+        <defName>MITHRIL_Product_DART</defName>
+        <label>DART</label>
+        <productLabel>DART</productLabel>
+        <productDescription>One-way attack drone for autonomous base defense. Requires LATTICE C2 node.</productDescription>
+        <workAmount>2000</workAmount>
+        <costList>
+            <Steel>25</Steel>
+            <ComponentIndustrial>1</ComponentIndustrial>
+            <Chemfuel>15</Chemfuel>
+        </costList>
+        <outputFlyer>Arsenal_DART_Flyer</outputFlyer>
+        <destinationType>Arsenal.Building_Quiver</destinationType>
+        <showRouteInfo>false</showRouteInfo>
+        <networkTabLabel>DART Network</networkTabLabel>
+        <fuelCost>10</fuelCost>
+    </Arsenal.MithrilProductDef>
+
+</Defs>
