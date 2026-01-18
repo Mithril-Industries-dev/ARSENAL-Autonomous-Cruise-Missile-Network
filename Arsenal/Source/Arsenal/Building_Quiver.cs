@@ -94,7 +94,7 @@ namespace Arsenal
                     instigator: null,
                     damAmount: explosionDamage,
                     armorPenetration: 0.5f,
-                    explosionSound: SoundDefOf.Explosion_Bomb,
+                    explosionSound: null,
                     chanceToStartFire: 0.5f,
                     damageFalloff: true
                 );
@@ -224,7 +224,7 @@ namespace Arsenal
                 // Launch smoke and fire effects
                 FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 1.2f);
                 FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
-                FleckMaker.ThrowFireGlow(Position, Map, 0.5f);
+                FleckMaker.ThrowFireGlow(Position.ToVector3Shifted(), Map, 0.5f);
                 FleckMaker.ThrowLightningGlow(Position.ToVector3Shifted(), Map, 0.8f);
 
                 // Dust kick-up from launch

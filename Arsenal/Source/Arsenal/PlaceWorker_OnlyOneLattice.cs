@@ -1,3 +1,4 @@
+using RimWorld;
 using Verse;
 
 namespace Arsenal

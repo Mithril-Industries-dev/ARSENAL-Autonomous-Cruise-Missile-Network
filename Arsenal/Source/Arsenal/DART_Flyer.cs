@@ -64,7 +64,7 @@ namespace Arsenal
                 currentRotation = 0f;
 
                 // Play launch sound
-                SoundDefOf.Mortar_LaunchA.PlayOneShot(new TargetInfo(Position, map));
+                SoundDefOf.Building_Complete.PlayOneShot(new TargetInfo(Position, map));
             }
         }
 
@@ -502,7 +502,7 @@ namespace Arsenal
                 // Fire trail when attacking
                 if (ticksAlive % 5 == 0)
                 {
-                    FleckMaker.ThrowFireGlow(exhaustPos.ToIntVec3(), Map, 0.3f);
+                    FleckMaker.ThrowFireGlow(exhaustPos, Map, 0.3f);
                 }
             }
 
@@ -522,7 +522,7 @@ namespace Arsenal
             lattice?.OnDartImpact(this, targetPawn);
 
             // Play impact warning sound just before explosion
-            SoundDefOf.Bullet_Impact_Metal.PlayOneShot(new TargetInfo(Position, Map));
+            SoundDefOf.BulletImpact_Metal.PlayOneShot(new TargetInfo(Position, Map));
 
             // Create explosion
             GenExplosion.DoExplosion(
@@ -533,7 +533,7 @@ namespace Arsenal
                 instigator: this,
                 damAmount: EXPLOSION_DAMAGE,
                 armorPenetration: 0.5f,
-                explosionSound: SoundDefOf.Explosion_Bomb,
+                explosionSound: null,
                 weapon: null,
                 projectile: null,
                 intendedTarget: targetPawn,
@@ -551,7 +551,7 @@ namespace Arsenal
 
             // Visual effects - explosion flash and debris
             FleckMaker.ThrowExplosionCell(Position, Map, FleckDefOf.ExplosionFlash, Color.white);
-            FleckMaker.ThrowFireGlow(Position, Map, 1.5f);
+            FleckMaker.ThrowFireGlow(Position.ToVector3Shifted(), Map, 1.5f);
             FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
             FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 1.5f);
 
@@ -622,7 +622,7 @@ namespace Arsenal
                     damType: DamageDefOf.Bomb,
                     instigator: null,
                     damAmount: 5,
-                    explosionSound: SoundDefOf.Explosion_Bomb
+                    explosionSound: null
                 );
 
                 // Visual effects
