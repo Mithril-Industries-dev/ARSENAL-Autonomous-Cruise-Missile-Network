@@ -34,8 +34,8 @@ namespace Arsenal
 
         // Flight parameters
         private const float SPEED = 0.18f; // cells per tick (catches sprinting pawns)
-        private const float EXPLOSION_RADIUS = 1.5f;
-        private const int EXPLOSION_DAMAGE = 25;
+        private const float EXPLOSION_RADIUS = 2.5f;
+        private const int EXPLOSION_DAMAGE = 65;
         private const int PATH_UPDATE_INTERVAL = 30; // Ticks between path updates when chasing
         private const int REASSIGN_TIMEOUT = 180; // 3 seconds to get reassigned before returning
 
