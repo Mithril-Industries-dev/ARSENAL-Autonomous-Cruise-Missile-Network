@@ -1,0 +1,615 @@
+using System;
+using System.Collections.Generic;
+using RimWorld;
+using Verse;
+using Verse.Sound;
+using UnityEngine;
+
+namespace Arsenal
+{
+    /// <summary>
+    /// DART (One-Way-Attack) drone - kamikaze munition for the LATTICE system.
+    /// Custom flyer that navigates on-map using A* pathfinding.
+    /// </summary>
+    public class DART_Flyer : ThingWithComps
+    {
+        // State machine
+        public DartState state = DartState.Delivery;
+
+        // Targeting
+        private LocalTargetInfo target;
+        private IntVec3 lastKnownTargetPos;
+
+        // Home QUIVER (where this DART was launched from or will return to)
+        public Building_Quiver homeQuiver;
+
+        // Reference to LATTICE for coordination
+        public Building_Lattice lattice;
+
+        // Flight path
+        private List<IntVec3> flightPath;
+        private int pathIndex;
+        private Vector3 exactPosition;
+        private float currentRotation;
+
+        // Flight parameters
+        private const float SPEED = 0.18f; // cells per tick (catches sprinting pawns)
+        private const float EXPLOSION_RADIUS = 1.5f;
+        private const int EXPLOSION_DAMAGE = 25;
+        private const int PATH_UPDATE_INTERVAL = 30; // Ticks between path updates when chasing
+        private const int REASSIGN_TIMEOUT = 180; // 3 seconds to get reassigned before returning
+
+        // Timing
+        private int ticksSincePathUpdate;
+        private int ticksInReassigning;
+        private int ticksAlive;
+
+        // Visual trail
+        private const int TRAIL_LENGTH = 8;
+        private Queue<Vector3> trailPositions = new Queue<Vector3>();
+
+        public LocalTargetInfo Target => target;
+        public Vector3 ExactPosition => exactPosition;
+
+        public override void SpawnSetup(Map map, bool respawningAfterLoad)
+        {
+            base.SpawnSetup(map, respawningAfterLoad);
+
+            if (!respawningAfterLoad)
+            {
+                exactPosition = Position.ToVector3Shifted();
+                currentRotation = 0f;
+            }
+        }
+
+        public override void ExposeData()
+        {
+            base.ExposeData();
+
+            Scribe_Values.Look(ref state, "state", DartState.Delivery);
+            Scribe_TargetInfo.Look(ref target, "target");
+            Scribe_Values.Look(ref lastKnownTargetPos, "lastKnownTargetPos");
+            Scribe_References.Look(ref homeQuiver, "homeQuiver");
+            Scribe_References.Look(ref lattice, "lattice");
+            Scribe_Values.Look(ref pathIndex, "pathIndex", 0);
+            Scribe_Values.Look(ref exactPosition, "exactPosition");
+            Scribe_Values.Look(ref currentRotation, "currentRotation");
+            Scribe_Values.Look(ref ticksSincePathUpdate, "ticksSincePathUpdate");
+            Scribe_Values.Look(ref ticksInReassigning, "ticksInReassigning");
+            Scribe_Values.Look(ref ticksAlive, "ticksAlive");
+
+            Scribe_Collections.Look(ref flightPath, "flightPath", LookMode.Value);
+
+            // Rebuild trail after load
+            if (Scribe.mode == LoadSaveMode.PostLoadInit)
+            {
+                if (trailPositions == null)
+                    trailPositions = new Queue<Vector3>();
+            }
+        }
+
+        /// <summary>
+        /// Initializes the DART for delivery from ARSENAL to QUIVER.
+        /// </summary>
+        public void InitializeForDelivery(Building_Quiver targetQuiver, Building_Lattice latticeRef)
+        {
+            state = DartState.Delivery;
+            homeQuiver = targetQuiver;
+            lattice = latticeRef;
+            target = new LocalTargetInfo(targetQuiver);
+            CalculatePathToTarget();
+        }
+
+        /// <summary>
+        /// Launches the DART at a hostile target.
+        /// </summary>
+        public void LaunchAtTarget(Pawn hostileTarget, Building_Quiver fromQuiver, Building_Lattice latticeRef)
+        {
+            state = DartState.Engaging;
+            homeQuiver = fromQuiver;
+            lattice = latticeRef;
+            target = new LocalTargetInfo(hostileTarget);
+            lastKnownTargetPos = hostileTarget.Position;
+            CalculatePathToTarget();
+        }
+
+        /// <summary>
+        /// Assigns a new target (called by LATTICE during reassignment).
+        /// </summary>
+        public void AssignNewTarget(Pawn newTarget)
+        {
+            if (newTarget == null || newTarget.Dead || newTarget.Destroyed)
+            {
+                ReturnHome();
+                return;
+            }
+
+            state = DartState.Engaging;
+            target = new LocalTargetInfo(newTarget);
+            lastKnownTargetPos = newTarget.Position;
+            ticksInReassigning = 0;
+            CalculatePathToTarget();
+        }
+
+        /// <summary>
+        /// Orders the DART to return to its home QUIVER.
+        /// </summary>
+        public void ReturnHome()
+        {
+            if (homeQuiver == null || homeQuiver.Destroyed || homeQuiver.IsInert)
+            {
+                // Find any available QUIVER
+                homeQuiver = lattice?.GetQuiverForReturn(this);
+            }
+
+            if (homeQuiver != null && !homeQuiver.Destroyed)
+            {
+                state = DartState.Returning;
+                target = new LocalTargetInfo(homeQuiver);
+                CalculatePathToTarget();
+            }
+            else
+            {
+                // No QUIVER available - crash
+                Crash();
+            }
+        }
+
+        /// <summary>
+        /// Requests reassignment from LATTICE (target died mid-flight).
+        /// </summary>
+        public void RequestReassignment()
+        {
+            state = DartState.Reassigning;
+            ticksInReassigning = 0;
+
+            if (lattice != null && !lattice.Destroyed)
+            {
+                lattice.RequestReassignment(this);
+            }
+            else
+            {
+                // No LATTICE - return home or crash
+                ReturnHome();
+            }
+        }
+
+        public override void Tick()
+        {
+            base.Tick();
+            ticksAlive++;
+
+            // Skip processing if idle (stored in QUIVER)
+            if (state == DartState.Idle)
+                return;
+
+            // Update trail
+            UpdateTrail();
+
+            // State machine
+            switch (state)
+            {
+                case DartState.Delivery:
+                    TickDelivery();
+                    break;
+                case DartState.Engaging:
+                    TickEngaging();
+                    break;
+                case DartState.Returning:
+                    TickReturning();
+                    break;
+                case DartState.Reassigning:
+                    TickReassigning();
+                    break;
+            }
+
+            // Visual effects
+            if (ticksAlive % 3 == 0 && Map != null)
+            {
+                SpawnFlightEffects();
+            }
+        }
+
+        private void TickDelivery()
+        {
+            if (homeQuiver == null || homeQuiver.Destroyed)
+            {
+                // Target QUIVER destroyed - find another
+                Building_Quiver newQuiver = lattice?.GetQuiverForDelivery();
+                if (newQuiver != null)
+                {
+                    homeQuiver = newQuiver;
+                    target = new LocalTargetInfo(newQuiver);
+                    CalculatePathToTarget();
+                }
+                else
+                {
+                    Crash();
+                    return;
+                }
+            }
+
+            FlyAlongPath();
+
+            // Check if arrived at QUIVER
+            if (Position.DistanceTo(homeQuiver.Position) < 2f)
+            {
+                CompleteDelivery();
+            }
+        }
+
+        private void TickEngaging()
+        {
+            // Check if target is still valid
+            Pawn targetPawn = target.Pawn;
+            if (targetPawn == null || targetPawn.Dead || targetPawn.Destroyed ||
+                !targetPawn.Spawned || targetPawn.Map != Map)
+            {
+                RequestReassignment();
+                return;
+            }
+
+            // Update path periodically if target moved
+            ticksSincePathUpdate++;
+            if (ticksSincePathUpdate >= PATH_UPDATE_INTERVAL)
+            {
+                if (targetPawn.Position != lastKnownTargetPos)
+                {
+                    lastKnownTargetPos = targetPawn.Position;
+                    CalculatePathToTarget();
+                }
+                ticksSincePathUpdate = 0;
+            }
+
+            FlyAlongPath();
+
+            // Check for impact
+            float distToTarget = exactPosition.ToIntVec3().DistanceTo(targetPawn.Position);
+            if (distToTarget < 1.5f)
+            {
+                Impact(targetPawn);
+            }
+        }
+
+        private void TickReturning()
+        {
+            if (homeQuiver == null || homeQuiver.Destroyed || homeQuiver.IsInert)
+            {
+                // Home QUIVER gone - find another
+                Building_Quiver newQuiver = lattice?.GetQuiverForReturn(this);
+                if (newQuiver != null)
+                {
+                    homeQuiver = newQuiver;
+                    target = new LocalTargetInfo(newQuiver);
+                    CalculatePathToTarget();
+                }
+                else
+                {
+                    Crash();
+                    return;
+                }
+            }
+
+            FlyAlongPath();
+
+            // Check if arrived at QUIVER
+            if (Position.DistanceTo(homeQuiver.Position) < 2f)
+            {
+                CompleteReturn();
+            }
+        }
+
+        private void TickReassigning()
+        {
+            ticksInReassigning++;
+
+            // Loiter in place while waiting
+            // Could add circling behavior here
+
+            if (ticksInReassigning >= REASSIGN_TIMEOUT)
+            {
+                // Timeout - return home
+                ReturnHome();
+            }
+        }
+
+        private void FlyAlongPath()
+        {
+            if (flightPath == null || flightPath.Count == 0 || pathIndex >= flightPath.Count)
+            {
+                // No valid path - try to recalculate
+                CalculatePathToTarget();
+                if (flightPath == null || flightPath.Count == 0)
+                {
+                    // Still no path - handle based on state
+                    HandleNoPath();
+                    return;
+                }
+            }
+
+            // Get current target waypoint
+            IntVec3 targetWaypoint = flightPath[pathIndex];
+            Vector3 targetPos = targetWaypoint.ToVector3Shifted();
+
+            // Calculate direction and move
+            Vector3 direction = (targetPos - exactPosition).normalized;
+            float distanceToWaypoint = Vector3.Distance(exactPosition, targetPos);
+
+            if (distanceToWaypoint <= SPEED)
+            {
+                // Reached waypoint
+                exactPosition = targetPos;
+                pathIndex++;
+
+                // Check if reached end of path
+                if (pathIndex >= flightPath.Count)
+                {
+                    // Path complete - should be handled by state-specific tick
+                    return;
+                }
+            }
+            else
+            {
+                // Move toward waypoint
+                exactPosition += direction * SPEED;
+            }
+
+            // Update rotation to face movement direction
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                currentRotation = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+            }
+
+            // Update position for collision detection etc
+            IntVec3 newCell = exactPosition.ToIntVec3();
+            if (newCell != Position && newCell.InBounds(Map))
+            {
+                Position = newCell;
+            }
+        }
+
+        private void HandleNoPath()
+        {
+            switch (state)
+            {
+                case DartState.Delivery:
+                case DartState.Returning:
+                    // Can't reach QUIVER - crash
+                    Crash();
+                    break;
+                case DartState.Engaging:
+                    // Can't reach target - request reassignment
+                    RequestReassignment();
+                    break;
+                case DartState.Reassigning:
+                    // Already reassigning - continue waiting
+                    break;
+            }
+        }
+
+        private void CalculatePathToTarget()
+        {
+            if (Map == null)
+                return;
+
+            FlightPathGrid grid = GetFlightPathGrid();
+            if (grid == null)
+                return;
+
+            IntVec3 destination;
+            if (target.HasThing && target.Thing != null && target.Thing.Spawned)
+            {
+                destination = target.Thing.Position;
+            }
+            else if (target.Cell.IsValid)
+            {
+                destination = target.Cell;
+            }
+            else
+            {
+                flightPath = null;
+                return;
+            }
+
+            flightPath = grid.FindPath(Position, destination);
+            pathIndex = 0;
+            ticksSincePathUpdate = 0;
+        }
+
+        private FlightPathGrid GetFlightPathGrid()
+        {
+            // Get grid from LATTICE or create temporary one
+            if (lattice != null && !lattice.Destroyed)
+            {
+                return lattice.FlightGrid;
+            }
+
+            // Fallback - create temporary grid (expensive)
+            return new FlightPathGrid(Map);
+        }
+
+        private void UpdateTrail()
+        {
+            trailPositions.Enqueue(exactPosition);
+            while (trailPositions.Count > TRAIL_LENGTH)
+            {
+                trailPositions.Dequeue();
+            }
+        }
+
+        private void SpawnFlightEffects()
+        {
+            // Engine glow/exhaust
+            Vector3 exhaustPos = exactPosition - Quaternion.Euler(0, currentRotation, 0) * Vector3.forward * 0.3f;
+            FleckMaker.ThrowSmoke(exhaustPos, Map, 0.3f);
+
+            if (state == DartState.Engaging && ticksAlive % 6 == 0)
+            {
+                // More intense effects when attacking
+                FleckMaker.ThrowMicroSparks(exhaustPos, Map);
+            }
+        }
+
+        private void Impact(Pawn targetPawn)
+        {
+            // Notify LATTICE before destruction
+            lattice?.OnDartImpact(this, targetPawn);
+
+            // Create explosion
+            GenExplosion.DoExplosion(
+                center: Position,
+                map: Map,
+                radius: EXPLOSION_RADIUS,
+                damType: DamageDefOf.Bomb,
+                instigator: this,
+                damAmount: EXPLOSION_DAMAGE,
+                armorPenetration: 0.5f,
+                explosionSound: SoundDefOf.Explosion_Bomb,
+                weapon: null,
+                projectile: null,
+                intendedTarget: targetPawn,
+                postExplosionSpawnThingDef: null,
+                postExplosionSpawnChance: 0f,
+                postExplosionSpawnThingCount: 0,
+                postExplosionGasType: null,
+                applyDamageToExplosionCellsNeighbors: false,
+                preExplosionSpawnThingDef: null,
+                preExplosionSpawnChance: 0f,
+                preExplosionSpawnThingCount: 0,
+                chanceToStartFire: 0.3f,
+                damageFalloff: true
+            );
+
+            // Visual effects
+            FleckMaker.ThrowExplosionCell(Position, Map, FleckDefOf.ExplosionFlash, Color.white);
+
+            // Destroy self
+            Destroy(DestroyMode.Vanish);
+        }
+
+        private void CompleteDelivery()
+        {
+            if (homeQuiver != null && !homeQuiver.Destroyed && !homeQuiver.IsFull)
+            {
+                homeQuiver.ReceiveDart(this);
+            }
+            else
+            {
+                // QUIVER full or gone - crash
+                Crash();
+            }
+        }
+
+        private void CompleteReturn()
+        {
+            if (homeQuiver != null && !homeQuiver.Destroyed && !homeQuiver.IsFull)
+            {
+                homeQuiver.ReceiveDart(this);
+            }
+            else
+            {
+                // Try another QUIVER
+                Building_Quiver altQuiver = lattice?.GetQuiverForReturn(this);
+                if (altQuiver != null && !altQuiver.IsFull)
+                {
+                    altQuiver.ReceiveDart(this);
+                }
+                else
+                {
+                    // No room anywhere - crash
+                    Crash();
+                }
+            }
+        }
+
+        private void Crash()
+        {
+            // Small explosion when crashing
+            if (Map != null)
+            {
+                GenExplosion.DoExplosion(
+                    center: Position,
+                    map: Map,
+                    radius: 0.5f,
+                    damType: DamageDefOf.Bomb,
+                    instigator: null,
+                    damAmount: 5
+                );
+
+                FleckMaker.ThrowSmoke(exactPosition, Map, 1f);
+                Messages.Message("DART drone crashed - no valid destination.", MessageTypeDefOf.NegativeEvent, false);
+            }
+
+            Destroy(DestroyMode.Vanish);
+        }
+
+        public override void Draw()
+        {
+            // Don't draw if idle (stored in QUIVER)
+            if (state == DartState.Idle)
+                return;
+
+            // Draw trail
+            DrawTrail();
+
+            // Draw the DART at exact position with rotation
+            Vector3 drawPos = exactPosition;
+            drawPos.y = AltitudeLayer.MoteOverhead.AltitudeFor(); // Fly above ground
+
+            Matrix4x4 matrix = Matrix4x4.TRS(
+                drawPos,
+                Quaternion.Euler(0f, currentRotation, 0f),
+                new Vector3(1f, 1f, 1f)
+            );
+
+            Graphics.DrawMesh(
+                MeshPool.plane10,
+                matrix,
+                Graphic.MatSingle,
+                0
+            );
+        }
+
+        private void DrawTrail()
+        {
+            if (trailPositions.Count < 2)
+                return;
+
+            Vector3[] positions = trailPositions.ToArray();
+            float alpha = 0.1f;
+            float alphaStep = 0.8f / positions.Length;
+
+            for (int i = 0; i < positions.Length - 1; i++)
+            {
+                Vector3 pos = positions[i];
+                pos.y = AltitudeLayer.MoteOverhead.AltitudeFor() - 0.01f;
+
+                // Draw fading trail segments
+                Color trailColor = new Color(1f, 0.5f, 0.2f, alpha);
+                // Could use line drawing or flecks here
+                alpha += alphaStep;
+            }
+        }
+
+        public override string GetInspectString()
+        {
+            string text = base.GetInspectString();
+
+            if (!text.NullOrEmpty())
+                text += "\n";
+
+            text += "State: " + state.ToString();
+
+            if (state == DartState.Engaging && target.Pawn != null)
+            {
+                text += "\nTarget: " + target.Pawn.LabelShort;
+            }
+            else if (state == DartState.Returning || state == DartState.Delivery)
+            {
+                text += "\nDestination: " + (homeQuiver?.LabelShort ?? "Unknown");
+            }
+
+            return text;
+        }
+    }
+}

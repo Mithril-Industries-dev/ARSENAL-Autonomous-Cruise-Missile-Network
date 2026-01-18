@@ -19,17 +19,28 @@ namespace Arsenal
 
         public bool productionEnabled = true;
         public Dictionary<int, HubConfig> hubConfigs = new Dictionary<int, HubConfig>();
-        
+
         // Queue system - missiles waiting for HOP availability
         private List<QueuedMissile> missileQueue = new List<QueuedMissile>();
-        
+
         private string customName;
         private static int factoryCounter = 1;
 
         private CompRefuelable refuelableComp;
         private CompPowerTrader powerComp;
-        
+
         private Sustainer manufacturingSustainer;
+
+        // === DART MANUFACTURING ===
+        public bool dartProductionEnabled = true;
+        private bool isManufacturingDart = false;
+        private int dartManufacturingTicksRemaining = 0;
+        private const int DART_MANUFACTURE_TIME = 12; // Faster than missiles
+
+        // DART resource costs (lighter than missiles)
+        public const int DART_COST_PLASTEEL = 30;
+        public const int DART_COST_COMPONENTS = 1;
+        public const int DART_COST_CHEMFUEL = 20;
 
         // === INTERNAL STORAGE SYSTEM ===
         // Resource costs per missile
@@ -248,13 +259,28 @@ namespace Arsenal
                 defaultDesc = "Set stock limits and priorities for HUB staging platforms.",
                 action = delegate { Find.WindowStack.Add(new Dialog_ConfigureArsenal(this)); }
             };
+
+            // DART production toggle (only if LATTICE system research is complete)
+            if (ArsenalDefOf.Arsenal_DroneSwarm != null && ArsenalDefOf.Arsenal_DroneSwarm.IsFinished)
+            {
+                yield return new Command_Toggle
+                {
+                    defaultLabel = "DART Production",
+                    defaultDesc = dartProductionEnabled
+                        ? "DART drone production is ON. Click to stop."
+                        : "DART drone production is OFF. Click to start.",
+                    isActive = () => dartProductionEnabled,
+                    toggleAction = delegate { dartProductionEnabled = !dartProductionEnabled; },
+                    icon = ContentFinder<Texture2D>.Get("UI/Commands/Attack", false)
+                };
+            }
         }
 
         public override void TickRare()
         {
             base.TickRare();
 
-            if (!CanOperate() || !productionEnabled)
+            if (!CanOperate())
             {
                 StopManufacturingSound();
                 return;
@@ -263,25 +289,57 @@ namespace Arsenal
             // Try to launch queued missiles first
             TryLaunchQueuedMissiles();
 
-            if (isManufacturing)
+            // Handle missile manufacturing
+            if (productionEnabled)
             {
-                StartManufacturingSound();
-                
-                manufacturingTicksRemaining--;
-                if (manufacturingTicksRemaining <= 0)
+                if (isManufacturing)
                 {
-                    CompleteMissileManufacture();
-                    isManufacturing = false;
-                    StopManufacturingSound();
+                    StartManufacturingSound();
+
+                    manufacturingTicksRemaining--;
+                    if (manufacturingTicksRemaining <= 0)
+                    {
+                        CompleteMissileManufacture();
+                        isManufacturing = false;
+                        StopManufacturingSound();
+                    }
                 }
-                return;
+                else
+                {
+                    ticksUntilCheck--;
+                    if (ticksUntilCheck <= 0)
+                    {
+                        ticksUntilCheck = checkInterval;
+                        CheckAndStartManufacturing();
+                    }
+                }
+            }
+            else
+            {
+                if (!isManufacturingDart)
+                    StopManufacturingSound();
             }
 
-            ticksUntilCheck--;
-            if (ticksUntilCheck <= 0)
+            // Handle DART manufacturing (separate from missiles)
+            if (dartProductionEnabled && ArsenalDefOf.Arsenal_DroneSwarm != null && ArsenalDefOf.Arsenal_DroneSwarm.IsFinished)
             {
-                ticksUntilCheck = checkInterval;
-                CheckAndStartManufacturing();
+                if (isManufacturingDart)
+                {
+                    StartManufacturingSound();
+
+                    dartManufacturingTicksRemaining--;
+                    if (dartManufacturingTicksRemaining <= 0)
+                    {
+                        CompleteDartManufacture();
+                        isManufacturingDart = false;
+                        if (!isManufacturing)
+                            StopManufacturingSound();
+                    }
+                }
+                else if (!isManufacturing) // Don't start DART if making missile
+                {
+                    CheckAndStartDartManufacturing();
+                }
             }
         }
 
@@ -515,9 +573,9 @@ namespace Arsenal
 
         private void LaunchMissileToHub(Thing missile, Building_Hub targetHub)
         {
-            WorldObject_TravelingMissile travelingMissile = 
+            WorldObject_TravelingMissile travelingMissile =
                 (WorldObject_TravelingMissile)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_TravelingMissile);
-            
+
             travelingMissile.Tile = Map.Tile;
             travelingMissile.destinationTile = targetHub.Map.Tile;
             travelingMissile.missile = missile;
@@ -527,10 +585,80 @@ namespace Arsenal
             MissileLaunchingSkyfaller skyfaller = (MissileLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_MissileLaunching);
             skyfaller.travelingMissile = travelingMissile;
-            
+
             GenSpawn.Spawn(skyfaller, Position, Map);
-            
+
             Messages.Message(Label + ": Cruise missile launched to " + targetHub.Label, this, MessageTypeDefOf.PositiveEvent);
+        }
+
+        // === DART MANUFACTURING ===
+
+        private void CheckAndStartDartManufacturing()
+        {
+            // Check if LATTICE exists on this map
+            Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (lattice == null)
+                return;
+
+            // Check if any QUIVER needs DARTs
+            Building_Quiver targetQuiver = lattice.GetQuiverForDelivery();
+            if (targetQuiver == null)
+                return;
+
+            // Check if we have resources
+            if (!HasDartResources())
+                return;
+
+            // Start manufacturing
+            ConsumeDartResources();
+            isManufacturingDart = true;
+            dartManufacturingTicksRemaining = DART_MANUFACTURE_TIME;
+        }
+
+        private bool HasDartResources()
+        {
+            return storedPlasteel >= DART_COST_PLASTEEL &&
+                   storedComponents >= DART_COST_COMPONENTS &&
+                   storedChemfuel >= DART_COST_CHEMFUEL;
+        }
+
+        private void ConsumeDartResources()
+        {
+            storedPlasteel -= DART_COST_PLASTEEL;
+            storedComponents -= DART_COST_COMPONENTS;
+            storedChemfuel -= DART_COST_CHEMFUEL;
+
+            refuelableComp?.ConsumeFuel(10f); // Less fuel than missile
+        }
+
+        private void CompleteDartManufacture()
+        {
+            Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (lattice == null)
+            {
+                // No LATTICE - drop DART item instead
+                Thing dartItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_DART_Item);
+                GenPlace.TryPlaceThing(dartItem, Position, Map, ThingPlaceMode.Near);
+                Messages.Message(Label + ": DART completed but no LATTICE available.", this, MessageTypeDefOf.NeutralEvent);
+                return;
+            }
+
+            Building_Quiver targetQuiver = lattice.GetQuiverForDelivery();
+            if (targetQuiver == null)
+            {
+                // No QUIVER available - drop DART item
+                Thing dartItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_DART_Item);
+                GenPlace.TryPlaceThing(dartItem, Position, Map, ThingPlaceMode.Near);
+                Messages.Message(Label + ": DART completed but all QUIVERs full.", this, MessageTypeDefOf.NeutralEvent);
+                return;
+            }
+
+            // Spawn DART flyer in Delivery state
+            DART_Flyer dart = (DART_Flyer)ThingMaker.MakeThing(ArsenalDefOf.Arsenal_DART_Flyer);
+            dart.InitializeForDelivery(targetQuiver, lattice);
+            GenSpawn.Spawn(dart, Position, Map);
+
+            SoundDefOf.Building_Complete.PlayOneShot(this);
         }
 
         public void SetCustomName(string name)
@@ -548,7 +676,7 @@ namespace Arsenal
             Scribe_Values.Look(ref customName, "customName");
             Scribe_Collections.Look(ref hubConfigs, "hubConfigs", LookMode.Value, LookMode.Deep);
             Scribe_Collections.Look(ref missileQueue, "missileQueue", LookMode.Deep);
-            
+
             // Storage
             Scribe_Values.Look(ref storedPlasteel, "storedPlasteel", 0);
             Scribe_Values.Look(ref storedGold, "storedGold", 0);
@@ -556,7 +684,12 @@ namespace Arsenal
             Scribe_Values.Look(ref storedChemfuel, "storedChemfuel", 0);
             Scribe_Values.Look(ref storageLimitMissiles, "storageLimitMissiles", 1);
             Scribe_Values.Look(ref acceptDeliveries, "acceptDeliveries", true);
-            
+
+            // DART manufacturing
+            Scribe_Values.Look(ref dartProductionEnabled, "dartProductionEnabled", true);
+            Scribe_Values.Look(ref isManufacturingDart, "isManufacturingDart", false);
+            Scribe_Values.Look(ref dartManufacturingTicksRemaining, "dartManufacturingTicksRemaining", 0);
+
             if (hubConfigs == null)
                 hubConfigs = new Dictionary<int, HubConfig>();
             if (missileQueue == null)
@@ -567,31 +700,43 @@ namespace Arsenal
         {
             string str = base.GetInspectString();
             str += "\nProduction: " + (productionEnabled ? "ACTIVE" : "STOPPED");
-            
+
             // Storage status
             str += "\nStorage (" + storageLimitMissiles + "x): ";
             str += "Plasteel " + storedPlasteel + "/" + MaxPlasteel;
             str += " | Gold " + storedGold + "/" + MaxGold;
             str += "\n  Components " + storedComponents + "/" + MaxComponents;
             str += " | Chemfuel " + storedChemfuel + "/" + MaxChemfuel;
-            
+
             if (!acceptDeliveries)
                 str += "\nDeliveries: STOPPED";
-            
+
             if (isManufacturing)
             {
                 float progress = 1f - ((float)manufacturingTicksRemaining / MANUFACTURE_TIME);
-                str += "\nManufacturing: " + (progress * 100f).ToString("F0") + "%";
+                str += "\nManufacturing missile: " + (progress * 100f).ToString("F0") + "%";
             }
             else if (!HasRequiredResources())
             {
                 str += "\nAwaiting resources...";
             }
-            
+
             if (missileQueue.Count > 0)
             {
                 str += "\nQueued missiles: " + missileQueue.Count + " (waiting for HOP)";
             }
+
+            // DART status
+            if (ArsenalDefOf.Arsenal_DroneSwarm != null && ArsenalDefOf.Arsenal_DroneSwarm.IsFinished)
+            {
+                str += "\nDARTs: " + (dartProductionEnabled ? "ACTIVE" : "STOPPED");
+                if (isManufacturingDart)
+                {
+                    float dartProgress = 1f - ((float)dartManufacturingTicksRemaining / DART_MANUFACTURE_TIME);
+                    str += " | Building: " + (dartProgress * 100f).ToString("F0") + "%";
+                }
+            }
+
             return str;
         }
     }

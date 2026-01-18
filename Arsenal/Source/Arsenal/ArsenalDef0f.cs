@@ -10,19 +10,28 @@ namespace Arsenal
         public static ThingDef Arsenal_MissileFactory;
         public static ThingDef Arsenal_MissileHub;
         public static ThingDef Arsenal_RefuelStation;
-        
+
         // Skyfallers
         public static ThingDef Arsenal_MissileLaunching;
         public static ThingDef Arsenal_MissileLanding;
         public static ThingDef Arsenal_MissileStrikeIncoming;
-        
+
         public static WorldObjectDef Arsenal_TravelingMissile;
         public static WorldObjectDef Arsenal_MissileStrike;
-        
+
         public static ResearchProjectDef Arsenal_CruiseMissiles;
-        
+
         // Jobs
         public static JobDef Arsenal_HaulToArsenal;
+
+        // LATTICE system - Drone swarm defense
+        public static ThingDef Arsenal_Lattice;
+        public static ThingDef Arsenal_Quiver;
+        public static ThingDef Arsenal_DART_Flyer;
+        public static ThingDef Arsenal_DART_Item;
+
+        // Research for LATTICE system
+        public static ResearchProjectDef Arsenal_DroneSwarm;
 
         static ArsenalDefOf()
         {

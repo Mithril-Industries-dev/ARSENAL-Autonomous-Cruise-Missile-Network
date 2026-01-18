@@ -10,6 +10,10 @@ namespace Arsenal
         private static List<Building_Hub> hubs = new List<Building_Hub>();
         private static List<Building_Hop> hops = new List<Building_Hop>();
 
+        // LATTICE system components
+        private static List<Building_Lattice> lattices = new List<Building_Lattice>();
+        private static List<Building_Quiver> quivers = new List<Building_Quiver>();
+
         public static void RegisterArsenal(Building_Arsenal arsenal)
         {
             if (!arsenals.Contains(arsenal))
@@ -43,6 +47,30 @@ namespace Arsenal
             hops.Remove(hop);
         }
 
+        // LATTICE registration
+        public static void RegisterLattice(Building_Lattice lattice)
+        {
+            if (!lattices.Contains(lattice))
+                lattices.Add(lattice);
+        }
+
+        public static void DeregisterLattice(Building_Lattice lattice)
+        {
+            lattices.Remove(lattice);
+        }
+
+        // QUIVER registration
+        public static void RegisterQuiver(Building_Quiver quiver)
+        {
+            if (!quivers.Contains(quiver))
+                quivers.Add(quiver);
+        }
+
+        public static void DeregisterQuiver(Building_Quiver quiver)
+        {
+            quivers.Remove(quiver);
+        }
+
         public static List<Building_Arsenal> GetAllArsenals()
         {
             arsenals.RemoveAll(a => a == null || a.Destroyed);
@@ -61,6 +89,18 @@ namespace Arsenal
             return hops.ToList();
         }
 
+        public static List<Building_Lattice> GetAllLattices()
+        {
+            lattices.RemoveAll(l => l == null || l.Destroyed);
+            return lattices.ToList();
+        }
+
+        public static List<Building_Quiver> GetAllQuivers()
+        {
+            quivers.RemoveAll(q => q == null || q.Destroyed);
+            return quivers.ToList();
+        }
+
         public static Building_Hub GetHubAtTile(int tile)
         {
             return GetAllHubs().FirstOrDefault(h => h.Map != null && h.Map.Tile == tile);
@@ -74,9 +114,9 @@ namespace Arsenal
         // NEW: Get an available (not refueling) HOP at a specific tile
         public static Building_Hop GetAvailableHopAtTile(int tile)
         {
-            return GetAllHops().FirstOrDefault(h => 
-                h.Map != null && 
-                h.Map.Tile == tile && 
+            return GetAllHops().FirstOrDefault(h =>
+                h.Map != null &&
+                h.Map.Tile == tile &&
                 h.CanAcceptMissile());
         }
 
@@ -86,11 +126,34 @@ namespace Arsenal
             return GetAllHops().Where(h => h.Map != null && h.Map.Tile == tile).ToList();
         }
 
+        // Get LATTICE on a specific map (only one allowed per map)
+        public static Building_Lattice GetLatticeOnMap(Map map)
+        {
+            if (map == null) return null;
+            return GetAllLattices().FirstOrDefault(l => l.Map == map);
+        }
+
+        // Get all QUIVERs on a specific map
+        public static List<Building_Quiver> GetQuiversOnMap(Map map)
+        {
+            if (map == null) return new List<Building_Quiver>();
+            return GetAllQuivers().Where(q => q.Map == map).ToList();
+        }
+
+        // Get ARSENAL on a specific map (for DART manufacturing)
+        public static Building_Arsenal GetArsenalOnMap(Map map)
+        {
+            if (map == null) return null;
+            return GetAllArsenals().FirstOrDefault(a => a.Map == map);
+        }
+
         public static void Reset()
         {
             arsenals.Clear();
             hubs.Clear();
             hops.Clear();
+            lattices.Clear();
+            quivers.Clear();
         }
     }
 

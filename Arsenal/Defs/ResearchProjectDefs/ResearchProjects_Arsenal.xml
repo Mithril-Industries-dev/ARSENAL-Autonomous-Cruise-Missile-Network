@@ -16,4 +16,18 @@
     <tab>Main</tab>
   </ResearchProjectDef>
 
+  <ResearchProjectDef>
+    <defName>Arsenal_DroneSwarm</defName>
+    <label>autonomous drone swarm defense</label>
+    <description>Develop autonomous drone swarm technology for base defense. The LATTICE C2 system coordinates DART drones launched from QUIVER hubs to automatically intercept and eliminate hostile threats. Unlike cruise missiles, these drones operate locally and can return home if threats are neutralized.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>4500</baseCost>
+    <prerequisites>
+      <li>Arsenal_CruiseMissiles</li>
+    </prerequisites>
+    <researchViewX>13.50</researchViewX>
+    <researchViewY>4.50</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
 </Defs>

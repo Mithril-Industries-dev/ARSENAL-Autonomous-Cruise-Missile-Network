@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- LATTICE Command & Control Node -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_Lattice</defName>
+    <label>LATTICE C2 node</label>
+    <description>Command and Control node for the autonomous drone swarm defense system. Scans for threats, evaluates danger levels, and coordinates DART drones from QUIVERs to engage hostile targets. Only one LATTICE can exist per map - it serves as the brain of your drone defense network. High power consumption. Single point of failure: if destroyed, all QUIVERs go inert.</description>
+    <thingClass>Arsenal.Building_Lattice</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_LATTICE</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(4,4)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>true</blockWind>
+    <fillPercent>1</fillPercent>
+    <blockLight>true</blockLight>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>350</MaxHitPoints>
+      <WorkToBuild>25000</WorkToBuild>
+      <Mass>150</Mass>
+      <Flammability>0.4</Flammability>
+    </statBases>
+    <size>(4,4)</size>
+    <costList>
+      <Steel>400</Steel>
+      <Plasteel>150</Plasteel>
+      <Gold>50</Gold>
+      <ComponentIndustrial>20</ComponentIndustrial>
+      <ComponentSpacer>8</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>3000</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Purple/magenta glow for LATTICE - command center aesthetic -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>8</glowRadius>
+        <glowColor>(180,80,255,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Normal</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>14</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </researchPrerequisites>
+    <placeWorkers>
+      <li>Arsenal.PlaceWorker_OnlyOneLattice</li>
+    </placeWorkers>
+  </ThingDef>
+
+  <!-- QUIVER Drone Hub -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_Quiver</defName>
+    <label>QUIVER drone hub</label>
+    <description>A compact drone hub that stores up to 10 DART drones. When the LATTICE detects threats, it commands QUIVERs to launch DARTs at enemy targets. Set priority to control which QUIVERs are filled first during DART delivery. Goes inert if the LATTICE is destroyed. Explodes if destroyed while storing DARTs.</description>
+    <thingClass>Arsenal.Building_Quiver</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_QUIVER</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(2,2)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>false</blockWind>
+    <fillPercent>0.6</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>180</MaxHitPoints>
+      <WorkToBuild>6000</WorkToBuild>
+      <Mass>60</Mass>
+      <Flammability>0.6</Flammability>
+    </statBases>
+    <size>(2,2)</size>
+    <costList>
+      <Steel>100</Steel>
+      <Plasteel>30</Plasteel>
+      <ComponentIndustrial>6</ComponentIndustrial>
+    </costList>
+    <comps>
+      <!-- Cyan/teal glow for QUIVER - ready status indicator -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>4</glowRadius>
+        <glowColor>(80,220,200,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>10</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+</Defs>
