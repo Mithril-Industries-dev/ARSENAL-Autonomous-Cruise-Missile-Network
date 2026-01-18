@@ -204,7 +204,7 @@ namespace Arsenal
             }
         }
 
-        public override void Tick()
+        protected override void Tick()
         {
             base.Tick();
             ticksAlive++;
@@ -634,54 +634,6 @@ namespace Arsenal
             }
 
             Destroy(DestroyMode.Vanish);
-        }
-
-        public override void Draw()
-        {
-            // Don't draw if idle (stored in QUIVER)
-            if (state == DartState.Idle)
-                return;
-
-            // Draw trail
-            DrawTrail();
-
-            // Draw the DART at exact position with rotation
-            Vector3 drawPos = exactPosition;
-            drawPos.y = AltitudeLayer.MoteOverhead.AltitudeFor(); // Fly above ground
-
-            Matrix4x4 matrix = Matrix4x4.TRS(
-                drawPos,
-                Quaternion.Euler(0f, currentRotation, 0f),
-                new Vector3(1f, 1f, 1f)
-            );
-
-            Graphics.DrawMesh(
-                MeshPool.plane10,
-                matrix,
-                Graphic.MatSingle,
-                0
-            );
-        }
-
-        private void DrawTrail()
-        {
-            if (trailPositions.Count < 2)
-                return;
-
-            Vector3[] positions = trailPositions.ToArray();
-            float alpha = 0.1f;
-            float alphaStep = 0.8f / positions.Length;
-
-            for (int i = 0; i < positions.Length - 1; i++)
-            {
-                Vector3 pos = positions[i];
-                pos.y = AltitudeLayer.MoteOverhead.AltitudeFor() - 0.01f;
-
-                // Draw fading trail segments
-                Color trailColor = new Color(1f, 0.5f, 0.2f, alpha);
-                // Could use line drawing or flecks here
-                alpha += alphaStep;
-            }
         }
 
         public override string GetInspectString()

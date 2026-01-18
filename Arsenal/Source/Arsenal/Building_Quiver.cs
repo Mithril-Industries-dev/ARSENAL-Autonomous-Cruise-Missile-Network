@@ -260,33 +260,6 @@ namespace Arsenal
             }
         }
 
-        public override void Draw()
-        {
-            base.Draw();
-
-            // Draw stored DARTs
-            if (storedDartPositions != null && dartCount > 0)
-            {
-                Material dartMat = ArsenalDefOf.Arsenal_DART_Flyer?.graphic?.MatSingle;
-                if (dartMat != null)
-                {
-                    for (int i = 0; i < dartCount && i < storedDartPositions.Count; i++)
-                    {
-                        Vector3 pos = storedDartPositions[i];
-                        pos.y = AltitudeLayer.Item.AltitudeFor();
-
-                        Matrix4x4 matrix = Matrix4x4.TRS(
-                            pos,
-                            Quaternion.identity,
-                            new Vector3(0.3f, 1f, 0.3f) // Smaller scale for stored DARTs
-                        );
-
-                        Graphics.DrawMesh(MeshPool.plane10, matrix, dartMat, 0);
-                    }
-                }
-            }
-        }
-
         public override IEnumerable<Gizmo> GetGizmos()
         {
             foreach (Gizmo gizmo in base.GetGizmos())
@@ -406,19 +379,40 @@ namespace Arsenal
     /// <summary>
     /// Dialog for renaming a QUIVER.
     /// </summary>
-    public class Dialog_RenameQuiver : Dialog_Rename
+    public class Dialog_RenameQuiver : Window
     {
         private Building_Quiver quiver;
+        private string curName;
 
         public Dialog_RenameQuiver(Building_Quiver quiver)
         {
             this.quiver = quiver;
             this.curName = quiver.Label;
+            doCloseX = true;
+            forcePause = true;
+            absorbInputAroundWindow = true;
+            closeOnClickedOutside = true;
         }
 
-        protected override void SetName(string name)
+        public override Vector2 InitialSize => new Vector2(300f, 150f);
+
+        public override void DoWindowContents(Rect inRect)
         {
-            quiver.SetCustomName(name);
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(0, 0, inRect.width, 30), "Rename QUIVER");
+            Text.Font = GameFont.Small;
+
+            curName = Widgets.TextField(new Rect(0, 40, inRect.width, 30), curName);
+
+            if (Widgets.ButtonText(new Rect(0, 90, 120, 30), "OK"))
+            {
+                quiver.SetCustomName(curName);
+                Close();
+            }
+            if (Widgets.ButtonText(new Rect(140, 90, 120, 30), "Cancel"))
+            {
+                Close();
+            }
         }
     }
 }

@@ -150,7 +150,7 @@ namespace Arsenal
         private List<Pawn> tempPawnKeys;
         private List<int> tempIntValues;
 
-        public override void Tick()
+        protected override void Tick()
         {
             base.Tick();
 
@@ -733,19 +733,40 @@ namespace Arsenal
     /// <summary>
     /// Dialog for renaming a LATTICE.
     /// </summary>
-    public class Dialog_RenameLattice : Dialog_Rename
+    public class Dialog_RenameLattice : Window
     {
         private Building_Lattice lattice;
+        private string curName;
 
         public Dialog_RenameLattice(Building_Lattice lattice)
         {
             this.lattice = lattice;
             this.curName = lattice.Label;
+            doCloseX = true;
+            forcePause = true;
+            absorbInputAroundWindow = true;
+            closeOnClickedOutside = true;
         }
 
-        protected override void SetName(string name)
+        public override Vector2 InitialSize => new Vector2(300f, 150f);
+
+        public override void DoWindowContents(Rect inRect)
         {
-            lattice.SetCustomName(name);
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(0, 0, inRect.width, 30), "Rename LATTICE");
+            Text.Font = GameFont.Small;
+
+            curName = Widgets.TextField(new Rect(0, 40, inRect.width, 30), curName);
+
+            if (Widgets.ButtonText(new Rect(0, 90, 120, 30), "OK"))
+            {
+                lattice.SetCustomName(curName);
+                Close();
+            }
+            if (Widgets.ButtonText(new Rect(140, 90, 120, 30), "Cancel"))
+            {
+                Close();
+            }
         }
     }
 }
