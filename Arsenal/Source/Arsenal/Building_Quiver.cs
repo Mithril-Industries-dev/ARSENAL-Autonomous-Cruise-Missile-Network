@@ -27,6 +27,7 @@ namespace Arsenal
 
         // Custom name
         private string customName;
+        private static int quiverCounter = 1;
 
         // Visual - stored DART positions for rendering
         private List<Vector3> storedDartPositions;
@@ -58,6 +59,10 @@ namespace Arsenal
 
             if (!respawningAfterLoad)
             {
+                // Auto name
+                customName = "QUIVER-" + quiverCounter.ToString("D2");
+                quiverCounter++;
+
                 // Find and register with LATTICE
                 RegisterWithLattice();
             }

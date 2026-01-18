@@ -31,9 +31,9 @@ namespace Arsenal
         {
             this.arsenal = arsenal;
             this.doCloseX = true;
-            this.absorbInputAroundWindow = true;
+            this.absorbInputAroundWindow = false;
             this.closeOnClickedOutside = false;
-            this.forcePause = true;
+            this.forcePause = false;
         }
 
         public override void DoWindowContents(Rect inRect)

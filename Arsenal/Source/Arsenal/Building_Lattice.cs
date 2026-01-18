@@ -44,6 +44,10 @@ namespace Arsenal
         private Sustainer scanningSustainer;
         private bool hadThreatsLastScan = false;
 
+        // Launch rate limiting - slight delay between DART launches
+        private const int LAUNCH_DELAY_TICKS = 15; // ~0.25 seconds between launches
+        private int lastLaunchTick = -999;
+
         // Properties
         public FlightPathGrid FlightGrid
         {
@@ -447,11 +451,17 @@ namespace Arsenal
         /// <summary>
         /// Assigns DARTs from QUIVERs to a threat.
         /// Pulls from nearest QUIVER first.
+        /// Rate-limited to prevent launching all DARTs at once.
         /// </summary>
         public void AssignDarts(Pawn target, int count)
         {
             if (count <= 0 || target == null)
                 return;
+
+            // Check launch cooldown - only launch one DART per cooldown period
+            int currentTick = Find.TickManager.TicksGame;
+            if (currentTick - lastLaunchTick < LAUNCH_DELAY_TICKS)
+                return; // Still on cooldown, will try again next scan
 
             // Sort QUIVERs by distance to target
             var sortedQuivers = registeredQuivers
@@ -459,13 +469,10 @@ namespace Arsenal
                 .OrderBy(q => q.Position.DistanceTo(target.Position))
                 .ToList();
 
-            int remaining = count;
-
+            // Only launch ONE dart per call (rate limiting)
             foreach (var quiver in sortedQuivers)
             {
-                int toTake = Mathf.Min(remaining, quiver.DartCount);
-
-                for (int i = 0; i < toTake; i++)
+                if (quiver.DartCount > 0)
                 {
                     DART_Flyer dart = quiver.LaunchDart(target);
                     if (dart != null)
@@ -476,18 +483,14 @@ namespace Arsenal
                             assignedDartsPerTarget[target] = 0;
                         }
                         assignedDartsPerTarget[target]++;
+
+                        // Update launch cooldown
+                        lastLaunchTick = currentTick;
+
+                        // Only launch one DART per call - system will call again next scan
+                        return;
                     }
                 }
-
-                remaining -= toTake;
-                if (remaining <= 0)
-                    break;
-            }
-
-            if (remaining > 0)
-            {
-                // Not enough DARTs available
-                // The system will continue to assign as DARTs become available
             }
         }
 

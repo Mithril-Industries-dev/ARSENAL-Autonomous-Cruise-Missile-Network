@@ -211,9 +211,12 @@ namespace Arsenal
             if (Find.TickManager.TicksGame - lastCacheRefresh < CACHE_REFRESH_INTERVAL)
                 return;
 
-            cachedHubs = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Hub>().ToList();
+            // HUBs and HOPs are searched GLOBALLY (across all maps) for DAGGER network
+            cachedHubs = ArsenalNetworkManager.GetAllHubs().ToList();
+            cachedHops = ArsenalNetworkManager.GetAllHops().ToList();
+
+            // QUIVERs and LATTICE are LOCAL only (DART system is map-local)
             cachedQuivers = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Quiver>().ToList();
-            cachedHops = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Hop>().ToList();
             cachedLattice = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Lattice>().FirstOrDefault();
 
             lastCacheRefresh = Find.TickManager.TicksGame;
@@ -430,7 +433,7 @@ namespace Arsenal
 
         private void TickManufacturing()
         {
-            // Get active lines sorted by priority
+            // Get active lines sorted by priority (for resource consumption order)
             var activeLines = lines
                 .Where(l => l.status == LineStatus.Manufacturing)
                 .OrderBy(l => l.priority)
@@ -444,12 +447,8 @@ namespace Arsenal
 
             StartManufacturingSound();
 
-            // Only process same-priority lines together
-            int currentPriority = activeLines[0].priority;
-            var samePriorityLines = activeLines.Where(l => l.priority == currentPriority).ToList();
-
-            // Each line gets a tick of progress
-            foreach (var line in samePriorityLines)
+            // Process ALL active lines - priority only affects resource consumption order
+            foreach (var line in activeLines)
             {
                 // Check if we need to consume resources (at start of production)
                 if (!line.resourcesConsumed)
