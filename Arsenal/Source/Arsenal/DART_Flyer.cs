@@ -522,7 +522,7 @@ namespace Arsenal
             lattice?.OnDartImpact(this, targetPawn);
 
             // Play impact warning sound just before explosion
-            SoundDefOf.BulletImpact_Metal.PlayOneShot(new TargetInfo(Position, Map));
+            SoundDefOf.Pawn_Melee_Punch_HitBuilding.PlayOneShot(new TargetInfo(Position, Map));
 
             // Create explosion
             GenExplosion.DoExplosion(

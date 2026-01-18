@@ -19,30 +19,21 @@ namespace Arsenal
             }
 
             // Also check for blueprints/frames of LATTICE
-            foreach (Thing t in map.listerThings.ThingsOfDef(ThingDefOf.Blueprint_Install))
+            foreach (Thing t in map.listerThings.AllThings)
             {
-                if (t is Blueprint_Install blueprint && blueprint.def.entityDefToBuild == ArsenalDefOf.Arsenal_Lattice)
+                if (t == thingToIgnore)
+                    continue;
+
+                // Check if this is a blueprint for LATTICE
+                if (t.def.IsBlueprint && t.def.entityDefToBuild == ArsenalDefOf.Arsenal_Lattice)
                 {
                     return new AcceptanceReport("A LATTICE C2 node is already being constructed.");
                 }
-            }
 
-            foreach (Thing t in map.listerThings.AllThings)
-            {
-                if (t is Blueprint blueprint && t != thingToIgnore)
+                // Check if this is a frame for LATTICE
+                if (t.def.IsFrame && t.def.entityDefToBuild == ArsenalDefOf.Arsenal_Lattice)
                 {
-                    if (blueprint.def.entityDefToBuild == ArsenalDefOf.Arsenal_Lattice)
-                    {
-                        return new AcceptanceReport("A LATTICE C2 node is already being constructed.");
-                    }
-                }
-
-                if (t is Frame frame && t != thingToIgnore)
-                {
-                    if (frame.def.entityDefToBuild == ArsenalDefOf.Arsenal_Lattice)
-                    {
-                        return new AcceptanceReport("A LATTICE C2 node is already being constructed.");
-                    }
+                    return new AcceptanceReport("A LATTICE C2 node is already being constructed.");
                 }
             }
 
