@@ -48,6 +48,9 @@ namespace Arsenal
         private const int TRAIL_LENGTH = 8;
         private Queue<Vector3> trailPositions = new Queue<Vector3>();
 
+        // Sound
+        private Sustainer flightSustainer;
+
         public LocalTargetInfo Target => target;
         public Vector3 ExactPosition => exactPosition;
 
@@ -59,7 +62,34 @@ namespace Arsenal
             {
                 exactPosition = Position.ToVector3Shifted();
                 currentRotation = 0f;
+
+                // Play launch sound
+                SoundDefOf.Mortar_LaunchA.PlayOneShot(new TargetInfo(Position, map));
             }
+        }
+
+        public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
+        {
+            StopFlightSound();
+            base.DeSpawn(mode);
+        }
+
+        private void StartFlightSound()
+        {
+            if (flightSustainer == null || flightSustainer.Ended)
+            {
+                SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
+                flightSustainer = SoundDefOf.Interact_Sow.TrySpawnSustainer(info);
+            }
+        }
+
+        private void StopFlightSound()
+        {
+            if (flightSustainer != null && !flightSustainer.Ended)
+            {
+                flightSustainer.End();
+            }
+            flightSustainer = null;
         }
 
         public override void ExposeData()
@@ -181,7 +211,14 @@ namespace Arsenal
 
             // Skip processing if idle (stored in QUIVER)
             if (state == DartState.Idle)
+            {
+                StopFlightSound();
                 return;
+            }
+
+            // Maintain flight sound
+            StartFlightSound();
+            flightSustainer?.Maintain();
 
             // Update trail
             UpdateTrail();
@@ -204,7 +241,7 @@ namespace Arsenal
             }
 
             // Visual effects
-            if (ticksAlive % 3 == 0 && Map != null)
+            if (Map != null)
             {
                 SpawnFlightEffects();
             }
@@ -439,21 +476,53 @@ namespace Arsenal
 
         private void SpawnFlightEffects()
         {
-            // Engine glow/exhaust
+            // Engine glow/exhaust - position behind the drone based on rotation
             Vector3 exhaustPos = exactPosition - Quaternion.Euler(0, currentRotation, 0) * Vector3.forward * 0.3f;
-            FleckMaker.ThrowSmoke(exhaustPos, Map, 0.3f);
 
-            if (state == DartState.Engaging && ticksAlive % 6 == 0)
+            // Smoke trail every few ticks
+            if (ticksAlive % 2 == 0)
             {
-                // More intense effects when attacking
+                FleckMaker.ThrowSmoke(exhaustPos, Map, 0.4f);
+            }
+
+            // Micro sparks for engine effect
+            if (ticksAlive % 4 == 0)
+            {
                 FleckMaker.ThrowMicroSparks(exhaustPos, Map);
+            }
+
+            // More intense effects when engaging target
+            if (state == DartState.Engaging)
+            {
+                if (ticksAlive % 3 == 0)
+                {
+                    FleckMaker.ThrowLightningGlow(exactPosition, Map, 0.3f);
+                }
+
+                // Fire trail when attacking
+                if (ticksAlive % 5 == 0)
+                {
+                    FleckMaker.ThrowFireGlow(exhaustPos.ToIntVec3(), Map, 0.3f);
+                }
+            }
+
+            // Dust kick-up when flying low
+            if (ticksAlive % 8 == 0)
+            {
+                FleckMaker.ThrowDustPuffThick(exactPosition, Map, 0.5f, new Color(0.5f, 0.5f, 0.5f, 0.3f));
             }
         }
 
         private void Impact(Pawn targetPawn)
         {
+            // Stop flight sound
+            StopFlightSound();
+
             // Notify LATTICE before destruction
             lattice?.OnDartImpact(this, targetPawn);
+
+            // Play impact warning sound just before explosion
+            SoundDefOf.Bullet_Impact_Metal.PlayOneShot(new TargetInfo(Position, Map));
 
             // Create explosion
             GenExplosion.DoExplosion(
@@ -480,8 +549,21 @@ namespace Arsenal
                 damageFalloff: true
             );
 
-            // Visual effects
+            // Visual effects - explosion flash and debris
             FleckMaker.ThrowExplosionCell(Position, Map, FleckDefOf.ExplosionFlash, Color.white);
+            FleckMaker.ThrowFireGlow(Position, Map, 1.5f);
+            FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
+            FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 1.5f);
+
+            // Additional debris effects
+            for (int i = 0; i < 5; i++)
+            {
+                IntVec3 debrisPos = Position + GenRadial.RadialPattern[Rand.Range(0, 9)];
+                if (debrisPos.InBounds(Map))
+                {
+                    FleckMaker.ThrowDustPuff(debrisPos, Map, 1f);
+                }
+            }
 
             // Destroy self
             Destroy(DestroyMode.Vanish);
@@ -524,19 +606,30 @@ namespace Arsenal
 
         private void Crash()
         {
+            // Stop flight sound
+            StopFlightSound();
+
             // Small explosion when crashing
             if (Map != null)
             {
+                // Crash sound
+                SoundDefOf.Building_Deconstructed.PlayOneShot(new TargetInfo(Position, Map));
+
                 GenExplosion.DoExplosion(
                     center: Position,
                     map: Map,
                     radius: 0.5f,
                     damType: DamageDefOf.Bomb,
                     instigator: null,
-                    damAmount: 5
+                    damAmount: 5,
+                    explosionSound: SoundDefOf.Explosion_Bomb
                 );
 
-                FleckMaker.ThrowSmoke(exactPosition, Map, 1f);
+                // Visual effects
+                FleckMaker.ThrowSmoke(exactPosition, Map, 1.5f);
+                FleckMaker.ThrowMicroSparks(exactPosition, Map);
+                FleckMaker.ThrowDustPuff(Position, Map, 1f);
+
                 Messages.Message("DART drone crashed - no valid destination.", MessageTypeDefOf.NegativeEvent, false);
             }
 

@@ -175,10 +175,16 @@ namespace Arsenal
                 dart.Destroy(DestroyMode.Vanish);
             }
 
-            // Visual feedback
+            // Sound and visual feedback
             if (Map != null)
             {
-                FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 0.5f);
+                // Docking/storage sound
+                SoundDefOf.Building_Complete.PlayOneShot(new TargetInfo(Position, Map));
+
+                // Visual effects - landing dust and smoke
+                FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 0.7f);
+                FleckMaker.ThrowDustPuff(Position, Map, 0.5f);
+                FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
             }
         }
 
@@ -209,12 +215,27 @@ namespace Arsenal
             IntVec3 launchPos = Position;
             GenSpawn.Spawn(dart, launchPos, Map);
 
-            // Launch effects
+            // Launch effects - sounds and visuals
             if (Map != null)
             {
-                FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 1f);
-                FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
+                // Target acquisition beep
                 SoundDefOf.TurretAcquireTarget.PlayOneShot(new TargetInfo(Position, Map));
+
+                // Launch smoke and fire effects
+                FleckMaker.ThrowSmoke(Position.ToVector3Shifted(), Map, 1.2f);
+                FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
+                FleckMaker.ThrowFireGlow(Position, Map, 0.5f);
+                FleckMaker.ThrowLightningGlow(Position.ToVector3Shifted(), Map, 0.8f);
+
+                // Dust kick-up from launch
+                for (int i = 0; i < 3; i++)
+                {
+                    IntVec3 dustPos = Position + GenRadial.RadialPattern[Rand.Range(1, 9)];
+                    if (dustPos.InBounds(Map))
+                    {
+                        FleckMaker.ThrowDustPuff(dustPos, Map, 0.8f);
+                    }
+                }
             }
 
             return dart;

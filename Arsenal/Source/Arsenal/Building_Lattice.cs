@@ -39,6 +39,10 @@ namespace Arsenal
         // Custom name
         private string customName;
 
+        // Sound and effects
+        private Sustainer scanningSustainer;
+        private bool hadThreatsLastScan = false;
+
         // Properties
         public FlightPathGrid FlightGrid
         {
@@ -93,6 +97,9 @@ namespace Arsenal
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
+            // Stop scanning sound
+            StopScanningSound();
+
             // All QUIVERs go inert
             foreach (var quiver in registeredQuivers.ToList())
             {
@@ -150,7 +157,19 @@ namespace Arsenal
             // Only operate when powered
             CompPowerTrader power = GetComp<CompPowerTrader>();
             if (power != null && !power.PowerOn)
+            {
+                StopScanningSound();
                 return;
+            }
+
+            // Maintain scanning sound
+            MaintainScanningSound();
+
+            // Visual scanning effect (radar-like pulse)
+            if (this.IsHashIntervalTick(30))
+            {
+                SpawnScanningEffects();
+            }
 
             ticksSinceLastScan++;
             if (ticksSinceLastScan >= SCAN_INTERVAL)
@@ -158,6 +177,33 @@ namespace Arsenal
                 ticksSinceLastScan = 0;
                 ScanAndAssign();
             }
+        }
+
+        private void MaintainScanningSound()
+        {
+            if (scanningSustainer == null || scanningSustainer.Ended)
+            {
+                SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
+                scanningSustainer = SoundDefOf.MechSerumUsed.TrySpawnSustainer(info);
+            }
+            scanningSustainer?.Maintain();
+        }
+
+        private void StopScanningSound()
+        {
+            if (scanningSustainer != null && !scanningSustainer.Ended)
+            {
+                scanningSustainer.End();
+            }
+            scanningSustainer = null;
+        }
+
+        private void SpawnScanningEffects()
+        {
+            if (Map == null) return;
+
+            // Subtle glow pulse effect at the LATTICE position
+            FleckMaker.ThrowLightningGlow(Position.ToVector3Shifted(), Map, 0.5f);
         }
 
         /// <summary>
@@ -224,8 +270,26 @@ namespace Arsenal
             {
                 // No threats - recall any in-flight DARTs
                 RecallAllDarts();
+
+                // Play all-clear sound if we just cleared threats
+                if (hadThreatsLastScan && Map != null)
+                {
+                    SoundDefOf.ClickReject.PlayOneShotOnCamera(Map);
+                }
+                hadThreatsLastScan = false;
                 return;
             }
+
+            // Alert sound when threats first detected
+            if (!hadThreatsLastScan && Map != null)
+            {
+                // Alert! Threats detected
+                SoundDefOf.TinyBell.PlayOneShotOnCamera(Map);
+
+                // Visual alert effect
+                FleckMaker.ThrowLightningGlow(Position.ToVector3Shifted(), Map, 2f);
+            }
+            hadThreatsLastScan = true;
 
             // Sort threats by distance to nearest QUIVER (prioritize closer threats)
             threats = threats.OrderBy(t => GetDistanceToNearestQuiver(t.Position)).ToList();
