@@ -192,6 +192,59 @@ namespace Arsenal
             return threats.ToList();
         }
 
+        /// <summary>
+        /// Checks if a specific target can be detected by any HAWKEYE sensor.
+        /// Used by DART/QUIVER to enable engagement of targets outside ARGUS range
+        /// but within HAWKEYE range. HAWKEYE acts as a mobile ARGUS node.
+        /// </summary>
+        public static bool CanHawkeyeDetectTarget(Pawn target)
+        {
+            if (target == null)
+                return false;
+
+            // HAWKEYE requires SKYLINK connection
+            if (!IsLatticeConnectedToSkylink())
+                return false;
+
+            foreach (var pawn in GetAllHawkeyePawns())
+            {
+                var comp = pawn.TryGetComp<CompHawkeyeSensor>();
+                if (comp != null && comp.CanDetectTarget(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if a target is valid for DART engagement.
+        /// A target is valid if detected by ARGUS OR by HAWKEYE (mobile ARGUS node).
+        /// </summary>
+        public static bool IsTargetValidForDartEngagement(Pawn target, Map map)
+        {
+            if (target == null || map == null)
+                return false;
+
+            var lattice = GlobalLattice;
+            if (lattice == null || !lattice.IsPoweredOn())
+                return false;
+
+            // Check ARGUS detection (on same map)
+            foreach (var argus in GetArgusOnMap(map))
+            {
+                if (argus.IsPoweredOn && argus.GetDetectedThreats().Contains(target))
+                    return true;
+            }
+
+            // Check HAWKEYE detection (mobile ARGUS node) - requires SKYLINK
+            if (CanHawkeyeDetectTarget(target))
+                return true;
+
+            return false;
+        }
+
         #endregion
 
         #region Network Connectivity

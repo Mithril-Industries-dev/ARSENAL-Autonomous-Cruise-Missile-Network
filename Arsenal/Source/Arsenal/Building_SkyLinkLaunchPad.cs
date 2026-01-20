@@ -107,29 +107,23 @@ namespace Arsenal
         #region Resource Management
 
         /// <summary>
-        /// Gets all cells adjacent to Launch Pad that contain valid storage.
+        /// Gets all cells on and around the Launch Pad where resources can be placed.
+        /// Resources are hauled directly to the pad for manufacturing.
         /// </summary>
-        private IEnumerable<IntVec3> GetAdjacentStorageCells()
+        private IEnumerable<IntVec3> GetResourceCells()
         {
+            // First, all cells occupied by the building itself
+            foreach (IntVec3 cell in this.OccupiedRect())
+            {
+                if (cell.InBounds(Map))
+                    yield return cell;
+            }
+
+            // Also check cells immediately adjacent to the building
             foreach (IntVec3 cell in GenAdj.CellsAdjacent8Way(this))
             {
-                if (!cell.InBounds(Map)) continue;
-
-                Zone zone = cell.GetZone(Map);
-                if (zone is Zone_Stockpile)
-                {
+                if (cell.InBounds(Map))
                     yield return cell;
-                    continue;
-                }
-
-                foreach (Thing thing in cell.GetThingList(Map))
-                {
-                    if (thing is Building_Storage)
-                    {
-                        yield return cell;
-                        break;
-                    }
-                }
             }
         }
 
@@ -138,7 +132,7 @@ namespace Arsenal
             int count = 0;
             HashSet<IntVec3> checkedCells = new HashSet<IntVec3>();
 
-            foreach (IntVec3 cell in GetAdjacentStorageCells())
+            foreach (IntVec3 cell in GetResourceCells())
             {
                 if (checkedCells.Contains(cell)) continue;
                 checkedCells.Add(cell);
@@ -171,7 +165,7 @@ namespace Arsenal
             {
                 int remaining = cost.count;
 
-                foreach (IntVec3 cell in GetAdjacentStorageCells())
+                foreach (IntVec3 cell in GetResourceCells())
                 {
                     if (remaining <= 0) break;
 
@@ -217,7 +211,7 @@ namespace Arsenal
 
             if (!HasResourcesForSatellite())
             {
-                Messages.Message("Insufficient resources in adjacent storage for satellite manufacturing.",
+                Messages.Message("Insufficient resources on Launch Pad for satellite manufacturing.",
                     this, MessageTypeDefOf.RejectInput);
                 return;
             }
@@ -290,7 +284,8 @@ namespace Arsenal
             // Create the satellite world object
             WorldObject_SkyLinkSatellite satellite = (WorldObject_SkyLinkSatellite)WorldObjectMaker.MakeWorldObject(
                 DefDatabase<WorldObjectDef>.GetNamed("Arsenal_SkyLinkSatellite"));
-            satellite.Tile = Map.Tile; // Satellite is "over" this tile initially (doesn't really matter)
+            satellite.Tile = -1; // -1 = orbit (not tied to any specific tile)
+            satellite.SetFaction(Faction.OfPlayer);
             Find.WorldObjects.Add(satellite);
 
             Messages.Message("SKYLINK satellite has achieved orbit! Global network operations enabled.",
@@ -363,7 +358,7 @@ namespace Arsenal
             // Resource availability
             if (!isManufacturing && !hasBuiltSatellite && !ArsenalNetworkManager.IsSatelliteInOrbit())
             {
-                str += "\n\nResources needed:";
+                str += "\n\nResources needed (place on pad):";
                 foreach (var cost in SatelliteCost)
                 {
                     int available = CountResourceAvailable(cost.thingDef);
@@ -394,7 +389,7 @@ namespace Arsenal
                     };
                     if (!HasResourcesForSatellite())
                     {
-                        manufactureCmd.Disable("Insufficient resources in adjacent storage");
+                        manufactureCmd.Disable("Insufficient resources on pad");
                     }
                     yield return manufactureCmd;
                 }
@@ -443,6 +438,43 @@ namespace Arsenal
                         }
                     }
                 };
+            }
+
+            // Debug gizmos
+            if (Prefs.DevMode)
+            {
+                if (!ArsenalNetworkManager.IsSatelliteInOrbit() && !hasBuiltSatellite)
+                {
+                    yield return new Command_Action
+                    {
+                        defaultLabel = "DEV: Instant Build",
+                        defaultDesc = "Instantly complete satellite manufacturing (no resources consumed).",
+                        action = delegate
+                        {
+                            hasBuiltSatellite = true;
+                            isManufacturing = false;
+                            manufacturingProgress = 0f;
+                            Messages.Message("[DEBUG] Satellite instantly manufactured.", this, MessageTypeDefOf.PositiveEvent);
+                        }
+                    };
+                }
+
+                if (!ArsenalNetworkManager.IsSatelliteInOrbit())
+                {
+                    yield return new Command_Action
+                    {
+                        defaultLabel = "DEV: Instant Launch",
+                        defaultDesc = "Instantly launch satellite to orbit (skips build and launch animation).",
+                        action = delegate
+                        {
+                            hasBuiltSatellite = false;
+                            isManufacturing = false;
+                            isLaunching = false;
+                            OnLaunchComplete();
+                            Messages.Message("[DEBUG] Satellite instantly launched to orbit.", this, MessageTypeDefOf.PositiveEvent);
+                        }
+                    };
+                }
             }
         }
 

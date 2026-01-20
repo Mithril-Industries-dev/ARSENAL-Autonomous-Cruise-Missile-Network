@@ -8,11 +8,12 @@ namespace Arsenal
 {
     /// <summary>
     /// HAWKEYE Tactical Command Helmet - mobile sensor suite with two-way LATTICE integration.
+    /// Acts as a MOBILE ARGUS NODE - targets detected by HawkEye are valid for DART engagement.
     /// Provides:
     /// - Mobile ARGUS-like threat detection (30 tile radius)
     /// - Network awareness (wearer knows all network-detected threats)
     /// - DAGGER strike designation ability
-    /// - QUIVER priority marking ability
+    /// - DART target marking ability
     /// </summary>
     public class Apparel_HawkEye : Apparel
     {
@@ -84,11 +85,11 @@ namespace Arsenal
             }
             yield return daggerCmd;
 
-            // Mark QUIVER Priority ability
+            // MARK DART TARGET ability (formerly Mark Priority)
             var markCmd = new Command_Target
             {
-                defaultLabel = "Mark Priority",
-                defaultDesc = "Mark an enemy pawn as priority target. DARTs will converge on the marked target until dead or 30 seconds expire.",
+                defaultLabel = "MARK DART TARGET",
+                defaultDesc = "Mark an enemy pawn as priority target for DART convergence. All DARTs will focus fire on the marked target until dead or 30 seconds expire.\n\nTargets marked by HAWKEYE are valid for DART engagement even outside ARGUS sensor range.",
                 icon = ContentFinder<Texture2D>.Get("UI/Commands/Attack", false),
                 targetingParams = new TargetingParameters
                 {
@@ -101,15 +102,25 @@ namespace Arsenal
                 {
                     if (target.Thing is Pawn targetPawn)
                     {
-                        SensorComp?.MarkQuiverPriority(targetPawn);
+                        SensorComp?.MarkDartTarget(targetPawn);
                     }
                 }
             };
-            if (!CanMarkPriority())
+            if (!CanMarkTarget())
             {
                 markCmd.Disable(GetMarkDisabledReason());
             }
             yield return markCmd;
+
+            // Toggle LOS overlay (like ARGUS)
+            yield return new Command_Toggle
+            {
+                defaultLabel = "Show LOS",
+                defaultDesc = "Toggle line-of-sight overlay. Green cells are visible to the HAWKEYE sensor, red cells are blocked. White lines show blocked enemies, red lines show detected threats.",
+                isActive = () => SensorComp.ShowLOSOverlay,
+                toggleAction = delegate { SensorComp.ShowLOSOverlay = !SensorComp.ShowLOSOverlay; },
+                icon = ContentFinder<Texture2D>.Get("UI/Commands/ViewQuest", false)
+            };
 
             // Network Status display
             yield return new Command_Action
@@ -158,7 +169,7 @@ namespace Arsenal
             return null;
         }
 
-        private bool CanMarkPriority()
+        private bool CanMarkTarget()
         {
             // Need SKYLINK connection
             if (!ArsenalNetworkManager.IsLatticeConnectedToSkylink())
@@ -187,6 +198,7 @@ namespace Arsenal
 
     /// <summary>
     /// Sensor component for HAWKEYE helmet - handles threat detection and ability execution.
+    /// Acts as a MOBILE ARGUS NODE - threats detected by this sensor are valid for DART engagement.
     /// </summary>
     public class CompHawkeyeSensor : ThingComp
     {
@@ -197,11 +209,17 @@ namespace Arsenal
         private Pawn wearer;
         private int lastPriorityMarkTick = -9999;
 
-        // Currently marked priority target
+        // LOS overlay toggle
+        public bool ShowLOSOverlay = false;
+
+        // Currently marked priority target (shared across all HAWKEYE helmets)
         private static Pawn globalPriorityTarget;
         private static int priorityTargetExpireTick;
 
         public CompProperties_HawkeyeSensor Props => (CompProperties_HawkeyeSensor)props;
+
+        public Pawn Wearer => wearer;
+        public float DetectionRadius => DETECTION_RADIUS;
 
         public bool IsOperational
         {
@@ -239,6 +257,7 @@ namespace Arsenal
         public void OnUnequipped()
         {
             wearer = null;
+            ShowLOSOverlay = false;
         }
 
         public override void CompTick()
@@ -254,6 +273,7 @@ namespace Arsenal
 
         /// <summary>
         /// Gets all hostile pawns detected within sensor range.
+        /// These targets are valid for DART engagement even outside stationary ARGUS range.
         /// </summary>
         public List<Pawn> GetDetectedThreats()
         {
@@ -281,6 +301,31 @@ namespace Arsenal
             }
 
             return threats;
+        }
+
+        /// <summary>
+        /// Checks if a specific pawn is detected by this HAWKEYE sensor.
+        /// Used by DART/QUIVER targeting to allow engagement of targets outside ARGUS range.
+        /// </summary>
+        public bool CanDetectTarget(Pawn target)
+        {
+            if (!IsOperational || wearer?.Map == null || target == null)
+                return false;
+
+            if (target.Map != wearer.Map)
+                return false;
+
+            if (!target.HostileTo(Faction.OfPlayer))
+                return false;
+
+            if (target.Dead || target.Downed)
+                return false;
+
+            float distance = target.Position.DistanceTo(wearer.Position);
+            if (distance > DETECTION_RADIUS)
+                return false;
+
+            return GenSight.LineOfSight(wearer.Position, target.Position, wearer.Map);
         }
 
         /// <summary>
@@ -324,8 +369,9 @@ namespace Arsenal
 
         /// <summary>
         /// Marks an enemy pawn as priority target for DART convergence.
+        /// Targets marked by HAWKEYE are valid for engagement even outside ARGUS range.
         /// </summary>
-        public void MarkQuiverPriority(Pawn target)
+        public void MarkDartTarget(Pawn target)
         {
             if (!IsOperational)
             {
@@ -338,7 +384,7 @@ namespace Arsenal
             if (ticksSinceLastMark < PRIORITY_MARK_COOLDOWN_TICKS)
             {
                 int secondsRemaining = (PRIORITY_MARK_COOLDOWN_TICKS - ticksSinceLastMark) / 60;
-                Messages.Message($"Mark Priority on cooldown ({secondsRemaining}s remaining).", wearer, MessageTypeDefOf.RejectInput);
+                Messages.Message($"MARK DART TARGET on cooldown ({secondsRemaining}s remaining).", wearer, MessageTypeDefOf.RejectInput);
                 return;
             }
 
@@ -347,7 +393,7 @@ namespace Arsenal
             priorityTargetExpireTick = Find.TickManager.TicksGame + PRIORITY_MARK_DURATION_TICKS;
             lastPriorityMarkTick = Find.TickManager.TicksGame;
 
-            Messages.Message($"{target.LabelShort} marked as priority target by {wearer.LabelShort}'s HAWKEYE. DARTs converging.",
+            Messages.Message($"{target.LabelShort} marked as DART target by {wearer.LabelShort}'s HAWKEYE. DARTs converging.",
                 target, MessageTypeDefOf.NeutralEvent);
 
             // Notify LATTICE to redirect DARTs
@@ -358,11 +404,95 @@ namespace Arsenal
             }
         }
 
+        #region LOS Visualization
+
+        /// <summary>
+        /// Draws the LOS overlay when enabled and wearer is selected.
+        /// Called by MapComponent_HawkeyeOverlay.
+        /// </summary>
+        public void DrawLOSOverlay()
+        {
+            if (!ShowLOSOverlay || wearer == null || wearer.Map == null)
+                return;
+
+            // Draw detection radius ring
+            GenDraw.DrawRadiusRing(wearer.Position, DETECTION_RADIUS);
+
+            // Draw lines to threats in range
+            DrawThreatLines();
+
+            // Draw LOS coverage cells
+            DrawLOSCells();
+        }
+
+        private void DrawThreatLines()
+        {
+            if (wearer?.Map == null) return;
+
+            foreach (Pawn pawn in wearer.Map.mapPawns.AllPawnsSpawned)
+            {
+                if (!pawn.HostileTo(Faction.OfPlayer)) continue;
+                if (pawn.Dead || pawn.Downed) continue;
+
+                float distance = pawn.Position.DistanceTo(wearer.Position);
+                if (distance > DETECTION_RADIUS) continue;
+
+                bool hasLOS = GenSight.LineOfSight(wearer.Position, pawn.Position, wearer.Map);
+
+                // Draw line - red if has LOS (threat detected), white if blocked
+                if (hasLOS)
+                {
+                    GenDraw.DrawLineBetween(
+                        wearer.Position.ToVector3Shifted(),
+                        pawn.Position.ToVector3Shifted(),
+                        SimpleColor.Red
+                    );
+                }
+                else
+                {
+                    GenDraw.DrawLineBetween(
+                        wearer.Position.ToVector3Shifted(),
+                        pawn.Position.ToVector3Shifted(),
+                        SimpleColor.White
+                    );
+                }
+            }
+        }
+
+        private void DrawLOSCells()
+        {
+            if (wearer?.Map == null) return;
+
+            int radius = (int)DETECTION_RADIUS;
+
+            foreach (IntVec3 cell in GenRadial.RadialCellsAround(wearer.Position, radius, true))
+            {
+                if (!cell.InBounds(wearer.Map)) continue;
+                if (cell == wearer.Position) continue;
+
+                bool hasLOS = GenSight.LineOfSight(wearer.Position, cell, wearer.Map);
+
+                if (hasLOS)
+                {
+                    // Visible - draw green
+                    CellRenderer.RenderCell(cell, SolidColorMaterials.SimpleSolidColorMaterial(new Color(0f, 1f, 0f, 0.15f)));
+                }
+                else
+                {
+                    // Blocked - draw red
+                    CellRenderer.RenderCell(cell, SolidColorMaterials.SimpleSolidColorMaterial(new Color(1f, 0f, 0f, 0.15f)));
+                }
+            }
+        }
+
+        #endregion
+
         public override void PostExposeData()
         {
             base.PostExposeData();
             Scribe_References.Look(ref wearer, "wearer");
             Scribe_Values.Look(ref lastPriorityMarkTick, "lastPriorityMarkTick", -9999);
+            Scribe_Values.Look(ref ShowLOSOverlay, "showLOSOverlay", false);
 
             // Static state - only save/load once
             if (Scribe.mode == LoadSaveMode.Saving || Scribe.mode == LoadSaveMode.LoadingVars)
@@ -380,6 +510,39 @@ namespace Arsenal
         public CompProperties_HawkeyeSensor()
         {
             compClass = typeof(CompHawkeyeSensor);
+        }
+    }
+
+    /// <summary>
+    /// MapComponent that handles drawing HAWKEYE LOS overlays.
+    /// Draws overlays for pawns wearing HAWKEYE helmets when they are selected.
+    /// </summary>
+    public class MapComponent_HawkeyeOverlay : MapComponent
+    {
+        public MapComponent_HawkeyeOverlay(Map map) : base(map)
+        {
+        }
+
+        public override void MapComponentUpdate()
+        {
+            base.MapComponentUpdate();
+
+            // Draw overlays for selected pawns with HAWKEYE
+            if (Find.Selector.SelectedObjects == null)
+                return;
+
+            foreach (object obj in Find.Selector.SelectedObjects)
+            {
+                if (obj is Pawn pawn && pawn.Map == map && !pawn.Dead)
+                {
+                    // Check if pawn is wearing HAWKEYE
+                    var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                    if (hawkeye?.SensorComp != null && hawkeye.SensorComp.ShowLOSOverlay)
+                    {
+                        hawkeye.SensorComp.DrawLOSOverlay();
+                    }
+                }
+            }
         }
     }
 }
