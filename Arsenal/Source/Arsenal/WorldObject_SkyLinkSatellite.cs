@@ -24,9 +24,6 @@ namespace Arsenal
         public bool IsOperational => health > 0f;
         public float HealthPercent => health / MAX_HEALTH;
 
-        // Override to indicate this is an orbital object
-        public override bool ShowsWorldIcon => true;
-
         public override void SpawnSetup()
         {
             base.SpawnSetup();
@@ -41,7 +38,7 @@ namespace Arsenal
             ArsenalNetworkManager.RegisterSatellite(this);
         }
 
-        public override void Tick()
+        protected override void Tick()
         {
             base.Tick();
 
