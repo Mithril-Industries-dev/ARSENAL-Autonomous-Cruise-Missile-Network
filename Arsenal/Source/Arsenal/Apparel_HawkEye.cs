@@ -32,9 +32,9 @@ namespace Arsenal
             base.SpawnSetup(map, respawningAfterLoad);
         }
 
-        public override void Notify_PawnWore(Pawn pawn)
+        public override void Notify_Equipped(Pawn pawn)
         {
-            base.Notify_PawnWore(pawn);
+            base.Notify_Equipped(pawn);
 
             // Register pawn with network
             ArsenalNetworkManager.RegisterHawkeyePawn(pawn);
@@ -43,15 +43,12 @@ namespace Arsenal
             SensorComp?.OnEquipped(pawn);
         }
 
-        public override void Notify_PawnUnwore()
+        public override void Notify_Unequipped(Pawn pawn)
         {
-            if (Wearer != null)
-            {
-                ArsenalNetworkManager.DeregisterHawkeyePawn(Wearer);
-                SensorComp?.OnUnequipped();
-            }
+            ArsenalNetworkManager.DeregisterHawkeyePawn(pawn);
+            SensorComp?.OnUnequipped();
 
-            base.Notify_PawnUnwore();
+            base.Notify_Unequipped(pawn);
         }
 
         public override IEnumerable<Gizmo> GetWornGizmos()

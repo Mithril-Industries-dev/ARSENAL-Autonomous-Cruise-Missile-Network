@@ -45,7 +45,7 @@ namespace Arsenal
             base.DeSpawn(mode);
         }
 
-        public override void Tick()
+        protected override void Tick()
         {
             ticksAlive++;
 
@@ -101,7 +101,7 @@ namespace Arsenal
             rocketSustainer = null;
         }
 
-        public override void Draw()
+        protected override void DrawAt(Vector3 drawLoc, bool flip = false)
         {
             // Calculate draw position with altitude offset
             Vector3 drawPos = startPosition;
