@@ -702,6 +702,25 @@ namespace Arsenal
             return powerComp == null || powerComp.PowerOn;
         }
 
+        /// <summary>
+        /// Checks if ARSENAL has network connectivity (required for DAGGER shipment).
+        /// Returns true if this tile has LATTICE access via direct connection or HERALD.
+        /// </summary>
+        public bool HasNetworkConnection()
+        {
+            if (Map == null) return false;
+            return ArsenalNetworkManager.IsTileConnected(Map.Tile);
+        }
+
+        /// <summary>
+        /// Gets network status message for UI.
+        /// </summary>
+        public string GetNetworkStatusMessage()
+        {
+            if (Map == null) return "OFFLINE — No map";
+            return ArsenalNetworkManager.GetNetworkStatus(Map.Tile);
+        }
+
         #endregion
 
         #region Gizmos
@@ -802,6 +821,17 @@ namespace Arsenal
             {
                 if (!str.NullOrEmpty()) str += "\n";
                 str += "<color=red>No adjacent storage! Place stockpile or shelf next to ARSENAL.</color>";
+            }
+
+            // Show network status
+            if (!str.NullOrEmpty()) str += "\n";
+            if (HasNetworkConnection())
+            {
+                str += $"Network: {GetNetworkStatusMessage()}";
+            }
+            else
+            {
+                str += $"<color=yellow>Network: {GetNetworkStatusMessage()}</color>";
             }
 
             // Show active line count

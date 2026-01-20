@@ -14,6 +14,145 @@ namespace Arsenal
         private static List<Building_Lattice> lattices = new List<Building_Lattice>();
         private static List<Building_Quiver> quivers = new List<Building_Quiver>();
 
+        // NEW: ARGUS sensors
+        private static List<Building_ARGUS> argusUnits = new List<Building_ARGUS>();
+
+        // NEW: HERALD comm relays - keyed by world tile
+        private static Dictionary<int, Building_HERALD> heraldsPerTile = new Dictionary<int, Building_HERALD>();
+
+        #region Global LATTICE Access
+
+        /// <summary>
+        /// Returns the primary LATTICE in the network (first powered one found).
+        /// Used for network connectivity checks.
+        /// </summary>
+        public static Building_Lattice GlobalLattice
+        {
+            get
+            {
+                lattices.RemoveAll(l => l == null || l.Destroyed);
+                return lattices.FirstOrDefault(l => l.IsPoweredOn()) ?? lattices.FirstOrDefault();
+            }
+        }
+
+        #endregion
+
+        #region Network Connectivity
+
+        /// <summary>
+        /// Checks if a world tile has network connectivity to LATTICE.
+        /// Home tile (where LATTICE is) always connected.
+        /// Remote tiles need a powered HERALD.
+        /// </summary>
+        public static bool IsTileConnected(int worldTile)
+        {
+            // No LATTICE = no network
+            var lattice = GlobalLattice;
+            if (lattice == null)
+                return false;
+
+            // LATTICE not powered = no network
+            if (!lattice.IsPoweredOn())
+                return false;
+
+            // Home tile (where LATTICE is) = always connected
+            if (lattice.Map != null && lattice.Map.Tile == worldTile)
+                return true;
+
+            // Remote tiles need a powered HERALD
+            if (heraldsPerTile.TryGetValue(worldTile, out var herald))
+                return herald != null && !herald.Destroyed && herald.IsOnline;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets a user-friendly network status message for a given tile.
+        /// </summary>
+        public static string GetNetworkStatus(int worldTile)
+        {
+            var lattice = GlobalLattice;
+            if (lattice == null)
+                return "OFFLINE — No LATTICE";
+
+            if (!lattice.IsPoweredOn())
+                return "OFFLINE — LATTICE unpowered";
+
+            if (lattice.Map != null && lattice.Map.Tile == worldTile)
+                return "ONLINE (direct)";
+
+            if (heraldsPerTile.TryGetValue(worldTile, out var herald))
+            {
+                if (herald != null && !herald.Destroyed && herald.IsOnline)
+                    return "ONLINE (via HERALD)";
+                else
+                    return "OFFLINE — HERALD unpowered";
+            }
+
+            return "OFFLINE — No HERALD on this tile";
+        }
+
+        #endregion
+
+        #region HERALD Registration
+
+        public static void RegisterHerald(Building_HERALD herald)
+        {
+            if (herald?.Map == null) return;
+            int tile = herald.Map.Tile;
+            heraldsPerTile[tile] = herald;
+        }
+
+        public static void DeregisterHerald(Building_HERALD herald)
+        {
+            if (herald?.Map == null) return;
+            int tile = herald.Map.Tile;
+            if (heraldsPerTile.TryGetValue(tile, out var existing) && existing == herald)
+            {
+                heraldsPerTile.Remove(tile);
+            }
+        }
+
+        public static Building_HERALD GetHeraldAtTile(int tile)
+        {
+            if (heraldsPerTile.TryGetValue(tile, out var herald))
+            {
+                if (herald != null && !herald.Destroyed)
+                    return herald;
+                heraldsPerTile.Remove(tile);
+            }
+            return null;
+        }
+
+        #endregion
+
+        #region ARGUS Registration
+
+        public static void RegisterArgus(Building_ARGUS argus)
+        {
+            if (!argusUnits.Contains(argus))
+                argusUnits.Add(argus);
+        }
+
+        public static void DeregisterArgus(Building_ARGUS argus)
+        {
+            argusUnits.Remove(argus);
+        }
+
+        public static List<Building_ARGUS> GetAllArgus()
+        {
+            argusUnits.RemoveAll(a => a == null || a.Destroyed);
+            return argusUnits.ToList();
+        }
+
+        public static List<Building_ARGUS> GetArgusOnMap(Map map)
+        {
+            if (map == null) return new List<Building_ARGUS>();
+            return GetAllArgus().Where(a => a.Map == map).ToList();
+        }
+
+        #endregion
+
         public static void RegisterArsenal(Building_Arsenal arsenal)
         {
             if (!arsenals.Contains(arsenal))
@@ -154,6 +293,8 @@ namespace Arsenal
             hops.Clear();
             lattices.Clear();
             quivers.Clear();
+            argusUnits.Clear();
+            heraldsPerTile.Clear();
         }
     }
 

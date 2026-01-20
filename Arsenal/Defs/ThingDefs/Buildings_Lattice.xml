@@ -5,7 +5,7 @@
   <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_Lattice</defName>
     <label>LATTICE C2 node</label>
-    <description>Command and Control node for the autonomous drone swarm defense system. Scans for threats, evaluates danger levels, and coordinates DART drones from QUIVERs to engage hostile targets. Only one LATTICE can exist per map - it serves as the brain of your drone defense network. High power consumption. Single point of failure: if destroyed, all QUIVERs go inert.</description>
+    <description>Command and Control node for the autonomous drone swarm defense system. Aggregates threat reports from ARGUS sensors, evaluates danger levels, and coordinates DART drones from QUIVERs to engage hostile targets. Requires ARGUS sensors for threat detection - without them, LATTICE is blind. Only one LATTICE can exist per map. High power consumption. Single point of failure: if destroyed, all QUIVERs go inert.</description>
     <thingClass>Arsenal.Building_Lattice</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_LATTICE</texPath>
@@ -59,6 +59,120 @@
     <placeWorkers>
       <li>Arsenal.PlaceWorker_OnlyOneLattice</li>
     </placeWorkers>
+  </ThingDef>
+
+  <!-- ARGUS Threat Detection Sensor -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_ARGUS</defName>
+    <label>ARGUS sensor</label>
+    <description>Autonomous threat detection sensor with line-of-sight scanning. Detects hostile pawns within a 30-tile radius and reports them to the LATTICE for DART coordination. Place multiple ARGUS sensors to extend your detection coverage. Threats must be visible (not blocked by walls or mountains) to be detected. Without ARGUS sensors, the LATTICE cannot see threats.</description>
+    <thingClass>Arsenal.Building_ARGUS</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_ARGUS</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(1,1)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>PassThroughOnly</passability>
+    <pathCost>30</pathCost>
+    <blockWind>false</blockWind>
+    <fillPercent>0.3</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>100</MaxHitPoints>
+      <WorkToBuild>3000</WorkToBuild>
+      <Mass>15</Mass>
+      <Flammability>0.5</Flammability>
+    </statBases>
+    <size>(1,1)</size>
+    <costList>
+      <Steel>50</Steel>
+      <Plasteel>15</Plasteel>
+      <ComponentIndustrial>4</ComponentIndustrial>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>200</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Red glow for ARGUS - sensor/detection indicator -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>3</glowRadius>
+        <glowColor>(255,80,80,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Normal</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>8</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </researchPrerequisites>
+    <placeWorkers>
+      <li>Arsenal.PlaceWorker_ShowDetectionRadius</li>
+    </placeWorkers>
+  </ThingDef>
+
+  <!-- HERALD Communications Relay -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_HERALD</defName>
+    <label>HERALD comm relay</label>
+    <description>Long-range communications relay that connects remote tiles to the MITHRIL LATTICE network. Required for HUBs and HOPs on remote tiles to coordinate with the central LATTICE. Buildings on the same tile as the LATTICE do not need a HERALD. Only one HERALD per map tile is needed.</description>
+    <thingClass>Arsenal.Building_HERALD</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_HERALD</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(2,2)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>false</blockWind>
+    <fillPercent>0.5</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>150</MaxHitPoints>
+      <WorkToBuild>5000</WorkToBuild>
+      <Mass>40</Mass>
+      <Flammability>0.4</Flammability>
+    </statBases>
+    <size>(2,2)</size>
+    <costList>
+      <Steel>120</Steel>
+      <Plasteel>40</Plasteel>
+      <Gold>20</Gold>
+      <ComponentIndustrial>8</ComponentIndustrial>
+      <ComponentSpacer>2</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>500</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Yellow/amber glow for HERALD - communication/relay indicator -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>5</glowRadius>
+        <glowColor>(255,200,80,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>10</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_NetworkComms</li>
+    </researchPrerequisites>
   </ThingDef>
 
   <!-- QUIVER Drone Hub -->

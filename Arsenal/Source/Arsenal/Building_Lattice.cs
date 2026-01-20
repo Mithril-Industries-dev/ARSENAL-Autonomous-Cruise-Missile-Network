@@ -10,13 +10,43 @@ using UnityEngine;
 namespace Arsenal
 {
     /// <summary>
+    /// Represents a threat reported by an ARGUS sensor.
+    /// </summary>
+    public class ThreatEntry
+    {
+        public Pawn Pawn;
+        public int LastSeenTick;
+        public Building_ARGUS ReportingArgus;
+
+        public ThreatEntry(Pawn pawn, int tick, Building_ARGUS argus)
+        {
+            Pawn = pawn;
+            LastSeenTick = tick;
+            ReportingArgus = argus;
+        }
+
+        public bool IsStale(int currentTick, int staleThreshold)
+        {
+            return currentTick - LastSeenTick > staleThreshold;
+        }
+    }
+
+    /// <summary>
     /// LATTICE - Command & Control node for the drone swarm defense system.
     /// Only ONE LATTICE allowed per map.
+    /// Aggregates threat reports from ARGUS sensors and coordinates DART response.
     /// </summary>
     public class Building_Lattice : Building
     {
         // Registered QUIVERs
         private List<Building_Quiver> registeredQuivers = new List<Building_Quiver>();
+
+        // Registered ARGUS sensors
+        private List<Building_ARGUS> registeredArgus = new List<Building_ARGUS>();
+
+        // Threat aggregation from ARGUS reports
+        private Dictionary<Pawn, ThreatEntry> aggregatedThreats = new Dictionary<Pawn, ThreatEntry>();
+        private const int THREAT_STALE_TICKS = 180; // 3 seconds without sighting = stale
 
         // Tracking in-flight DARTs per target
         private Dictionary<Pawn, int> assignedDartsPerTarget = new Dictionary<Pawn, int>();
@@ -27,9 +57,9 @@ namespace Arsenal
         // Flight pathfinding grid
         private FlightPathGrid flightGrid;
 
-        // Scanning
-        private const int SCAN_INTERVAL = 60; // Ticks between scans (~1 second)
-        private int ticksSinceLastScan;
+        // Processing interval (no longer "scanning" - just processing ARGUS reports)
+        private const int PROCESS_INTERVAL = 60; // Ticks between processing (~1 second)
+        private int ticksSinceLastProcess;
 
         // Threat evaluation parameters
         private const float DART_LETHALITY = 20f; // How much threat a single DART can handle
@@ -76,11 +106,12 @@ namespace Arsenal
         {
             get
             {
-                if (Map == null) return 0;
-                return Map.mapPawns.AllPawnsSpawned
-                    .Count(p => p.HostileTo(Faction.OfPlayer) && !p.Dead && !p.Downed);
+                CleanStaleThreats();
+                return aggregatedThreats.Count;
             }
         }
+
+        public int RegisteredArgusCount => registeredArgus.Count;
 
         public int DartsInFlight
         {
@@ -141,6 +172,9 @@ namespace Arsenal
 
             // Notify all QUIVERs that LATTICE is available
             NotifyQuiversOfAvailability();
+
+            // Notify all ARGUS sensors that LATTICE is available
+            NotifyArgusOfAvailability();
         }
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
@@ -154,6 +188,16 @@ namespace Arsenal
                 quiver.OnLatticeDestroyed();
             }
             registeredQuivers.Clear();
+
+            // Notify all ARGUS sensors
+            foreach (var argus in registeredArgus.ToList())
+            {
+                argus.OnLatticeDestroyed();
+            }
+            registeredArgus.Clear();
+
+            // Clear threat aggregation
+            aggregatedThreats.Clear();
 
             // Unregister from network
             ArsenalNetworkManager.DeregisterLattice(this);
@@ -177,8 +221,9 @@ namespace Arsenal
             base.ExposeData();
 
             Scribe_Collections.Look(ref registeredQuivers, "registeredQuivers", LookMode.Reference);
+            Scribe_Collections.Look(ref registeredArgus, "registeredArgus", LookMode.Reference);
             Scribe_Collections.Look(ref awaitingReassignment, "awaitingReassignment", LookMode.Reference);
-            Scribe_Values.Look(ref ticksSinceLastScan, "ticksSinceLastScan", 0);
+            Scribe_Values.Look(ref ticksSinceLastProcess, "ticksSinceLastProcess", 0);
             Scribe_Values.Look(ref customName, "customName");
 
             // Dictionary requires special handling
@@ -189,7 +234,9 @@ namespace Arsenal
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
                 registeredQuivers.RemoveAll(q => q == null);
+                registeredArgus.RemoveAll(a => a == null);
                 awaitingReassignment.RemoveAll(d => d == null);
+                aggregatedThreats.Clear(); // Clear on load - ARGUS will repopulate
                 CleanupDeadTargets();
             }
         }
@@ -213,17 +260,17 @@ namespace Arsenal
             // Maintain scanning sound
             MaintainScanningSound();
 
-            // Visual scanning effect (radar-like pulse)
+            // Visual effect (command processing pulse)
             if (this.IsHashIntervalTick(30))
             {
                 SpawnScanningEffects();
             }
 
-            ticksSinceLastScan++;
-            if (ticksSinceLastScan >= SCAN_INTERVAL)
+            ticksSinceLastProcess++;
+            if (ticksSinceLastProcess >= PROCESS_INTERVAL)
             {
-                ticksSinceLastScan = 0;
-                ScanAndAssign();
+                ticksSinceLastProcess = 0;
+                ProcessThreatsAndAssign();
             }
         }
 
@@ -282,6 +329,22 @@ namespace Arsenal
         }
 
         /// <summary>
+        /// Notifies all ARGUS sensors on the map that LATTICE is available.
+        /// </summary>
+        private void NotifyArgusOfAvailability()
+        {
+            var argusUnits = ArsenalNetworkManager.GetArgusOnMap(Map);
+            foreach (var argus in argusUnits)
+            {
+                argus.OnLatticeAvailable(this);
+                if (!registeredArgus.Contains(argus))
+                {
+                    registeredArgus.Add(argus);
+                }
+            }
+        }
+
+        /// <summary>
         /// Registers a QUIVER with this LATTICE.
         /// </summary>
         public void RegisterQuiver(Building_Quiver quiver)
@@ -300,19 +363,88 @@ namespace Arsenal
             registeredQuivers.Remove(quiver);
         }
 
+        #region ARGUS Integration
+
         /// <summary>
-        /// Main threat scanning and DART assignment logic.
+        /// Registers an ARGUS sensor with this LATTICE.
         /// </summary>
-        private void ScanAndAssign()
+        public void RegisterArgus(Building_ARGUS argus)
         {
-            // Clean up dead targets
+            if (argus != null && !registeredArgus.Contains(argus))
+            {
+                registeredArgus.Add(argus);
+            }
+        }
+
+        /// <summary>
+        /// Unregisters an ARGUS sensor from this LATTICE.
+        /// </summary>
+        public void UnregisterArgus(Building_ARGUS argus)
+        {
+            registeredArgus.Remove(argus);
+        }
+
+        /// <summary>
+        /// Called by ARGUS sensors to report a detected threat.
+        /// Aggregates and deduplicates threat reports.
+        /// </summary>
+        public void ReportThreat(Pawn threat, Building_ARGUS reportingArgus)
+        {
+            if (threat == null || threat.Dead || threat.Destroyed || !threat.Spawned)
+                return;
+
+            int currentTick = Find.TickManager.TicksGame;
+
+            if (aggregatedThreats.TryGetValue(threat, out ThreatEntry existingEntry))
+            {
+                // Update existing entry with fresh sighting
+                existingEntry.LastSeenTick = currentTick;
+                existingEntry.ReportingArgus = reportingArgus;
+            }
+            else
+            {
+                // New threat detected
+                aggregatedThreats[threat] = new ThreatEntry(threat, currentTick, reportingArgus);
+            }
+        }
+
+        /// <summary>
+        /// Removes stale threat entries that haven't been seen recently.
+        /// </summary>
+        private void CleanStaleThreats()
+        {
+            int currentTick = Find.TickManager.TicksGame;
+            var staleKeys = aggregatedThreats
+                .Where(kvp => kvp.Value.IsStale(currentTick, THREAT_STALE_TICKS) ||
+                              kvp.Key == null || kvp.Key.Dead || kvp.Key.Destroyed || !kvp.Key.Spawned)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in staleKeys)
+            {
+                aggregatedThreats.Remove(key);
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Processes aggregated threats and assigns DARTs.
+        /// No longer scans directly - relies on ARGUS reports.
+        /// </summary>
+        private void ProcessThreatsAndAssign()
+        {
+            // Clean up dead targets from assignment tracking
             CleanupDeadTargets();
+
+            // Clean up stale threats from aggregation
+            CleanStaleThreats();
 
             // Process any DARTs awaiting reassignment
             ProcessReassignmentQueue();
 
-            // Find all hostile pawns on the map
-            List<Pawn> threats = GetHostileThreats();
+            // Get threats from ARGUS aggregation (not direct scanning)
+            List<Pawn> threats = GetAggregatedThreats();
 
             if (threats.Count == 0)
             {
@@ -357,25 +489,23 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Gets all hostile pawns on the map that should be targeted.
+        /// Gets all threats from ARGUS aggregation.
+        /// Only threats visible to ARGUS sensors are targetable.
+        /// </summary>
+        private List<Pawn> GetAggregatedThreats()
+        {
+            // Return pawns from aggregated threats (reported by ARGUS sensors)
+            return aggregatedThreats.Keys
+                .Where(p => p != null && !p.Dead && !p.Downed && p.Spawned)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Legacy method for compatibility - gets threats from aggregation.
         /// </summary>
         private List<Pawn> GetHostileThreats()
         {
-            List<Pawn> threats = new List<Pawn>();
-
-            foreach (Pawn pawn in Map.mapPawns.AllPawnsSpawned)
-            {
-                if (pawn.HostileTo(Faction.OfPlayer) && !pawn.Dead && !pawn.Downed)
-                {
-                    // Skip animals unless manhunting
-                    if (pawn.RaceProps.Animal && !pawn.InAggroMentalState)
-                        continue;
-
-                    threats.Add(pawn);
-                }
-            }
-
-            return threats;
+            return GetAggregatedThreats();
         }
 
         /// <summary>
@@ -688,9 +818,10 @@ namespace Arsenal
                     StringBuilder sb = new StringBuilder();
                     sb.AppendLine($"LATTICE Network Status");
                     sb.AppendLine($"----------------------");
+                    sb.AppendLine($"ARGUS sensors: {registeredArgus.Count}");
                     sb.AppendLine($"Registered QUIVERs: {registeredQuivers.Count}");
                     sb.AppendLine($"Total DARTs available: {TotalAvailableDarts}");
-                    sb.AppendLine($"Active threats: {GetHostileThreats().Count}");
+                    sb.AppendLine($"Active threats (via ARGUS): {GetAggregatedThreats().Count}");
                     sb.AppendLine($"DARTs in flight: {assignedDartsPerTarget.Values.Sum()}");
                     sb.AppendLine($"DARTs awaiting reassignment: {awaitingReassignment.Count}");
 
@@ -703,10 +834,10 @@ namespace Arsenal
             {
                 yield return new Command_Action
                 {
-                    defaultLabel = "DEV: Force Scan",
+                    defaultLabel = "DEV: Force Process",
                     action = delegate
                     {
-                        ScanAndAssign();
+                        ProcessThreatsAndAssign();
                     }
                 };
 
@@ -743,13 +874,18 @@ namespace Arsenal
                 text += "<color=red>No power - system offline</color>\n";
             }
 
-            text += $"QUIVERs: {registeredQuivers.Count}";
+            text += $"ARGUS sensors: {registeredArgus.Count}";
+            text += $"\nQUIVERs: {registeredQuivers.Count}";
             text += $"\nDARTs available: {TotalAvailableDarts}";
 
-            int threatCount = GetHostileThreats().Count;
+            int threatCount = GetAggregatedThreats().Count;
             if (threatCount > 0)
             {
-                text += $"\n<color=orange>Active threats: {threatCount}</color>";
+                text += $"\n<color=orange>Active threats (ARGUS): {threatCount}</color>";
+            }
+            else if (registeredArgus.Count == 0)
+            {
+                text += $"\n<color=yellow>No ARGUS sensors - threat detection offline</color>";
             }
 
             int inFlightCount = assignedDartsPerTarget.Values.Sum();

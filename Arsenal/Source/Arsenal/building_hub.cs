@@ -40,6 +40,25 @@ namespace Arsenal
             return powerComp == null || powerComp.PowerOn;
         }
 
+        /// <summary>
+        /// Checks if HUB has network connectivity to LATTICE.
+        /// Required for remote operations.
+        /// </summary>
+        public bool HasNetworkConnection()
+        {
+            if (Map == null) return false;
+            return ArsenalNetworkManager.IsTileConnected(Map.Tile);
+        }
+
+        /// <summary>
+        /// Gets network status message for UI.
+        /// </summary>
+        public string GetNetworkStatusMessage()
+        {
+            if (Map == null) return "OFFLINE — No map";
+            return ArsenalNetworkManager.GetNetworkStatus(Map.Tile);
+        }
+
         public int GetExtendedRange(List<Building_Hop> hopChain)
         {
             if (hopChain == null || hopChain.Count == 0) return BaseRange;
@@ -315,6 +334,18 @@ namespace Arsenal
         public override string GetInspectString()
         {
             string str = base.GetInspectString();
+
+            // Network status
+            if (!str.NullOrEmpty()) str += "\n";
+            if (HasNetworkConnection())
+            {
+                str += $"Network: {GetNetworkStatusMessage()}";
+            }
+            else
+            {
+                str += $"<color=yellow>Network: {GetNetworkStatusMessage()}</color>";
+            }
+
             str += "\nStored missiles: " + storedMissiles.Count + " / " + MAX_STORED;
             str += "\nStrike range: " + LAUNCH_RADIUS + " tiles";
             return str;
