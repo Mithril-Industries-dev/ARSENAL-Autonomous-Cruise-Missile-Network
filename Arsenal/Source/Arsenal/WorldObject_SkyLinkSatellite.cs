@@ -68,9 +68,9 @@ namespace Arsenal
                 Mathf.Cos(radians) * orbitRadius
             );
 
-            // Draw the satellite icon
+            // Draw the satellite icon using the expanding icon texture
             float size = 0.7f;
-            Material mat = def.DrawMatSingle;
+            Material mat = this.Material;
             if (mat != null)
             {
                 Vector3 s = new Vector3(size, 1f, size);
