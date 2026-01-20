@@ -577,26 +577,20 @@ namespace Arsenal
         {
             if (hub?.Map == null) return false;
 
+            // HUB must have network connectivity
+            if (!hub.HasNetworkConnection()) return false;
+
             int destTile = hub.Map.Tile;
             int dist = Find.WorldGrid.TraversalDistanceBetween(Map.Tile, destTile);
 
+            // Direct range check
             if (dist <= 100f)
                 return true;
 
-            foreach (var hop in ArsenalNetworkManager.GetAllHops())
-            {
-                if (hop.Map == null) continue;
-                if (!hop.CanAcceptMissile()) continue;
-                if (hop.GetAvailableFuel() < 50f) continue;
-                // HOP must have network connectivity (HERALD on remote tiles)
-                if (!hop.HasNetworkConnection()) continue;
-
-                int distToHop = Find.WorldGrid.TraversalDistanceBetween(Map.Tile, hop.Map.Tile);
-                if (distToHop <= 100f)
-                    return true;
-            }
-
-            return false;
+            // Need to trace a valid route through connected HOPs
+            // Use GetRouteToHub to verify a valid path exists
+            var route = GetRouteToHub(destTile);
+            return route != null && route.Count > 0;
         }
 
         private void LaunchMissileToHub(Thing missile, Building_Hub targetHub)
@@ -617,27 +611,41 @@ namespace Arsenal
             GenSpawn.Spawn(skyfaller, Position, Map);
         }
 
+        /// <summary>
+        /// Calculates route to destination tile through connected HOPs.
+        /// Returns null if destination is unreachable.
+        /// </summary>
         public List<int> GetRouteToHub(int destinationTile)
         {
             List<int> route = new List<int>();
             float fuel = 100f;
             int current = Map.Tile;
+            HashSet<int> visitedTiles = new HashSet<int>(); // Prevent infinite loops
 
             while (current != destinationTile)
             {
+                if (visitedTiles.Contains(current))
+                {
+                    // Stuck in a loop - route is impossible
+                    return null;
+                }
+                visitedTiles.Add(current);
+
                 int directDist = Find.WorldGrid.TraversalDistanceBetween(current, destinationTile);
                 if (directDist <= fuel)
                 {
+                    // Can reach destination directly
                     route.Add(destinationTile);
                     break;
                 }
 
+                // Need a HOP to extend range
                 Building_Hop bestHop = FindBestAvailableHop(current, destinationTile, fuel);
 
                 if (bestHop == null)
                 {
-                    route.Add(destinationTile);
-                    break;
+                    // No valid HOP found and destination is out of range - ROUTE IS IMPOSSIBLE
+                    return null;
                 }
 
                 route.Add(bestHop.Map.Tile);
