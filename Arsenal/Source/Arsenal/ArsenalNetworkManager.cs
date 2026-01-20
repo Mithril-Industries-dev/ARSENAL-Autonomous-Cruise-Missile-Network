@@ -108,7 +108,8 @@ namespace Arsenal
 
         public static void DeregisterSatellite(WorldObject_SkyLinkSatellite satellite)
         {
-            if (orbitalSatellite == satellite)
+            // If null passed, force clear (for debugging stale state)
+            if (satellite == null || orbitalSatellite == satellite)
                 orbitalSatellite = null;
         }
 
@@ -520,6 +521,27 @@ namespace Arsenal
             terminals.Clear();
             hawkeyePawns.Clear();
         }
+
+        /// <summary>
+        /// Scans all world objects for SKYLINK satellites and registers them.
+        /// Called after game load to ensure satellites are properly tracked.
+        /// </summary>
+        public static void ScanForOrbitingSatellites()
+        {
+            if (Find.WorldObjects == null) return;
+
+            foreach (WorldObject wo in Find.WorldObjects.AllWorldObjects)
+            {
+                if (wo is WorldObject_SkyLinkSatellite satellite)
+                {
+                    if (orbitalSatellite == null)
+                    {
+                        orbitalSatellite = satellite;
+                        Log.Message($"[ARSENAL] Found orbiting SKYLINK satellite, registered.");
+                    }
+                }
+            }
+        }
     }
 
     public class GameComponent_ArsenalNetwork : GameComponent
@@ -535,6 +557,18 @@ namespace Arsenal
         public override void LoadedGame()
         {
             base.LoadedGame();
+            // CRITICAL: Reset static state when loading a game to prevent
+            // state from previous sessions carrying over.
+            // Buildings and WorldObjects will re-register themselves in SpawnSetup().
+            ArsenalNetworkManager.Reset();
+        }
+
+        public override void FinalizeInit()
+        {
+            base.FinalizeInit();
+            // After game fully loads, scan for any satellites that may have been
+            // loaded from save but not yet registered (edge case handling)
+            ArsenalNetworkManager.ScanForOrbitingSatellites();
         }
     }
 }

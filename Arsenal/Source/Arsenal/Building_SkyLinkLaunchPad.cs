@@ -282,9 +282,10 @@ namespace Arsenal
             isLaunching = false;
 
             // Create the satellite world object
+            // Use a valid tile (home tile) so RimWorld ticks/draws it, but we override Draw() for orbital rendering
             WorldObject_SkyLinkSatellite satellite = (WorldObject_SkyLinkSatellite)WorldObjectMaker.MakeWorldObject(
                 DefDatabase<WorldObjectDef>.GetNamed("Arsenal_SkyLinkSatellite"));
-            satellite.Tile = -1; // -1 = orbit (not tied to any specific tile)
+            satellite.Tile = Map.Tile; // Use launch tile so RimWorld processes it
             satellite.SetFaction(Faction.OfPlayer);
             Find.WorldObjects.Add(satellite);
 
@@ -440,41 +441,81 @@ namespace Arsenal
                 };
             }
 
-            // Debug gizmos
+            // Debug gizmos - always show in dev mode for debugging
             if (Prefs.DevMode)
             {
-                if (!ArsenalNetworkManager.IsSatelliteInOrbit() && !hasBuiltSatellite)
+                // Always show instant build (even if satellite supposedly in orbit - for debugging stale state)
+                yield return new Command_Action
                 {
-                    yield return new Command_Action
+                    defaultLabel = "DEV: Instant Build",
+                    defaultDesc = $"Instantly complete satellite manufacturing (no resources consumed).\n\nCurrent state:\n- hasBuiltSatellite: {hasBuiltSatellite}\n- IsSatelliteInOrbit: {ArsenalNetworkManager.IsSatelliteInOrbit()}\n- isManufacturing: {isManufacturing}",
+                    action = delegate
                     {
-                        defaultLabel = "DEV: Instant Build",
-                        defaultDesc = "Instantly complete satellite manufacturing (no resources consumed).",
-                        action = delegate
-                        {
-                            hasBuiltSatellite = true;
-                            isManufacturing = false;
-                            manufacturingProgress = 0f;
-                            Messages.Message("[DEBUG] Satellite instantly manufactured.", this, MessageTypeDefOf.PositiveEvent);
-                        }
-                    };
-                }
+                        hasBuiltSatellite = true;
+                        isManufacturing = false;
+                        manufacturingProgress = 0f;
+                        Messages.Message("[DEBUG] Satellite instantly manufactured.", this, MessageTypeDefOf.PositiveEvent);
+                    }
+                };
 
-                if (!ArsenalNetworkManager.IsSatelliteInOrbit())
+                // Always show instant launch
+                yield return new Command_Action
                 {
-                    yield return new Command_Action
+                    defaultLabel = "DEV: Instant Launch",
+                    defaultDesc = "Instantly launch satellite to orbit (skips build and launch animation).",
+                    action = delegate
                     {
-                        defaultLabel = "DEV: Instant Launch",
-                        defaultDesc = "Instantly launch satellite to orbit (skips build and launch animation).",
-                        action = delegate
+                        hasBuiltSatellite = false;
+                        isManufacturing = false;
+                        isLaunching = false;
+                        OnLaunchComplete();
+                        Messages.Message("[DEBUG] Satellite instantly launched to orbit.", this, MessageTypeDefOf.PositiveEvent);
+                    }
+                };
+
+                // Debug: Destroy existing satellite (reset state)
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Destroy Satellite",
+                    defaultDesc = "Destroy any existing satellite and reset network state. Use this to fix stale state issues.",
+                    action = delegate
+                    {
+                        var satellite = ArsenalNetworkManager.GetOrbitalSatellite();
+                        if (satellite != null)
                         {
-                            hasBuiltSatellite = false;
-                            isManufacturing = false;
-                            isLaunching = false;
-                            OnLaunchComplete();
-                            Messages.Message("[DEBUG] Satellite instantly launched to orbit.", this, MessageTypeDefOf.PositiveEvent);
+                            satellite.Destroy();
+                            Messages.Message("[DEBUG] Satellite destroyed.", this, MessageTypeDefOf.NeutralEvent);
                         }
-                    };
-                }
+                        else
+                        {
+                            // Force clear the reference in case of stale state
+                            ArsenalNetworkManager.DeregisterSatellite(null);
+                            Messages.Message("[DEBUG] No satellite found, cleared any stale references.", this, MessageTypeDefOf.NeutralEvent);
+                        }
+                        hasBuiltSatellite = false;
+                        isManufacturing = false;
+                        isLaunching = false;
+                    }
+                };
+
+                // Debug info button
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Network Info",
+                    defaultDesc = "Show current ARSENAL network state.",
+                    action = delegate
+                    {
+                        string info = "[ARSENAL Network Debug]\n";
+                        info += $"IsSatelliteInOrbit: {ArsenalNetworkManager.IsSatelliteInOrbit()}\n";
+                        info += $"IsLatticeConnectedToSkylink: {ArsenalNetworkManager.IsLatticeConnectedToSkylink()}\n";
+                        info += $"GlobalLattice: {(ArsenalNetworkManager.GlobalLattice != null ? "Found" : "NULL")}\n";
+                        info += $"Terminals: {ArsenalNetworkManager.GetAllTerminals().Count}\n";
+                        info += $"ARGUS units: {ArsenalNetworkManager.GetAllArgus().Count}\n";
+                        info += $"SKYLINK Status: {ArsenalNetworkManager.GetSkylinkStatus()}\n";
+                        Log.Message(info);
+                        Messages.Message("[DEBUG] Network info logged to console.", this, MessageTypeDefOf.NeutralEvent);
+                    }
+                };
             }
         }
 
