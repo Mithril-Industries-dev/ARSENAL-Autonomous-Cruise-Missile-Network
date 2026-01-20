@@ -260,6 +260,7 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the best destination for a product (least-full, respecting priority).
+        /// HUBs require network connectivity (HERALD on remote tiles) to accept DAGGERs.
         /// </summary>
         public Building GetBestDestinationFor(MithrilProductDef product)
         {
@@ -269,8 +270,9 @@ namespace Arsenal
 
             if (product.destinationType == typeof(Building_Hub))
             {
+                // HUBs must have network connectivity to receive DAGGERs
                 return cachedHubs
-                    .Where(h => !h.IsFull && h.IsPoweredOn())
+                    .Where(h => !h.IsFull && h.IsPoweredOn() && h.HasNetworkConnection())
                     .OrderBy(h => h.priority)
                     .ThenByDescending(h => h.EmptySlots)
                     .FirstOrDefault();
@@ -293,6 +295,7 @@ namespace Arsenal
 
         /// <summary>
         /// Gets all valid destinations for a product (for UI dropdown).
+        /// Only shows HUBs with network connectivity for DAGGERs.
         /// </summary>
         public List<Building> GetAllDestinationsFor(MithrilProductDef product)
         {
@@ -301,7 +304,13 @@ namespace Arsenal
             RefreshNetworkCache();
 
             if (product.destinationType == typeof(Building_Hub))
-                return cachedHubs.Cast<Building>().ToList();
+            {
+                // Only show HUBs with network connectivity
+                return cachedHubs
+                    .Where(h => h.HasNetworkConnection())
+                    .Cast<Building>()
+                    .ToList();
+            }
             else if (product.destinationType == typeof(Building_Quiver))
                 return cachedQuivers.Cast<Building>().ToList();
 
@@ -326,7 +335,7 @@ namespace Arsenal
             {
                 Building_Hop nextHop = cachedHops
                     .Where(h => !visited.Contains(h))
-                    .Where(h => h.IsPoweredOn() && h.HasFuel)
+                    .Where(h => h.IsPoweredOn() && h.HasFuel && h.HasNetworkConnection())
                     .Where(h => Vector3.Distance(currentPos, h.Position.ToVector3()) <= currentRange)
                     .OrderBy(h => Vector3.Distance(currentPos, h.Position.ToVector3()))
                     .FirstOrDefault();
@@ -579,6 +588,8 @@ namespace Arsenal
                 if (hop.Map == null) continue;
                 if (!hop.CanAcceptMissile()) continue;
                 if (hop.GetAvailableFuel() < 50f) continue;
+                // HOP must have network connectivity (HERALD on remote tiles)
+                if (!hop.HasNetworkConnection()) continue;
 
                 int distToHop = Find.WorldGrid.TraversalDistanceBetween(Map.Tile, hop.Map.Tile);
                 if (distToHop <= 100f)
@@ -647,6 +658,8 @@ namespace Arsenal
                 if (hop.Map == null) continue;
                 if (!hop.CanAcceptMissile()) continue;
                 if (hop.GetAvailableFuel() < 50f) continue;
+                // HOP must have network connectivity (HERALD on remote tiles)
+                if (!hop.HasNetworkConnection()) continue;
 
                 int hopTile = hop.Map.Tile;
                 int distToHop = Find.WorldGrid.TraversalDistanceBetween(fromTile, hopTile);

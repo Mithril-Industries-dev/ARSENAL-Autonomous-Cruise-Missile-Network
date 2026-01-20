@@ -16,13 +16,10 @@ namespace Arsenal
     {
         // Detection parameters
         private const int SCAN_INTERVAL = 60; // Ticks between scans (~1 second)
-        private const float DETECTION_RADIUS = 30f;
+        private const float DETECTION_RADIUS = 45f;
 
         // Link to LATTICE
         private Building_Lattice linkedLattice;
-
-        // Components
-        private CompPowerTrader powerComp;
 
         // Custom name
         private string customName;
@@ -34,8 +31,8 @@ namespace Arsenal
 
         #region Properties
 
-        public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;
-        public bool IsOnline => IsPoweredOn && linkedLattice != null && linkedLattice.IsPoweredOn();
+        public bool IsPoweredOn => true; // ARGUS produces power, doesn't consume it
+        public bool IsOnline => linkedLattice != null && linkedLattice.IsPoweredOn();
         public float DetectionRadius => DETECTION_RADIUS;
         public int ThreatsInRange => lastScanThreatCount;
 
@@ -46,7 +43,6 @@ namespace Arsenal
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
-            powerComp = GetComp<CompPowerTrader>();
 
             if (!respawningAfterLoad)
             {
@@ -82,13 +78,6 @@ namespace Arsenal
 
             if (!this.IsHashIntervalTick(SCAN_INTERVAL))
                 return;
-
-            if (!IsPoweredOn)
-            {
-                lastScanThreatCount = 0;
-                threatDetectedThisScan = false;
-                return;
-            }
 
             if (linkedLattice == null || !linkedLattice.IsPoweredOn())
             {
@@ -210,11 +199,7 @@ namespace Arsenal
             str += $"Detection radius: {DETECTION_RADIUS} tiles";
 
             // Status
-            if (!IsPoweredOn)
-            {
-                str += "\nStatus: OFFLINE (no power)";
-            }
-            else if (linkedLattice == null)
+            if (linkedLattice == null)
             {
                 str += "\nStatus: OFFLINE (no LATTICE)";
             }
@@ -313,7 +298,7 @@ namespace Arsenal
     {
         public override void DrawGhost(ThingDef def, IntVec3 center, Rot4 rot, Color ghostCol, Thing thing = null)
         {
-            GenDraw.DrawRadiusRing(center, 30f); // ARGUS detection radius
+            GenDraw.DrawRadiusRing(center, 45f); // ARGUS detection radius
         }
     }
 }

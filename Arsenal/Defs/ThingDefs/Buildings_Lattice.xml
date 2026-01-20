@@ -65,7 +65,7 @@
   <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_ARGUS</defName>
     <label>ARGUS sensor</label>
-    <description>Autonomous threat detection sensor with line-of-sight scanning. Detects hostile pawns within a 30-tile radius and reports them to the LATTICE for DART coordination. Place multiple ARGUS sensors to extend your detection coverage. Threats must be visible (not blocked by walls or mountains) to be detected. Without ARGUS sensors, the LATTICE cannot see threats.</description>
+    <description>Autonomous threat detection sensor with line-of-sight scanning. Detects hostile pawns within a 45-tile radius and reports them to the LATTICE for DART coordination. Place multiple ARGUS sensors to extend your detection coverage. Threats must be visible (not blocked by walls or mountains) to be detected. Without ARGUS sensors, the LATTICE cannot see threats. Generates 250W power.</description>
     <thingClass>Arsenal.Building_ARGUS</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_ARGUS</texPath>
@@ -98,10 +98,10 @@
     </costList>
     <comps>
       <li Class="CompProperties_Power">
-        <compClass>CompPowerTrader</compClass>
-        <basePowerConsumption>200</basePowerConsumption>
+        <compClass>CompPowerPlant</compClass>
+        <basePowerConsumption>-250</basePowerConsumption>
+        <transmitsPower>true</transmitsPower>
       </li>
-      <li Class="CompProperties_Flickable"/>
       <!-- Red glow for ARGUS - sensor/detection indicator -->
       <li Class="CompProperties_Glower">
         <glowRadius>3</glowRadius>
