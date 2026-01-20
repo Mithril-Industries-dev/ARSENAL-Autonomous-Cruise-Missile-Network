@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- SKYLINK Satellite Orbital Rendering Layer -->
+  <WorldLayerDef>
+    <defName>Arsenal_SkyLinkOrbital</defName>
+    <worldLayerClass>Arsenal.WorldLayer_SkyLinkSatellite</worldLayerClass>
+    <renderOrder>550</renderOrder>
+  </WorldLayerDef>
+
+</Defs>

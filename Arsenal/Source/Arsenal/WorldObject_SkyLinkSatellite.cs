@@ -22,8 +22,9 @@ namespace Arsenal
         private const float ORBIT_SPEED = 0.3f; // Degrees per game-tick at normal speed
 
         // Orbit parameters - matches Odyssey-style orbital layer
-        private const float ORBIT_RADIUS = 115f; // Distance from world center (world radius ~100)
-        private const float ORBIT_HEIGHT = 10f;   // Height above equatorial plane
+        // Public so WorldLayer can use consistent values
+        public const float ORBIT_RADIUS = 115f; // Distance from world center (world radius ~100)
+        public const float ORBIT_HEIGHT = 10f;   // Height above equatorial plane
         private const float ICON_SIZE = 8f;       // Size of the satellite icon
 
         // Cached material
@@ -60,8 +61,9 @@ namespace Arsenal
 
         /// <summary>
         /// Calculate the 3D position in orbit around the world globe.
+        /// Public so WorldLayer can access for rendering.
         /// </summary>
-        private Vector3 GetOrbitalPosition()
+        public Vector3 GetOrbitalPosition()
         {
             float radians = orbitAngle * Mathf.Deg2Rad;
             return new Vector3(

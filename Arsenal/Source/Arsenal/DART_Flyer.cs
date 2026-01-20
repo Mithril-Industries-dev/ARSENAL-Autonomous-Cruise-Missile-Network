@@ -44,6 +44,9 @@ namespace Arsenal
         private int ticksInReassigning;
         private int ticksAlive;
 
+        // Flag to calculate path after spawn (when Map becomes available)
+        private bool needsPathCalculation;
+
         // Visual trail
         private const int TRAIL_LENGTH = 8;
         private Queue<Vector3> trailPositions = new Queue<Vector3>();
@@ -65,6 +68,13 @@ namespace Arsenal
 
                 // Play launch sound
                 SoundDefOf.Building_Complete.PlayOneShot(new TargetInfo(Position, map));
+            }
+
+            // Calculate path now that we have a valid Map reference
+            if (needsPathCalculation)
+            {
+                needsPathCalculation = false;
+                CalculatePathToTarget();
             }
         }
 
@@ -107,6 +117,7 @@ namespace Arsenal
             Scribe_Values.Look(ref ticksSincePathUpdate, "ticksSincePathUpdate");
             Scribe_Values.Look(ref ticksInReassigning, "ticksInReassigning");
             Scribe_Values.Look(ref ticksAlive, "ticksAlive");
+            Scribe_Values.Look(ref needsPathCalculation, "needsPathCalculation");
 
             Scribe_Collections.Look(ref flightPath, "flightPath", LookMode.Value);
 
@@ -127,7 +138,16 @@ namespace Arsenal
             homeQuiver = targetQuiver;
             lattice = latticeRef;
             target = new LocalTargetInfo(targetQuiver);
-            CalculatePathToTarget();
+
+            // Flag for path calculation - will be done in SpawnSetup when Map is available
+            if (Map != null)
+            {
+                CalculatePathToTarget();
+            }
+            else
+            {
+                needsPathCalculation = true;
+            }
         }
 
         /// <summary>
@@ -140,7 +160,17 @@ namespace Arsenal
             lattice = latticeRef;
             target = new LocalTargetInfo(hostileTarget);
             lastKnownTargetPos = hostileTarget.Position;
-            CalculatePathToTarget();
+
+            // Flag for path calculation - will be done in SpawnSetup when Map is available
+            // If already spawned (Map != null), calculate immediately
+            if (Map != null)
+            {
+                CalculatePathToTarget();
+            }
+            else
+            {
+                needsPathCalculation = true;
+            }
         }
 
         /// <summary>

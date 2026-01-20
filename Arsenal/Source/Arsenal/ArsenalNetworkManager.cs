@@ -179,7 +179,9 @@ namespace Arsenal
             {
                 foreach (var pawn in GetAllHawkeyePawns())
                 {
-                    var comp = pawn.TryGetComp<CompHawkeyeSensor>();
+                    // CompHawkeyeSensor is on the Apparel, not the Pawn - get it from worn apparel
+                    var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                    var comp = hawkeye?.SensorComp;
                     if (comp != null && comp.IsOperational)
                     {
                         foreach (var threat in comp.GetDetectedThreats())
@@ -209,7 +211,9 @@ namespace Arsenal
 
             foreach (var pawn in GetAllHawkeyePawns())
             {
-                var comp = pawn.TryGetComp<CompHawkeyeSensor>();
+                // CompHawkeyeSensor is on the Apparel, not the Pawn
+                var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                var comp = hawkeye?.SensorComp;
                 if (comp != null && comp.CanDetectTarget(target))
                 {
                     return true;
