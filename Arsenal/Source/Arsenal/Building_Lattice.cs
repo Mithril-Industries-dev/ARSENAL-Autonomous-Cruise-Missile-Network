@@ -385,6 +385,54 @@ namespace Arsenal
         }
 
         /// <summary>
+        /// Sets a priority target designated by HAWKEYE.
+        /// DARTs will converge on this target until dead or duration expires.
+        /// </summary>
+        public void SetPriorityTarget(Pawn target)
+        {
+            if (target == null || target.Dead || !target.Spawned)
+                return;
+
+            // Force assignment of multiple DARTs to priority target
+            int dartsNeeded = CalculateDartsNeeded(target) + 3; // Extra DARTs for priority
+            int dartsAlreadyAssigned = GetAssignedDarts(target);
+            int additionalDartsNeeded = dartsNeeded - dartsAlreadyAssigned;
+
+            if (additionalDartsNeeded > 0)
+            {
+                // Rapid launch for priority targets - bypass rate limiting
+                var sortedQuivers = registeredQuivers
+                    .Where(q => !q.IsInert && q.DartCount > 0)
+                    .OrderBy(q => q.Position.DistanceTo(target.Position))
+                    .ToList();
+
+                int launched = 0;
+                foreach (var quiver in sortedQuivers)
+                {
+                    while (quiver.DartCount > 0 && launched < additionalDartsNeeded)
+                    {
+                        DART_Flyer dart = quiver.LaunchDart(target);
+                        if (dart != null)
+                        {
+                            if (!assignedDartsPerTarget.ContainsKey(target))
+                            {
+                                assignedDartsPerTarget[target] = 0;
+                            }
+                            assignedDartsPerTarget[target]++;
+                            launched++;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    if (launched >= additionalDartsNeeded)
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
         /// Called by ARGUS sensors to report a detected threat.
         /// Aggregates and deduplicates threat reports.
         /// </summary>

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using RimWorld.Planet;
 using Verse;
 
 namespace Arsenal
@@ -14,11 +15,18 @@ namespace Arsenal
         private static List<Building_Lattice> lattices = new List<Building_Lattice>();
         private static List<Building_Quiver> quivers = new List<Building_Quiver>();
 
-        // NEW: ARGUS sensors
+        // ARGUS sensors
         private static List<Building_ARGUS> argusUnits = new List<Building_ARGUS>();
 
-        // NEW: HERALD comm relays - keyed by world tile
+        // HERALD comm relays - keyed by world tile
         private static Dictionary<int, Building_HERALD> heraldsPerTile = new Dictionary<int, Building_HERALD>();
+
+        // SKYLINK system components
+        private static WorldObject_SkyLinkSatellite orbitalSatellite;
+        private static List<Building_SkyLinkTerminal> terminals = new List<Building_SkyLinkTerminal>();
+
+        // HAWKEYE mobile sensors (pawn-mounted)
+        private static List<Pawn> hawkeyePawns = new List<Pawn>();
 
         #region Global LATTICE Access
 
@@ -37,12 +45,161 @@ namespace Arsenal
 
         #endregion
 
+        #region SKYLINK Satellite Operations
+
+        /// <summary>
+        /// Checks if a SKYLINK satellite is currently in orbit.
+        /// </summary>
+        public static bool IsSatelliteInOrbit()
+        {
+            return orbitalSatellite != null && orbitalSatellite.IsOperational;
+        }
+
+        /// <summary>
+        /// Gets the orbital satellite if it exists.
+        /// </summary>
+        public static WorldObject_SkyLinkSatellite GetOrbitalSatellite()
+        {
+            return orbitalSatellite;
+        }
+
+        /// <summary>
+        /// Checks if LATTICE is connected to SKYLINK via a Terminal.
+        /// Requires: satellite in orbit + powered Terminal within 15 tiles of powered LATTICE.
+        /// </summary>
+        public static bool IsLatticeConnectedToSkylink()
+        {
+            if (!IsSatelliteInOrbit())
+                return false;
+
+            var lattice = GlobalLattice;
+            if (lattice == null || !lattice.IsPoweredOn())
+                return false;
+
+            // Check for a powered Terminal within range of LATTICE
+            terminals.RemoveAll(t => t == null || t.Destroyed || !t.Spawned);
+            return terminals.Any(t => t.IsOnline && t.LinkedLattice == lattice);
+        }
+
+        /// <summary>
+        /// Gets the overall SKYLINK network status message.
+        /// </summary>
+        public static string GetSkylinkStatus()
+        {
+            if (!IsSatelliteInOrbit())
+                return "OFFLINE — No satellite in orbit";
+
+            if (GlobalLattice == null)
+                return "OFFLINE — No LATTICE";
+
+            if (!GlobalLattice.IsPoweredOn())
+                return "OFFLINE — LATTICE unpowered";
+
+            if (!IsLatticeConnectedToSkylink())
+                return "OFFLINE — No Terminal link to LATTICE";
+
+            return "ONLINE — Global operations enabled";
+        }
+
+        public static void RegisterSatellite(WorldObject_SkyLinkSatellite satellite)
+        {
+            orbitalSatellite = satellite;
+        }
+
+        public static void DeregisterSatellite(WorldObject_SkyLinkSatellite satellite)
+        {
+            if (orbitalSatellite == satellite)
+                orbitalSatellite = null;
+        }
+
+        public static void RegisterTerminal(Building_SkyLinkTerminal terminal)
+        {
+            if (!terminals.Contains(terminal))
+                terminals.Add(terminal);
+        }
+
+        public static void DeregisterTerminal(Building_SkyLinkTerminal terminal)
+        {
+            terminals.Remove(terminal);
+        }
+
+        public static List<Building_SkyLinkTerminal> GetAllTerminals()
+        {
+            terminals.RemoveAll(t => t == null || t.Destroyed || !t.Spawned);
+            return terminals.ToList();
+        }
+
+        #endregion
+
+        #region HAWKEYE Registration
+
+        public static void RegisterHawkeyePawn(Pawn pawn)
+        {
+            if (!hawkeyePawns.Contains(pawn))
+                hawkeyePawns.Add(pawn);
+        }
+
+        public static void DeregisterHawkeyePawn(Pawn pawn)
+        {
+            hawkeyePawns.Remove(pawn);
+        }
+
+        public static List<Pawn> GetAllHawkeyePawns()
+        {
+            hawkeyePawns.RemoveAll(p => p == null || p.Dead || p.Destroyed);
+            return hawkeyePawns.ToList();
+        }
+
+        /// <summary>
+        /// Gets all threats detected by the network (ARGUS units + HAWKEYE pawns).
+        /// Returns hostile pawns within detection range of any networked sensor.
+        /// </summary>
+        public static List<Pawn> GetAllNetworkDetectedThreats()
+        {
+            HashSet<Pawn> threats = new HashSet<Pawn>();
+
+            // Only gather threats if LATTICE is online
+            var lattice = GlobalLattice;
+            if (lattice == null || !lattice.IsPoweredOn())
+                return new List<Pawn>();
+
+            // Gather from ARGUS units on same map as LATTICE
+            foreach (var argus in GetArgusOnMap(lattice.Map))
+            {
+                if (!argus.IsPoweredOn) continue;
+                foreach (var threat in argus.GetDetectedThreats())
+                {
+                    threats.Add(threat);
+                }
+            }
+
+            // Gather from HAWKEYE pawns (requires SKYLINK connection)
+            if (IsLatticeConnectedToSkylink())
+            {
+                foreach (var pawn in GetAllHawkeyePawns())
+                {
+                    var comp = pawn.TryGetComp<CompHawkeyeSensor>();
+                    if (comp != null && comp.IsOperational)
+                    {
+                        foreach (var threat in comp.GetDetectedThreats())
+                        {
+                            threats.Add(threat);
+                        }
+                    }
+                }
+            }
+
+            return threats.ToList();
+        }
+
+        #endregion
+
         #region Network Connectivity
 
         /// <summary>
         /// Checks if a world tile has network connectivity to LATTICE.
         /// Home tile (where LATTICE is) always connected.
-        /// Remote tiles need a powered HERALD.
+        /// Remote tiles need SKYLINK satellite operational + powered HERALD.
         /// </summary>
         public static bool IsTileConnected(int worldTile)
         {
@@ -58,6 +215,10 @@ namespace Arsenal
             // Home tile (where LATTICE is) = always connected
             if (lattice.Map != null && lattice.Map.Tile == worldTile)
                 return true;
+
+            // Remote tiles need SKYLINK operational
+            if (!IsLatticeConnectedToSkylink())
+                return false;
 
             // Remote tiles need a powered HERALD
             if (heraldsPerTile.TryGetValue(worldTile, out var herald))
@@ -81,10 +242,17 @@ namespace Arsenal
             if (lattice.Map != null && lattice.Map.Tile == worldTile)
                 return "ONLINE (direct)";
 
+            // Remote tile checks
+            if (!IsSatelliteInOrbit())
+                return "OFFLINE — No SKYLINK satellite";
+
+            if (!IsLatticeConnectedToSkylink())
+                return "OFFLINE — No Terminal link to LATTICE";
+
             if (heraldsPerTile.TryGetValue(worldTile, out var herald))
             {
                 if (herald != null && !herald.Destroyed && herald.IsOnline)
-                    return "ONLINE (via HERALD)";
+                    return "ONLINE (via SKYLINK → HERALD)";
                 else
                     return "OFFLINE — HERALD unpowered";
             }
@@ -295,6 +463,9 @@ namespace Arsenal
             quivers.Clear();
             argusUnits.Clear();
             heraldsPerTile.Clear();
+            orbitalSatellite = null;
+            terminals.Clear();
+            hawkeyePawns.Clear();
         }
     }
 

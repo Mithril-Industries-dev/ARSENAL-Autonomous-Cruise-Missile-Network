@@ -30,16 +30,47 @@
     <tab>Main</tab>
   </ResearchProjectDef>
 
+  <!-- SKYLINK Orbital Systems - enables global network connectivity -->
+  <ResearchProjectDef>
+    <defName>Arsenal_SkyLink</defName>
+    <label>SKYLINK orbital systems</label>
+    <description>Develop orbital satellite technology for global MITHRIL network operations. The SKYLINK system provides a communications backbone in orbit, enabling HERALD relays and HAWKEYE systems to operate from anywhere on the planet.\n\nUnlocks:\n- SKYLINK Launch Pad (satellite manufacturing)\n- SKYLINK Terminal (connects LATTICE to satellite)</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>2500</baseCost>
+    <prerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </prerequisites>
+    <researchViewX>15.00</researchViewX>
+    <researchViewY>4.50</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
+  <!-- HERALD - now requires SKYLINK -->
   <ResearchProjectDef>
     <defName>Arsenal_NetworkComms</defName>
-    <label>MITHRIL network communications</label>
-    <description>Develop long-range communications technology to extend the MITHRIL network beyond the home tile. The HERALD relay allows remote HUBs, HOPs, and other MITHRIL buildings to maintain connectivity with the central LATTICE system. Essential for coordinated operations across multiple map tiles.</description>
+    <label>HERALD relay network</label>
+    <description>Develop surface-based relay stations that connect to the SKYLINK satellite network. HERALD relays allow remote tiles to maintain network connectivity with the central LATTICE system. Essential for coordinated operations across multiple map tiles.\n\nRequires operational SKYLINK satellite.</description>
     <techLevel>Spacer</techLevel>
-    <baseCost>3000</baseCost>
+    <baseCost>1500</baseCost>
     <prerequisites>
-      <li>Arsenal_CruiseMissiles</li>
+      <li>Arsenal_SkyLink</li>
     </prerequisites>
-    <researchViewX>13.50</researchViewX>
+    <researchViewX>16.50</researchViewX>
+    <researchViewY>3.50</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
+  <!-- HAWKEYE Tactical Suite -->
+  <ResearchProjectDef>
+    <defName>Arsenal_HawkEye</defName>
+    <label>HAWKEYE tactical suite</label>
+    <description>Develop wearable command systems that integrate with the MITHRIL network via SKYLINK. The HAWKEYE helmet turns its wearer into a mobile sensor node with the ability to designate DAGGER strikes and mark priority targets for DART convergence.\n\nUnlocks:\n- HAWKEYE Helmet (craftable at fabrication bench)\n\nRequires operational SKYLINK satellite.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>2000</baseCost>
+    <prerequisites>
+      <li>Arsenal_SkyLink</li>
+    </prerequisites>
+    <researchViewX>16.50</researchViewX>
     <researchViewY>5.50</researchViewY>
     <tab>Main</tab>
   </ResearchProjectDef>

@@ -98,7 +98,54 @@ namespace Arsenal
         public void SetCustomName(string name) => customName = name;
 
         public int GetStoredMissileCount() => storedMissiles.Count;
+        public int StoredMissileCount => storedMissiles.Count;
         public bool CanStoreMissile() => storedMissiles.Count < MAX_STORED;
+
+        /// <summary>
+        /// Launches a missile at a local target cell (used by HAWKEYE designation).
+        /// Returns true if launch was successful.
+        /// </summary>
+        public bool LaunchMissileAt(IntVec3 targetCell)
+        {
+            if (storedMissiles.Count == 0)
+                return false;
+
+            if (!IsPoweredOn())
+                return false;
+
+            if (!HasNetworkConnection())
+                return false;
+
+            // Find target map from the target cell's context
+            // For HAWKEYE, target is always on pawn's current map
+            Map targetMap = Find.CurrentMap;
+            if (targetMap == null)
+                return false;
+
+            int targetTile = targetMap.Tile;
+
+            Thing missile = storedMissiles[0];
+            storedMissiles.RemoveAt(0);
+
+            int dist = Find.WorldGrid.TraversalDistanceBetween(Map.Tile, targetTile);
+
+            // Create strike world object
+            WorldObject_MissileStrike strike =
+                (WorldObject_MissileStrike)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_MissileStrike);
+            strike.Tile = Map.Tile;
+            strike.destinationTile = targetTile;
+            strike.targetCell = targetCell;
+            strike.arrivalTick = Find.TickManager.TicksGame + (dist * 50);
+            strike.sourceHubLabel = Label;
+
+            // Spawn takeoff skyfaller
+            MissileLaunchingSkyfaller skyfaller = (MissileLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                ArsenalDefOf.Arsenal_MissileLaunching);
+            skyfaller.missileStrike = strike;
+
+            GenSpawn.Spawn(skyfaller, Position, Map);
+            return true;
+        }
 
         public bool StoreMissile(Thing missile)
         {

@@ -123,7 +123,7 @@
   <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_HERALD</defName>
     <label>HERALD comm relay</label>
-    <description>Long-range communications relay that connects remote tiles to the MITHRIL LATTICE network. Required for HUBs and HOPs on remote tiles to coordinate with the central LATTICE. Buildings on the same tile as the LATTICE do not need a HERALD. Only one HERALD per map tile is needed.</description>
+    <description>Long-range communications relay that connects to the SKYLINK satellite network. Required for HUBs and HOPs on remote tiles to coordinate with the central LATTICE. Buildings on the same tile as the LATTICE do not need a HERALD. Only one HERALD per map tile is needed.\n\nRequires:\n- SKYLINK satellite in orbit\n- SKYLINK Terminal linked to LATTICE</description>
     <thingClass>Arsenal.Building_HERALD</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_HERALD</texPath>

@@ -25,16 +25,25 @@ namespace Arsenal
         #region Properties
 
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;
-        public bool IsOnline => IsPoweredOn;
+
+        /// <summary>
+        /// HERALD is online if powered AND SKYLINK satellite is operational.
+        /// </summary>
+        public bool IsOnline => IsPoweredOn && ArsenalNetworkManager.IsLatticeConnectedToSkylink();
 
         /// <summary>
         /// Returns whether LATTICE network is accessible from this tile.
+        /// Requires: HERALD powered + SKYLINK satellite + Terminal linked to LATTICE.
         /// </summary>
         public bool IsNetworkConnected
         {
             get
             {
-                if (!IsOnline)
+                if (!IsPoweredOn)
+                    return false;
+
+                // Require SKYLINK connection
+                if (!ArsenalNetworkManager.IsLatticeConnectedToSkylink())
                     return false;
 
                 var lattice = ArsenalNetworkManager.GlobalLattice;
@@ -111,6 +120,21 @@ namespace Arsenal
                 str += "Status: ONLINE";
             }
 
+            // SKYLINK satellite status
+            str += "\n";
+            if (!ArsenalNetworkManager.IsSatelliteInOrbit())
+            {
+                str += "<color=yellow>SKYLINK: NO SATELLITE — Launch required</color>";
+            }
+            else if (!ArsenalNetworkManager.IsLatticeConnectedToSkylink())
+            {
+                str += "<color=yellow>SKYLINK: NOT LINKED — Terminal required near LATTICE</color>";
+            }
+            else
+            {
+                str += "SKYLINK: CONNECTED";
+            }
+
             // Network connection status
             var lattice = ArsenalNetworkManager.GlobalLattice;
             if (lattice == null)
@@ -125,9 +149,13 @@ namespace Arsenal
             {
                 str += "\nNetwork: DISCONNECTED — HERALD unpowered";
             }
+            else if (!ArsenalNetworkManager.IsLatticeConnectedToSkylink())
+            {
+                str += "\nNetwork: DISCONNECTED — No SKYLINK uplink";
+            }
             else
             {
-                str += "\nNetwork: CONNECTED to LATTICE";
+                str += "\nNetwork: CONNECTED via SKYLINK";
             }
 
             // Show what this tile can now access

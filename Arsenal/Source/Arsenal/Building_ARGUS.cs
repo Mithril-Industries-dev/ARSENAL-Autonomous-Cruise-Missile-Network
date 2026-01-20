@@ -39,6 +39,37 @@ namespace Arsenal
         public float DetectionRadius => DETECTION_RADIUS;
         public int ThreatsInRange => lastScanThreatCount;
 
+        /// <summary>
+        /// Gets all currently detected threats within range and LOS.
+        /// Used by ArsenalNetworkManager for global threat aggregation.
+        /// </summary>
+        public List<Pawn> GetDetectedThreats()
+        {
+            List<Pawn> threats = new List<Pawn>();
+
+            if (Map == null)
+                return threats;
+
+            foreach (Pawn pawn in Map.mapPawns.AllPawnsSpawned)
+            {
+                if (!pawn.HostileTo(Faction.OfPlayer))
+                    continue;
+                if (pawn.Dead || pawn.Downed)
+                    continue;
+
+                float distance = pawn.Position.DistanceTo(Position);
+                if (distance > DETECTION_RADIUS)
+                    continue;
+
+                if (GenSight.LineOfSight(Position, pawn.Position, Map))
+                {
+                    threats.Add(pawn);
+                }
+            }
+
+            return threats;
+        }
+
         #endregion
 
         #region Lifecycle
