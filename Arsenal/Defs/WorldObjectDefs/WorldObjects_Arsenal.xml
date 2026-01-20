@@ -30,9 +30,9 @@
     <description>An orbital communications satellite providing global connectivity for the MITHRIL network. Enables HERALD relays and HAWKEYE systems to operate anywhere on the planet.</description>
     <worldObjectClass>Arsenal.WorldObject_SkyLinkSatellite</worldObjectClass>
     <texture>World/WorldObjects/Arsenal/SkyLinkSatellite</texture>
-    <expandingIcon>true</expandingIcon>
-    <expandingIconPriority>3</expandingIconPriority>
-    <useDynamicDrawer>true</useDynamicDrawer>
+    <expandingIcon>false</expandingIcon>
+    <useDynamicDrawer>false</useDynamicDrawer>
+    <drawOffscreen>true</drawOffscreen>
   </WorldObjectDef>
 
 </Defs>

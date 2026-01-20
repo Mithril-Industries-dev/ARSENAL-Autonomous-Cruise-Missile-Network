@@ -9,7 +9,7 @@ namespace Arsenal
     /// SKYLINK Orbital Communications Satellite - persistent world object in orbit.
     /// Enables global MITHRIL network operations when connected via Terminal to LATTICE.
     /// Only one satellite can be in orbit at any time.
-    /// Renders in orbit layer (like space stations/asteroids) not on world map.
+    /// Renders in orbit layer (like space stations/asteroids from Odyssey) not on world map tile.
     /// </summary>
     public class WorldObject_SkyLinkSatellite : WorldObject
     {
@@ -17,9 +17,17 @@ namespace Arsenal
         private float health = 100f;
         private const float MAX_HEALTH = 100f;
 
-        // Orbit animation
+        // Orbit animation - satellite orbits around the planet
         private float orbitAngle = 0f;
-        private const float ORBIT_SPEED = 0.5f; // Degrees per tick at normal speed
+        private const float ORBIT_SPEED = 0.3f; // Degrees per game-tick at normal speed
+
+        // Orbit parameters - matches Odyssey-style orbital layer
+        private const float ORBIT_RADIUS = 115f; // Distance from world center (world radius ~100)
+        private const float ORBIT_HEIGHT = 10f;   // Height above equatorial plane
+        private const float ICON_SIZE = 8f;       // Size of the satellite icon
+
+        // Cached material
+        private Material cachedMat;
 
         public bool IsOperational => health > 0f;
         public float HealthPercent => health / MAX_HEALTH;
@@ -31,69 +39,77 @@ namespace Arsenal
             if (launchTick < 0)
             {
                 launchTick = Find.TickManager.TicksGame;
-                orbitAngle = Rand.Range(0f, 360f); // Random starting position
+                orbitAngle = Rand.Range(0f, 360f); // Random starting position in orbit
             }
 
             // Register with network manager
             ArsenalNetworkManager.RegisterSatellite(this);
+
+            Log.Message($"[ARSENAL] SKYLINK satellite spawned in orbit at angle {orbitAngle:F1}°");
         }
 
         protected override void Tick()
         {
             base.Tick();
 
-            // Slowly orbit
-            orbitAngle += ORBIT_SPEED * Find.TickManager.TickRateMultiplier / 60f;
+            // Slowly orbit around the planet
+            orbitAngle += ORBIT_SPEED;
             if (orbitAngle >= 360f)
                 orbitAngle -= 360f;
         }
 
         /// <summary>
+        /// Calculate the 3D position in orbit around the world globe.
+        /// </summary>
+        private Vector3 GetOrbitalPosition()
+        {
+            float radians = orbitAngle * Mathf.Deg2Rad;
+            return new Vector3(
+                Mathf.Sin(radians) * ORBIT_RADIUS,
+                ORBIT_HEIGHT,
+                Mathf.Cos(radians) * ORBIT_RADIUS
+            );
+        }
+
+        /// <summary>
         /// Draw the satellite in orbit around the planet.
-        /// Uses the orbit layer rendering similar to asteroids/space stations.
+        /// Renders in the orbital layer like Odyssey space stations/asteroids.
         /// </summary>
         public override void Draw()
         {
-            // Don't call base.Draw() - we handle our own rendering
-            // The satellite orbits visually around the globe
+            // Don't call base.Draw() - we render at orbital position, not at tile
 
-            float orbitRadius = 1.15f; // Slightly outside the globe
-            Vector3 center = Vector3.zero;
+            Vector3 pos = GetOrbitalPosition();
 
-            // Calculate position in orbit
-            float radians = orbitAngle * Mathf.Deg2Rad;
-            Vector3 pos = center + new Vector3(
-                Mathf.Sin(radians) * orbitRadius,
-                0.3f, // Slight elevation
-                Mathf.Cos(radians) * orbitRadius
-            );
-
-            // Draw the satellite icon using the expanding icon texture
-            float size = 0.7f;
+            // Get or create material
             Material mat = this.Material;
-            if (mat != null)
+            if (mat == null)
             {
-                Vector3 s = new Vector3(size, 1f, size);
-                Matrix4x4 matrix = default;
-                matrix.SetTRS(pos, Quaternion.identity, s);
-                Graphics.DrawMesh(MeshPool.plane10, matrix, mat, WorldCameraManager.WorldLayer);
+                // Fallback: create a simple colored material if texture missing
+                if (cachedMat == null)
+                {
+                    cachedMat = SolidColorMaterials.SimpleSolidColorMaterial(new Color(0.3f, 0.5f, 1f, 1f));
+                }
+                mat = cachedMat;
             }
+
+            // Draw satellite icon facing camera
+            Vector3 scale = new Vector3(ICON_SIZE, 1f, ICON_SIZE);
+            Quaternion rotation = Quaternion.LookRotation(pos.normalized, Vector3.up);
+
+            Matrix4x4 matrix = Matrix4x4.TRS(pos, rotation, scale);
+            Graphics.DrawMesh(MeshPool.plane10, matrix, mat, WorldCameraManager.WorldLayer);
         }
 
-        public override Vector3 DrawPos
-        {
-            get
-            {
-                // Return orbital position for selection/clicking
-                float orbitRadius = 1.15f;
-                float radians = orbitAngle * Mathf.Deg2Rad;
-                return new Vector3(
-                    Mathf.Sin(radians) * orbitRadius,
-                    0.3f,
-                    Mathf.Cos(radians) * orbitRadius
-                );
-            }
-        }
+        /// <summary>
+        /// Override DrawPos for selection and clicking - returns orbital position.
+        /// </summary>
+        public override Vector3 DrawPos => GetOrbitalPosition();
+
+        /// <summary>
+        /// Override to allow selection even though we're not at a standard tile position.
+        /// </summary>
+        public override bool SelectableNow => true;
 
         public override void PostRemove()
         {
