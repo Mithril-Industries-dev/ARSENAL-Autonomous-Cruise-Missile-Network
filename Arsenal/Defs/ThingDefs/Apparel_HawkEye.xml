@@ -8,7 +8,7 @@
     <description>Advanced tactical command helmet integrating mobile ARGUS sensor capability with two-way LATTICE communication via SKYLINK. The wearer becomes a mobile sensor node, detecting threats within a 30-tile radius and receiving network awareness of all threats detected by the MITHRIL system.\n\nAbilities:\n- Designate DAGGER Strike: Target a location for cruise missile strike\n- Mark QUIVER Priority: Mark an enemy for concentrated DART attack\n\nRequires operational SKYLINK satellite and Terminal connection to LATTICE.\n\nPassive bonuses:\n+15% shooting accuracy\n+15% aiming speed\n+10% move speed\nNight vision enabled</description>
     <thingClass>Arsenal.Apparel_HawkEye</thingClass>
     <graphicData>
-      <texPath>Arsenal/Apparel/MITHRIL_HAWKEYE</texPath>
+      <texPath>Arsenal/MITHRIL_HAWKEYE</texPath>
       <graphicClass>Graphic_Single</graphicClass>
     </graphicData>
     <techLevel>Spacer</techLevel>
@@ -40,7 +40,7 @@
       <bodyPartGroups>
         <li>FullHead</li>
       </bodyPartGroups>
-      <wornGraphicPath>Arsenal/Apparel/MITHRIL_HAWKEYE</wornGraphicPath>
+      <wornGraphicPath>Arsenal/MITHRIL_HAWKEYE</wornGraphicPath>
       <layers>
         <li>Overhead</li>
       </layers>
