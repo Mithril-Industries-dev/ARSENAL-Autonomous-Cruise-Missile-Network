@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
+using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 using Verse.Sound;
@@ -288,7 +289,7 @@ namespace Arsenal
 
             // Create the satellite world object
             WorldObject_SkyLinkSatellite satellite = (WorldObject_SkyLinkSatellite)WorldObjectMaker.MakeWorldObject(
-                WorldObjectDef.Named("Arsenal_SkyLinkSatellite"));
+                DefDatabase<WorldObjectDef>.GetNamed("Arsenal_SkyLinkSatellite"));
             satellite.Tile = Map.Tile; // Satellite is "over" this tile initially (doesn't really matter)
             Find.WorldObjects.Add(satellite);
 
@@ -384,15 +385,18 @@ namespace Arsenal
                 if (!isManufacturing && !hasBuiltSatellite)
                 {
                     // Start manufacturing
-                    yield return new Command_Action
+                    var manufactureCmd = new Command_Action
                     {
                         defaultLabel = "Manufacture Satellite",
                         defaultDesc = "Begin manufacturing a SKYLINK communications satellite.\n\nCost:\n- Steel: 200\n- Plasteel: 150\n- Gold: 50\n- Components: 8\n- Adv. Components: 6\n\nTime: 4 days",
                         icon = ContentFinder<Texture2D>.Get("UI/Commands/LaunchReport", false),
-                        action = StartManufacturing,
-                        disabled = !HasResourcesForSatellite(),
-                        disabledReason = "Insufficient resources in adjacent storage"
+                        action = StartManufacturing
                     };
+                    if (!HasResourcesForSatellite())
+                    {
+                        manufactureCmd.Disable("Insufficient resources in adjacent storage");
+                    }
+                    yield return manufactureCmd;
                 }
                 else if (isManufacturing)
                 {
@@ -408,15 +412,18 @@ namespace Arsenal
                 else if (hasBuiltSatellite)
                 {
                     // Launch satellite
-                    yield return new Command_Action
+                    var launchCmd = new Command_Action
                     {
                         defaultLabel = "Launch Satellite",
                         defaultDesc = "Launch the SKYLINK satellite into orbit. Once in orbit, global network operations will be enabled.",
                         icon = ContentFinder<Texture2D>.Get("UI/Commands/LaunchReport", false),
-                        action = LaunchSatellite,
-                        disabled = isLaunching,
-                        disabledReason = "Launch in progress"
+                        action = LaunchSatellite
                     };
+                    if (isLaunching)
+                    {
+                        launchCmd.Disable("Launch in progress");
+                    }
+                    yield return launchCmd;
                 }
             }
             else

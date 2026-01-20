@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -61,7 +62,7 @@ namespace Arsenal
                 yield break;
 
             // Designate DAGGER Strike ability
-            yield return new Command_Target
+            var daggerCmd = new Command_Target
             {
                 defaultLabel = "DAGGER Strike",
                 defaultDesc = "Designate a location for DAGGER cruise missile strike. System will select optimal HUB and launch.",
@@ -75,13 +76,16 @@ namespace Arsenal
                 action = delegate(LocalTargetInfo target)
                 {
                     SensorComp?.DesignateDaggerStrike(target.Cell);
-                },
-                disabled = !CanDesignateStrike(),
-                disabledReason = GetStrikeDisabledReason()
+                }
             };
+            if (!CanDesignateStrike())
+            {
+                daggerCmd.Disable(GetStrikeDisabledReason());
+            }
+            yield return daggerCmd;
 
             // Mark QUIVER Priority ability
-            yield return new Command_Target
+            var markCmd = new Command_Target
             {
                 defaultLabel = "Mark Priority",
                 defaultDesc = "Mark an enemy pawn as priority target. DARTs will converge on the marked target until dead or 30 seconds expire.",
@@ -99,10 +103,13 @@ namespace Arsenal
                     {
                         SensorComp?.MarkQuiverPriority(targetPawn);
                     }
-                },
-                disabled = !CanMarkPriority(),
-                disabledReason = GetMarkDisabledReason()
+                }
             };
+            if (!CanMarkPriority())
+            {
+                markCmd.Disable(GetMarkDisabledReason());
+            }
+            yield return markCmd;
 
             // Network Status display
             yield return new Command_Action
