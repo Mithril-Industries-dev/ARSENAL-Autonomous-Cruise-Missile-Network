@@ -15,10 +15,11 @@ namespace Arsenal
 
     public enum LineStatus
     {
-        Paused,             // Manually disabled (enabled = false)
-        Idle,               // Enabled, but all destinations full
-        WaitingResources,   // Enabled, has destination, missing materials
-        Manufacturing       // Actively producing
+        Paused,                 // Manually disabled (enabled = false)
+        Idle,                   // Enabled, but all destinations full
+        WaitingResources,       // Enabled, has destination, missing materials
+        DestinationUnreachable, // Enabled, but destination HUB has no network/route
+        Manufacturing           // Actively producing
     }
 
     /// <summary>
@@ -88,8 +89,27 @@ namespace Arsenal
             currentDestination = GetDestination();
             if (currentDestination == null)
             {
-                status = LineStatus.Idle;
+                // Check if it's because destination is unreachable vs just full
+                if (HasUnreachableDestination())
+                {
+                    status = LineStatus.DestinationUnreachable;
+                }
+                else
+                {
+                    status = LineStatus.Idle;
+                }
                 return;
+            }
+
+            // For HUBs, verify route is still valid (in case HOPs went offline mid-production)
+            if (resourcesConsumed && product.destinationType == typeof(Building_Hub))
+            {
+                Building_Hub hub = currentDestination as Building_Hub;
+                if (hub != null && !arsenal.CanReachHubPublic(hub))
+                {
+                    status = LineStatus.DestinationUnreachable;
+                    return;
+                }
             }
 
             // If we've already consumed resources for this job, keep manufacturing
@@ -110,24 +130,63 @@ namespace Arsenal
         }
 
         /// <summary>
+        /// Checks if there's a destination that exists but is unreachable due to network issues.
+        /// </summary>
+        private bool HasUnreachableDestination()
+        {
+            if (product == null) return false;
+
+            if (product.destinationType == typeof(Building_Hub))
+            {
+                // Check if there are HUBs that exist but lack network connectivity
+                var allHubs = ArsenalNetworkManager.GetAllHubs();
+                foreach (var hub in allHubs)
+                {
+                    if (!hub.IsFull && hub.IsPoweredOn() && !hub.HasNetworkConnection())
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Gets the destination for this line's output.
+        /// Validates network connectivity for HUBs.
         /// </summary>
         public Building GetDestination()
         {
             if (destMode == DestinationMode.Locked)
             {
-                // Verify locked destination is still valid and not full
+                // Verify locked destination is still valid, not full, and reachable
                 if (lockedDestination != null &&
                     !lockedDestination.Destroyed &&
-                    !IsDestinationFull(lockedDestination))
+                    !IsDestinationFull(lockedDestination) &&
+                    IsDestinationReachable(lockedDestination))
                 {
                     return lockedDestination;
                 }
-                return null; // Locked but invalid/full
+                return null; // Locked but invalid/full/unreachable
             }
 
-            // Auto mode: find least-full valid destination
+            // Auto mode: find least-full valid destination (already checks network connectivity)
             return arsenal.GetBestDestinationFor(product);
+        }
+
+        /// <summary>
+        /// Checks if destination is reachable (network connectivity for HUBs).
+        /// </summary>
+        private bool IsDestinationReachable(Building dest)
+        {
+            if (dest is Building_Hub hub)
+            {
+                // HUB must have network connection AND be reachable via route
+                if (!hub.HasNetworkConnection())
+                    return false;
+                return arsenal.CanReachHubPublic(hub);
+            }
+            // QUIVERs are local, always reachable if not destroyed
+            return true;
         }
 
         private bool IsDestinationFull(Building dest)

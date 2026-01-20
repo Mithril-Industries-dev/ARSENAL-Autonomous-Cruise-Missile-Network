@@ -521,30 +521,59 @@ namespace Arsenal
             {
                 // DAGGER - spawn cruise missile
                 Building_Hub targetHub = destination as Building_Hub;
-                if (targetHub == null)
+                Thing missileItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_CruiseMissile);
+
+                // Re-validate destination at delivery time (HOP/HERALD may have gone offline)
+                if (targetHub == null || !CanReachHub(targetHub))
                 {
-                    // No valid target - drop missile
-                    Thing missile = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_CruiseMissile);
-                    GenPlace.TryPlaceThing(missile, Position, Map, ThingPlaceMode.Near);
-                    Messages.Message(Label + ": DAGGER completed but no valid destination.", this, MessageTypeDefOf.NeutralEvent);
+                    // Original destination unreachable - try to find alternative
+                    Building_Hub alternativeHub = FindAlternativeHub(targetHub);
+
+                    if (alternativeHub != null && CanReachHub(alternativeHub))
+                    {
+                        // Found alternative - launch there instead
+                        LaunchMissileToHub(missileItem, alternativeHub);
+                        Messages.Message(Label + " Line " + (line.index + 1) + ": DAGGER re-routed to " + alternativeHub.Label +
+                            " (original destination unreachable).", this, MessageTypeDefOf.NeutralEvent);
+                    }
+                    else if (targetHub != null)
+                    {
+                        // No alternative found - queue missile for original target
+                        missileQueue.Add(new QueuedMissile { missile = missileItem, targetHub = targetHub });
+                        Messages.Message(Label + " Line " + (line.index + 1) + ": DAGGER queued - " +
+                            targetHub.Label + " unreachable (HOP/HERALD offline?).", this, MessageTypeDefOf.NeutralEvent);
+                    }
+                    else
+                    {
+                        // No destination at all - drop missile
+                        GenPlace.TryPlaceThing(missileItem, Position, Map, ThingPlaceMode.Near);
+                        Messages.Message(Label + ": DAGGER completed but no valid destination.", this, MessageTypeDefOf.NeutralEvent);
+                    }
                     return;
                 }
 
-                Thing missileItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_CruiseMissile);
-
-                if (CanReachHub(targetHub))
-                {
-                    LaunchMissileToHub(missileItem, targetHub);
-                    Messages.Message(Label + " Line " + (line.index + 1) + ": DAGGER launched to " + targetHub.Label,
-                        this, MessageTypeDefOf.PositiveEvent);
-                }
-                else
-                {
-                    missileQueue.Add(new QueuedMissile { missile = missileItem, targetHub = targetHub });
-                    Messages.Message(Label + " Line " + (line.index + 1) + ": DAGGER queued - waiting for HOP.",
-                        this, MessageTypeDefOf.NeutralEvent);
-                }
+                // Original destination is reachable - launch
+                LaunchMissileToHub(missileItem, targetHub);
+                Messages.Message(Label + " Line " + (line.index + 1) + ": DAGGER launched to " + targetHub.Label,
+                    this, MessageTypeDefOf.PositiveEvent);
             }
+        }
+
+        /// <summary>
+        /// Tries to find an alternative HUB destination when the original becomes unreachable.
+        /// </summary>
+        private Building_Hub FindAlternativeHub(Building_Hub originalHub)
+        {
+            RefreshNetworkCache();
+
+            // Find any reachable HUB that isn't full
+            return cachedHubs
+                .Where(h => h != originalHub)
+                .Where(h => !h.IsFull && h.IsPoweredOn() && h.HasNetworkConnection())
+                .Where(h => CanReachHub(h))
+                .OrderBy(h => h.priority)
+                .ThenByDescending(h => h.EmptySlots)
+                .FirstOrDefault();
         }
 
         #endregion
@@ -571,6 +600,14 @@ namespace Arsenal
                     missileQueue.RemoveAt(i);
                 }
             }
+        }
+
+        /// <summary>
+        /// Public wrapper for CanReachHub, used by ManufacturingLine.
+        /// </summary>
+        public bool CanReachHubPublic(Building_Hub hub)
+        {
+            return CanReachHub(hub);
         }
 
         private bool CanReachHub(Building_Hub hub)
