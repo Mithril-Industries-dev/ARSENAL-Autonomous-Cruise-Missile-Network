@@ -29,6 +29,9 @@ namespace Arsenal
         private int lastScanThreatCount = 0;
         private bool threatDetectedThisScan = false;
 
+        // Toggle for LOS overlay visualization
+        private bool showLOSOverlay = false;
+
         #region Properties
 
         public bool IsPoweredOn => true; // ARGUS produces power, doesn't consume it
@@ -175,6 +178,16 @@ namespace Arsenal
                 }
             };
 
+            // Toggle LOS overlay
+            yield return new Command_Toggle
+            {
+                defaultLabel = "Show LOS",
+                defaultDesc = "Toggle line-of-sight overlay. Green cells are visible, red cells are blocked by terrain or structures. Red lines show enemies in range but blocked. White lines show detected threats.",
+                isActive = () => showLOSOverlay,
+                toggleAction = delegate { showLOSOverlay = !showLOSOverlay; },
+                icon = ContentFinder<Texture2D>.Get("UI/Commands/ViewQuest", false)
+            };
+
             // Debug gizmos
             if (Prefs.DevMode)
             {
@@ -230,11 +243,90 @@ namespace Arsenal
             return str;
         }
 
-        // Draw detection radius when selected
+        // Draw detection radius and LOS visualization when selected
         public override void DrawExtraSelectionOverlays()
         {
             base.DrawExtraSelectionOverlays();
+
+            // Draw detection radius ring
             GenDraw.DrawRadiusRing(Position, DETECTION_RADIUS);
+
+            // Draw lines to threats in range (always shown when selected)
+            DrawThreatLines();
+
+            // Draw LOS coverage overlay if enabled
+            if (showLOSOverlay)
+            {
+                DrawLOSOverlay();
+            }
+        }
+
+        /// <summary>
+        /// Draws lines from ARGUS to all hostile pawns in range.
+        /// Red = detected (has LOS), White = blocked (no LOS)
+        /// </summary>
+        private void DrawThreatLines()
+        {
+            if (Map == null) return;
+
+            foreach (Pawn pawn in Map.mapPawns.AllPawnsSpawned)
+            {
+                if (!pawn.HostileTo(Faction.OfPlayer)) continue;
+                if (pawn.Dead || pawn.Downed) continue;
+
+                float distance = pawn.Position.DistanceTo(Position);
+                if (distance > DETECTION_RADIUS) continue;
+
+                bool hasLOS = GenSight.LineOfSight(Position, pawn.Position, Map);
+
+                // Draw line - red if has LOS (threat detected), white/gray if blocked
+                if (hasLOS)
+                {
+                    GenDraw.DrawLineBetween(
+                        Position.ToVector3Shifted(),
+                        pawn.Position.ToVector3Shifted(),
+                        SimpleColor.Red
+                    );
+                }
+                else
+                {
+                    GenDraw.DrawLineBetween(
+                        Position.ToVector3Shifted(),
+                        pawn.Position.ToVector3Shifted(),
+                        SimpleColor.White
+                    );
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draws an overlay showing which cells have line-of-sight.
+        /// Green = visible, Red = blocked
+        /// </summary>
+        private void DrawLOSOverlay()
+        {
+            if (Map == null) return;
+
+            int radius = (int)DETECTION_RADIUS;
+
+            foreach (IntVec3 cell in GenRadial.RadialCellsAround(Position, radius, true))
+            {
+                if (!cell.InBounds(Map)) continue;
+                if (cell == Position) continue;
+
+                bool hasLOS = GenSight.LineOfSight(Position, cell, Map);
+
+                if (hasLOS)
+                {
+                    // Visible - draw green
+                    CellRenderer.RenderCell(cell, SolidColorMaterials.SimpleSolidColorMaterial(new Color(0f, 1f, 0f, 0.15f)));
+                }
+                else
+                {
+                    // Blocked - draw red
+                    CellRenderer.RenderCell(cell, SolidColorMaterials.SimpleSolidColorMaterial(new Color(1f, 0f, 0f, 0.15f)));
+                }
+            }
         }
 
         #endregion
