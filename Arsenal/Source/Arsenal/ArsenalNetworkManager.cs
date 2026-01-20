@@ -30,7 +30,7 @@ namespace Arsenal
         {
             get
             {
-                lattices.RemoveAll(l => l == null || l.Destroyed);
+                lattices.RemoveAll(l => l == null || l.Destroyed || !l.Spawned);
                 return lattices.FirstOrDefault(l => l.IsPoweredOn()) ?? lattices.FirstOrDefault();
             }
         }
@@ -212,31 +212,31 @@ namespace Arsenal
 
         public static List<Building_Arsenal> GetAllArsenals()
         {
-            arsenals.RemoveAll(a => a == null || a.Destroyed);
+            arsenals.RemoveAll(a => a == null || a.Destroyed || !a.Spawned);
             return arsenals.ToList();
         }
 
         public static List<Building_Hub> GetAllHubs()
         {
-            hubs.RemoveAll(h => h == null || h.Destroyed);
+            hubs.RemoveAll(h => h == null || h.Destroyed || !h.Spawned);
             return hubs.ToList();
         }
 
         public static List<Building_Hop> GetAllHops()
         {
-            hops.RemoveAll(h => h == null || h.Destroyed);
+            hops.RemoveAll(h => h == null || h.Destroyed || !h.Spawned);
             return hops.ToList();
         }
 
         public static List<Building_Lattice> GetAllLattices()
         {
-            lattices.RemoveAll(l => l == null || l.Destroyed);
+            lattices.RemoveAll(l => l == null || l.Destroyed || !l.Spawned);
             return lattices.ToList();
         }
 
         public static List<Building_Quiver> GetAllQuivers()
         {
-            quivers.RemoveAll(q => q == null || q.Destroyed);
+            quivers.RemoveAll(q => q == null || q.Destroyed || !q.Spawned);
             return quivers.ToList();
         }
 

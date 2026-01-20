@@ -211,6 +211,15 @@ namespace Arsenal
             if (Find.TickManager.TicksGame - lastCacheRefresh < CACHE_REFRESH_INTERVAL)
                 return;
 
+            ForceRefreshNetworkCache();
+        }
+
+        /// <summary>
+        /// Forces a cache refresh regardless of the interval timer.
+        /// Call this after events that change network state (e.g., deliveries completing).
+        /// </summary>
+        public void ForceRefreshNetworkCache()
+        {
             // HUBs and HOPs are searched GLOBALLY (across all maps) for DAGGER network
             cachedHubs = ArsenalNetworkManager.GetAllHubs().ToList();
             cachedHops = ArsenalNetworkManager.GetAllHops().ToList();
@@ -493,6 +502,9 @@ namespace Arsenal
 
             // Reset line
             line.Reset();
+
+            // Force cache refresh so next destination selection uses current HUB fill levels
+            ForceRefreshNetworkCache();
         }
 
         private void SpawnProductFlyer(MithrilProductDef product, Building destination, ManufacturingLine line)
@@ -818,8 +830,7 @@ namespace Arsenal
                     defaultLabel = "DEV: Refresh Cache",
                     action = delegate
                     {
-                        lastCacheRefresh = -999;
-                        RefreshNetworkCache();
+                        ForceRefreshNetworkCache();
                     }
                 };
 
