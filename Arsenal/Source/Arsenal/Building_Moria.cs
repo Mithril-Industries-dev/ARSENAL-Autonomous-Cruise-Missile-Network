@@ -346,7 +346,19 @@ namespace Arsenal
             foreach (Gizmo g in base.GetGizmos())
                 yield return g;
 
-            // Storage settings
+            // Storage filter configuration
+            yield return new Command_Action
+            {
+                defaultLabel = "Storage Filter",
+                defaultDesc = "Configure which items this MORIA will accept from MULEs.",
+                icon = ContentFinder<Texture2D>.Get("UI/Commands/SetTargetFuelLevel", false),
+                action = delegate
+                {
+                    Find.WindowStack.Add(new Dialog_MoriaStorageFilter(this, storageSettings));
+                }
+            };
+
+            // Storage settings copy/paste
             foreach (Gizmo g in StorageSettingsClipboard.CopyPasteGizmosFor(storageSettings))
                 yield return g;
 
@@ -442,6 +454,49 @@ namespace Arsenal
                 Close();
             }
             if (Widgets.ButtonText(new Rect(140, 90, 120, 30), "Cancel"))
+            {
+                Close();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dialog for configuring MORIA storage filter.
+    /// </summary>
+    public class Dialog_MoriaStorageFilter : Window
+    {
+        private Building_Moria moria;
+        private StorageSettings settings;
+        private ThingFilterUI.UIState filterState = new ThingFilterUI.UIState();
+
+        public Dialog_MoriaStorageFilter(Building_Moria m, StorageSettings s)
+        {
+            moria = m;
+            settings = s;
+            doCloseX = true;
+            forcePause = true;
+            absorbInputAroundWindow = true;
+            closeOnClickedOutside = false;
+            draggable = true;
+        }
+
+        public override Vector2 InitialSize => new Vector2(400f, 600f);
+
+        public override void DoWindowContents(Rect inRect)
+        {
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(0, 0, inRect.width, 30), $"{moria.Label} - Storage Filter");
+            Text.Font = GameFont.Small;
+
+            Widgets.Label(new Rect(0, 35, inRect.width, 20),
+                "Select which items MULEs will deliver to this MORIA:");
+
+            Rect filterRect = new Rect(0, 60, inRect.width, inRect.height - 110);
+
+            ThingFilter parentFilter = moria.def.building?.fixedStorageSettings?.filter;
+            ThingFilterUI.DoThingFilterConfigWindow(filterRect, filterState, settings.filter, parentFilter);
+
+            if (Widgets.ButtonText(new Rect(inRect.width / 2 - 60, inRect.height - 40, 120, 35), "Close"))
             {
                 Close();
             }

@@ -549,73 +549,77 @@ namespace Arsenal
 
         #region Movement
 
+        private IntVec3 currentDestination = IntVec3.Invalid;
+
         private void CalculatePathTo(IntVec3 destination)
         {
             if (Map == null) return;
 
-            // Simple direct path calculation for ground drone
-            // Uses a basic pathfinding approach that respects impassable terrain
             currentPath = new List<IntVec3>();
-            IntVec3 current = Position;
-            HashSet<IntVec3> visited = new HashSet<IntVec3>();
-            int maxSteps = 500; // Safety limit
+            currentDestination = destination;
 
-            while (current != destination && currentPath.Count < maxSteps)
+            if (!destination.InBounds(Map))
             {
-                visited.Add(current);
+                return;
+            }
 
-                // Find best adjacent cell towards destination
-                IntVec3 bestNext = IntVec3.Invalid;
-                float bestDist = float.MaxValue;
+            // If already at destination, no path needed
+            if (Position.DistanceTo(destination) < 2f)
+            {
+                return;
+            }
 
-                foreach (IntVec3 adj in GenAdj.CardinalDirections)
-                {
-                    IntVec3 next = current + adj;
-                    if (!next.InBounds(Map)) continue;
-                    if (visited.Contains(next)) continue;
-                    if (!next.Walkable(Map)) continue;
+            // BFS pathfinding - guaranteed to find path if one exists
+            Queue<IntVec3> frontier = new Queue<IntVec3>();
+            Dictionary<IntVec3, IntVec3> cameFrom = new Dictionary<IntVec3, IntVec3>();
 
-                    float dist = next.DistanceTo(destination);
-                    if (dist < bestDist)
-                    {
-                        bestDist = dist;
-                        bestNext = next;
-                    }
-                }
+            frontier.Enqueue(Position);
+            cameFrom[Position] = Position;
 
-                if (!bestNext.IsValid)
-                {
-                    // Try diagonal if cardinal blocked
-                    foreach (IntVec3 adj in GenAdj.DiagonalDirections)
-                    {
-                        IntVec3 next = current + adj;
-                        if (!next.InBounds(Map)) continue;
-                        if (visited.Contains(next)) continue;
-                        if (!next.Walkable(Map)) continue;
+            IntVec3 reached = IntVec3.Invalid;
+            int maxIterations = 3000;
+            int iterations = 0;
 
-                        float dist = next.DistanceTo(destination);
-                        if (dist < bestDist)
-                        {
-                            bestDist = dist;
-                            bestNext = next;
-                        }
-                    }
-                }
+            while (frontier.Count > 0 && iterations < maxIterations)
+            {
+                iterations++;
+                IntVec3 current = frontier.Dequeue();
 
-                if (!bestNext.IsValid)
-                {
-                    // No valid path found
-                    break;
-                }
-
-                currentPath.Add(bestNext);
-                current = bestNext;
-
-                // Close enough to destination
+                // Check if close enough to destination
                 if (current.DistanceTo(destination) < 2f)
                 {
+                    reached = current;
                     break;
                 }
+
+                // Check all 8 neighbors (cardinal first, then diagonal)
+                foreach (IntVec3 dir in GenAdj.AdjacentCells)
+                {
+                    IntVec3 next = current + dir;
+
+                    if (!next.InBounds(Map)) continue;
+                    if (cameFrom.ContainsKey(next)) continue;
+                    if (!next.Walkable(Map)) continue;
+
+                    frontier.Enqueue(next);
+                    cameFrom[next] = current;
+                }
+            }
+
+            // Reconstruct path if we found the destination
+            if (reached.IsValid)
+            {
+                List<IntVec3> reversePath = new List<IntVec3>();
+                IntVec3 step = reached;
+
+                while (step != Position)
+                {
+                    reversePath.Add(step);
+                    step = cameFrom[step];
+                }
+
+                reversePath.Reverse();
+                currentPath = reversePath;
             }
 
             pathIndex = 0;
@@ -626,13 +630,47 @@ namespace Arsenal
         {
             ticksSincePathCalc++;
 
-            // Recalculate path periodically
-            if (ticksSincePathCalc >= PATH_RECALC_INTERVAL && currentTask != null)
+            // Get current destination based on state
+            IntVec3 dest = IntVec3.Invalid;
+            if (state == MuleState.ReturningHome)
             {
-                IntVec3 dest = state == MuleState.ReturningHome
-                    ? (homeStable?.Position ?? Position)
-                    : (state == MuleState.Hauling ? currentTask.destinationCell : currentTask.targetCell);
+                dest = homeStable?.Position ?? Position;
+            }
+            else if (state == MuleState.Hauling && currentTask != null)
+            {
+                dest = currentTask.destinationCell;
+            }
+            else if (currentTask != null)
+            {
+                dest = currentTask.targetCell;
+            }
+
+            // Recalculate path periodically or if we're stuck
+            bool needsRecalc = ticksSincePathCalc >= PATH_RECALC_INTERVAL;
+            bool pathEmpty = currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count;
+
+            if ((needsRecalc || pathEmpty) && dest.IsValid)
+            {
                 CalculatePathTo(dest);
+            }
+
+            // If still no path, try direct movement
+            if ((currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count) && dest.IsValid)
+            {
+                // Direct movement fallback - move towards destination if possible
+                Vector3 targetDir = (dest.ToVector3Shifted() - exactPosition).normalized;
+                Vector3 nextPos = exactPosition + targetDir * SPEED;
+                IntVec3 nextCell = nextPos.ToIntVec3();
+
+                if (nextCell.InBounds(Map) && nextCell.Walkable(Map))
+                {
+                    exactPosition = nextPos;
+                    if (nextCell != Position)
+                    {
+                        Position = nextCell;
+                    }
+                }
+                return;
             }
 
             if (currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count)
