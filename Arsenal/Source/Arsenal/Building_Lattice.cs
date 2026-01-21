@@ -835,13 +835,85 @@ namespace Arsenal
 
         /// <summary>
         /// Called when a DART requests reassignment (target died mid-flight).
+        /// Attempts immediate reassignment before queuing.
         /// </summary>
-        public void RequestReassignment(DART_Flyer dart)
+        public void RequestReassignment(DART_Flyer dart, Pawn oldTarget = null)
         {
-            if (dart != null && !awaitingReassignment.Contains(dart))
+            if (dart == null || dart.Destroyed || !dart.Spawned)
+                return;
+
+            // Decrement assignment count from old target
+            if (oldTarget != null && assignedDartsPerTarget.ContainsKey(oldTarget))
+            {
+                assignedDartsPerTarget[oldTarget]--;
+                if (assignedDartsPerTarget[oldTarget] <= 0)
+                {
+                    assignedDartsPerTarget.Remove(oldTarget);
+                }
+            }
+
+            // Try immediate reassignment first
+            List<Pawn> threats = GetAllValidThreats();
+            Pawn newTarget = FindBestTargetForReassignment(dart, threats);
+
+            if (newTarget != null)
+            {
+                // Immediate reassignment - no queue needed
+                dart.AssignNewTarget(newTarget);
+
+                // Track the assignment
+                if (!assignedDartsPerTarget.ContainsKey(newTarget))
+                {
+                    assignedDartsPerTarget[newTarget] = 0;
+                }
+                assignedDartsPerTarget[newTarget]++;
+                return;
+            }
+
+            // No immediate target available - queue for later
+            if (!awaitingReassignment.Contains(dart))
             {
                 awaitingReassignment.Add(dart);
             }
+        }
+
+        /// <summary>
+        /// Gets all valid threats including ARGUS and HAWKEYE-detected targets.
+        /// </summary>
+        private List<Pawn> GetAllValidThreats()
+        {
+            List<Pawn> threats = GetAggregatedThreats();
+
+            // Include HAWKEYE priority target
+            Pawn hawkeyeTarget = CompHawkeyeSensor.GlobalPriorityTarget;
+            if (hawkeyeTarget != null && !hawkeyeTarget.Dead && hawkeyeTarget.Spawned &&
+                hawkeyeTarget.Map == Map && !threats.Contains(hawkeyeTarget))
+            {
+                threats.Add(hawkeyeTarget);
+            }
+
+            // Include HAWKEYE-detected threats via SKYLINK
+            if (ArsenalNetworkManager.IsLatticeConnectedToSkylink())
+            {
+                foreach (var pawn in ArsenalNetworkManager.GetAllHawkeyePawns())
+                {
+                    if (pawn?.Map != Map) continue;
+                    var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                    var comp = hawkeye?.SensorComp;
+                    if (comp != null && comp.IsOperational)
+                    {
+                        foreach (var threat in comp.GetDetectedThreats())
+                        {
+                            if (!threats.Contains(threat))
+                            {
+                                threats.Add(threat);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return threats;
         }
 
         /// <summary>
@@ -852,7 +924,7 @@ namespace Arsenal
             if (awaitingReassignment.Count == 0)
                 return;
 
-            List<Pawn> threats = GetHostileThreats();
+            List<Pawn> threats = GetAllValidThreats();
 
             for (int i = awaitingReassignment.Count - 1; i >= 0; i--)
             {
