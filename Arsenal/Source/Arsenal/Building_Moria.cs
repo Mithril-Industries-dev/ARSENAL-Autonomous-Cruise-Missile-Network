@@ -28,10 +28,6 @@ namespace Arsenal
         private string customName;
         private static int moriaCounter = 1;
 
-        // Visual
-        private int lastVisualUpdateTick;
-        private const int VISUAL_UPDATE_INTERVAL = 60;
-
         #region Properties
 
         public bool IsPoweredOn()

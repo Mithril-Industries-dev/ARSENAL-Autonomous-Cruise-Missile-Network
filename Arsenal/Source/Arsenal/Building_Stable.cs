@@ -23,10 +23,6 @@ namespace Arsenal
         private string customName;
         private static int stableCounter = 1;
 
-        // Network
-        private int lastNetworkCacheRefresh = -999;
-        private const int NETWORK_CACHE_INTERVAL = 120;
-
         #region Properties
 
         public bool IsPoweredOn()

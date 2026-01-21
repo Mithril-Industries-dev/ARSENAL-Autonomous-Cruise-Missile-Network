@@ -42,10 +42,6 @@ namespace Arsenal
         private CompPowerTrader powerComp;
         private Sustainer manufacturingSustainer;
 
-        // === LEGACY COMPATIBILITY ===
-        // These are kept for save migration only
-        [Unsaved] private bool legacyMigrationDone = false;
-
         public class QueuedMissile : IExposable
         {
             public Thing missile;
