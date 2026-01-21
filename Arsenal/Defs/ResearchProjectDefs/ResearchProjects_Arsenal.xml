@@ -75,4 +75,19 @@
     <tab>Main</tab>
   </ResearchProjectDef>
 
+  <!-- MULE Autonomous Ground Drones -->
+  <ResearchProjectDef>
+    <defName>Arsenal_MULESystem</defName>
+    <label>MULE utility drone network</label>
+    <description>Develop ground-based utility drones for autonomous mining and hauling operations. The MULE (Mobile Utility Logistics Engine) system integrates with LATTICE to automate resource extraction and delivery.\n\nUnlocks:\n- STABLE (drone bay for MULE storage and charging)\n- MORIA (automated storage vault)\n- MULE drone manufacturing at ARSENAL\n\nMULEs automatically mine designated ore and haul resources to MORIA storage vaults.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>3500</baseCost>
+    <prerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </prerequisites>
+    <researchViewX>15.00</researchViewX>
+    <researchViewY>6.00</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
 </Defs>

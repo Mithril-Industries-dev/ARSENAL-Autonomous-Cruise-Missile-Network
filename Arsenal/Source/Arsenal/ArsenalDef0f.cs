@@ -33,6 +33,16 @@ namespace Arsenal
         // MithrilProducts for manufacturing
         public static MithrilProductDef MITHRIL_Product_DAGGER;
         public static MithrilProductDef MITHRIL_Product_DART;
+        public static MithrilProductDef MITHRIL_Product_MULE;
+
+        // MULE system - Ground utility drones
+        public static ThingDef Arsenal_MULE_Drone;
+        public static ThingDef Arsenal_MULE_Item;
+        public static ThingDef Arsenal_Stable;
+        public static ThingDef Arsenal_Moria;
+
+        // Research for MULE system
+        public static ResearchProjectDef Arsenal_MULESystem;
 
         static ArsenalDefOf()
         {

@@ -229,6 +229,9 @@ namespace Arsenal
             Scribe_Collections.Look(ref assignedDartsPerTarget, "assignedDartsPerTarget",
                 LookMode.Reference, LookMode.Value, ref tempPawnKeys, ref tempIntValues);
 
+            // MULE system
+            Scribe_Values.Look(ref ticksSinceMuleProcess, "ticksSinceMuleProcess", 0);
+
             // Clean up null references after load
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -237,6 +240,7 @@ namespace Arsenal
                 awaitingReassignment.RemoveAll(d => d == null);
                 aggregatedThreats.Clear(); // Clear on load - ARGUS will repopulate
                 CleanupDeadTargets();
+                pendingMuleTasks = pendingMuleTasks ?? new Queue<MuleTask>();
             }
         }
 
@@ -271,6 +275,9 @@ namespace Arsenal
                 ticksSinceLastProcess = 0;
                 ProcessThreatsAndAssign();
             }
+
+            // Process MULE tasks
+            ProcessMuleTasks();
         }
 
         private void MaintainScanningSound()
@@ -470,6 +477,201 @@ namespace Arsenal
             foreach (var key in staleKeys)
             {
                 aggregatedThreats.Remove(key);
+            }
+        }
+
+        #endregion
+
+        #region MULE Task Processing
+
+        // MULE processing
+        private const int MULE_PROCESS_INTERVAL = 120; // Process MULE tasks every 2 seconds
+        private int ticksSinceMuleProcess;
+        private Queue<MuleTask> pendingMuleTasks = new Queue<MuleTask>();
+
+        /// <summary>
+        /// Processes MULE tasks - mining designations and hauling to MORIA.
+        /// </summary>
+        private void ProcessMuleTasks()
+        {
+            if (Map == null) return;
+
+            ticksSinceMuleProcess++;
+            if (ticksSinceMuleProcess < MULE_PROCESS_INTERVAL)
+                return;
+
+            ticksSinceMuleProcess = 0;
+
+            // Scan for mining designations
+            ScanMiningDesignations();
+
+            // Scan for items to haul to MORIA
+            ScanMoriaHaulTasks();
+
+            // Assign queued tasks to available MULEs
+            AssignPendingMuleTasks();
+        }
+
+        /// <summary>
+        /// Scans for mining designations and creates MULE tasks.
+        /// </summary>
+        private void ScanMiningDesignations()
+        {
+            var designations = Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && d.target.HasThing == false)
+                .ToList();
+
+            foreach (var des in designations)
+            {
+                IntVec3 cell = des.target.Cell;
+
+                // Check if mineable
+                Building mineable = cell.GetFirstMineable(Map);
+                if (mineable == null) continue;
+
+                // Check if we already have a task for this cell
+                bool alreadyQueued = pendingMuleTasks.Any(t =>
+                    t.taskType == MuleTaskType.Mine && t.targetCell == cell);
+                if (alreadyQueued) continue;
+
+                // Check if a MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m.CurrentTask?.taskType == MuleTaskType.Mine &&
+                              m.CurrentTask?.targetCell == cell);
+                if (muleAssigned) continue;
+
+                // Create mining task
+                MuleTask task = MuleTask.CreateMiningTask(cell, des);
+                pendingMuleTasks.Enqueue(task);
+            }
+        }
+
+        /// <summary>
+        /// Scans for items that should be hauled to MORIA.
+        /// </summary>
+        private void ScanMoriaHaulTasks()
+        {
+            var morias = ArsenalNetworkManager.GetMoriasOnMap(Map);
+            if (morias.Count == 0) return;
+
+            // Find items on the ground that match MORIA storage settings
+            var haulableItems = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+
+            foreach (Thing item in haulableItems)
+            {
+                if (item == null || item.Destroyed || !item.Spawned) continue;
+
+                // Find a MORIA that wants this item
+                Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+                if (targetMoria == null) continue;
+
+                // Check if we already have a task for this item
+                bool alreadyQueued = pendingMuleTasks.Any(t =>
+                    t.taskType == MuleTaskType.MoriaFeed && t.targetThing == item);
+                if (alreadyQueued) continue;
+
+                // Check if a MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m.CurrentTask?.targetThing == item);
+                if (muleAssigned) continue;
+
+                // Create MORIA feed task
+                MuleTask task = MuleTask.CreateMoriaFeedTask(item, targetMoria);
+                pendingMuleTasks.Enqueue(task);
+            }
+        }
+
+        /// <summary>
+        /// Assigns pending MULE tasks to available MULEs.
+        /// </summary>
+        private void AssignPendingMuleTasks()
+        {
+            if (pendingMuleTasks.Count == 0) return;
+
+            int maxAssignPerCycle = 3; // Limit assignments per cycle
+            int assigned = 0;
+
+            while (pendingMuleTasks.Count > 0 && assigned < maxAssignPerCycle)
+            {
+                MuleTask task = pendingMuleTasks.Peek();
+
+                // Validate task is still valid
+                if (!IsTaskValid(task))
+                {
+                    pendingMuleTasks.Dequeue();
+                    continue;
+                }
+
+                // Find an available MULE for this task
+                var (mule, stable) = ArsenalNetworkManager.GetAvailableMuleForTask(task, Map);
+
+                if (mule != null && stable != null)
+                {
+                    // Deploy the MULE
+                    if (stable.DeployMule(mule, task))
+                    {
+                        pendingMuleTasks.Dequeue();
+                        assigned++;
+                    }
+                    else
+                    {
+                        // Couldn't deploy - skip this task for now
+                        break;
+                    }
+                }
+                else
+                {
+                    // No MULE available - stop trying for this cycle
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validates that a task is still valid.
+        /// </summary>
+        private bool IsTaskValid(MuleTask task)
+        {
+            if (task == null) return false;
+
+            switch (task.taskType)
+            {
+                case MuleTaskType.Mine:
+                    // Check if mining designation still exists
+                    return task.miningDesignation != null &&
+                           !task.miningDesignation.def.removed &&
+                           task.targetCell.GetFirstMineable(Map) != null;
+
+                case MuleTaskType.Haul:
+                case MuleTaskType.MoriaFeed:
+                    // Check if item still exists and destination still valid
+                    return task.targetThing != null &&
+                           !task.targetThing.Destroyed &&
+                           task.targetThing.Spawned &&
+                           task.destination != null &&
+                           !task.destination.Destroyed;
+
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the count of pending MULE tasks.
+        /// </summary>
+        public int PendingMuleTaskCount => pendingMuleTasks.Count;
+
+        /// <summary>
+        /// Gets the count of active MULEs on this map.
+        /// </summary>
+        public int ActiveMuleCount
+        {
+            get
+            {
+                return ArsenalNetworkManager.GetAllMules()
+                    .Count(m => m.Map == Map &&
+                               m.state != MuleState.Idle &&
+                               m.state != MuleState.Charging);
             }
         }
 
@@ -1074,6 +1276,22 @@ namespace Arsenal
                     sb.AppendLine($"Active threats (via ARGUS): {GetAggregatedThreats().Count}");
                     sb.AppendLine($"DARTs in flight: {assignedDartsPerTarget.Values.Sum()}");
                     sb.AppendLine($"DARTs awaiting reassignment: {awaitingReassignment.Count}");
+                    sb.AppendLine();
+
+                    // MULE system status
+                    var stablesOnMap = ArsenalNetworkManager.GetStablesOnMap(Map);
+                    var moriasOnMap = ArsenalNetworkManager.GetMoriasOnMap(Map);
+                    sb.AppendLine($"MULE System:");
+                    sb.AppendLine($"  STABLEs: {stablesOnMap.Count}");
+                    sb.AppendLine($"  MORIAs: {moriasOnMap.Count}");
+                    if (stablesOnMap.Count > 0)
+                    {
+                        int totalMules = stablesOnMap.Sum(s => s.DockedMuleCount);
+                        int availableMules = stablesOnMap.Sum(s => s.AvailableMuleCount);
+                        sb.AppendLine($"  MULEs: {availableMules}/{totalMules} ready");
+                        sb.AppendLine($"  Active MULEs: {ActiveMuleCount}");
+                        sb.AppendLine($"  Pending tasks: {PendingMuleTaskCount}");
+                    }
 
                     Messages.Message(sb.ToString(), MessageTypeDefOf.NeutralEvent, false);
                 }
@@ -1142,6 +1360,24 @@ namespace Arsenal
             if (inFlightCount > 0)
             {
                 text += $"\nDARTs in flight: {inFlightCount}";
+            }
+
+            // MULE system status
+            var stablesOnMap = ArsenalNetworkManager.GetStablesOnMap(Map);
+            if (stablesOnMap.Count > 0)
+            {
+                int totalMules = stablesOnMap.Sum(s => s.DockedMuleCount);
+                int availableMules = stablesOnMap.Sum(s => s.AvailableMuleCount);
+                text += $"\nSTABLEs: {stablesOnMap.Count} | MULEs: {availableMules}/{totalMules} ready";
+
+                if (PendingMuleTaskCount > 0)
+                {
+                    text += $"\nPending MULE tasks: {PendingMuleTaskCount}";
+                }
+                if (ActiveMuleCount > 0)
+                {
+                    text += $"\nActive MULEs: {ActiveMuleCount}";
+                }
             }
 
             return text;

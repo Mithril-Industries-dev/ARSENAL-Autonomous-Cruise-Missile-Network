@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- MULE Drone (Active unit on map) -->
+  <ThingDef>
+    <defName>Arsenal_MULE_Drone</defName>
+    <label>MULE drone</label>
+    <description>MULE (Mobile Utility Logistics Engine) - An autonomous ground drone for mining and hauling tasks. Features battery-powered operation with automatic return-to-base for recharging. Coordinated by the LATTICE C2 system and stored in STABLE bays when idle.</description>
+    <thingClass>Arsenal.MULE_Drone</thingClass>
+    <category>Item</category>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_MULE</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(1.5,1.5)</drawSize>
+      <shaderType>CutoutComplex</shaderType>
+    </graphicData>
+    <altitudeLayer>Pawn</altitudeLayer>
+    <useHitPoints>true</useHitPoints>
+    <tickerType>Normal</tickerType>
+    <statBases>
+      <MaxHitPoints>150</MaxHitPoints>
+      <Mass>25</Mass>
+      <Flammability>0.3</Flammability>
+    </statBases>
+    <selectable>true</selectable>
+    <drawerType>MapMeshAndRealTime</drawerType>
+    <pathCost>30</pathCost>
+  </ThingDef>
+
+  <!-- MULE Item (storable, for manufacturing/hauling) -->
+  <ThingDef ParentName="ResourceBase">
+    <defName>Arsenal_MULE_Item</defName>
+    <label>MULE drone (packaged)</label>
+    <description>A packaged MULE utility drone ready for deployment. Can be loaded into STABLEs where it will become active and available for mining and hauling tasks.</description>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_MULE</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(1.2,1.2)</drawSize>
+    </graphicData>
+    <soundInteract>Metal_Drop</soundInteract>
+    <soundDrop>Metal_Drop</soundDrop>
+    <stackLimit>5</stackLimit>
+    <statBases>
+      <MaxHitPoints>100</MaxHitPoints>
+      <Mass>25</Mass>
+      <MarketValue>1200</MarketValue>
+      <Flammability>0.3</Flammability>
+    </statBases>
+    <thingCategories>
+      <li>Arsenal_UtilityDrones</li>
+    </thingCategories>
+    <tradeTags>
+      <li>ExoticMisc</li>
+    </tradeTags>
+  </ThingDef>
+
+  <!-- Thing Category for Utility Drones -->
+  <ThingCategoryDef>
+    <defName>Arsenal_UtilityDrones</defName>
+    <label>utility drones</label>
+    <parent>Manufactured</parent>
+    <iconPath>Arsenal/Arsenal_MULE</iconPath>
+  </ThingCategoryDef>
+
+</Defs>

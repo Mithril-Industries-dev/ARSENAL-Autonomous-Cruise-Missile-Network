@@ -24,6 +24,7 @@ namespace Arsenal
         // === NETWORK CACHE ===
         private List<Building_Hub> cachedHubs = new List<Building_Hub>();
         private List<Building_Quiver> cachedQuivers = new List<Building_Quiver>();
+        private List<Building_Stable> cachedStables = new List<Building_Stable>();
         private List<Building_Hop> cachedHops = new List<Building_Hop>();
         private Building_Lattice cachedLattice;
         private int lastCacheRefresh = -999;
@@ -224,8 +225,9 @@ namespace Arsenal
             cachedHubs = ArsenalNetworkManager.GetAllHubs().ToList();
             cachedHops = ArsenalNetworkManager.GetAllHops().ToList();
 
-            // QUIVERs and LATTICE are LOCAL only (DART system is map-local)
+            // QUIVERs, STABLEs, and LATTICE are LOCAL only (local systems)
             cachedQuivers = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Quiver>().ToList();
+            cachedStables = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Stable>().ToList();
             cachedLattice = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Lattice>().FirstOrDefault();
 
             lastCacheRefresh = Find.TickManager.TicksGame;
@@ -298,6 +300,17 @@ namespace Arsenal
                     .ThenByDescending(q => q.EmptySlots)
                     .FirstOrDefault();
             }
+            else if (product.destinationType == typeof(Building_Stable))
+            {
+                // STABLEs require LATTICE for coordination
+                if (cachedLattice == null || !cachedLattice.IsPoweredOn())
+                    return null;
+
+                return cachedStables
+                    .Where(s => s.HasSpace && s.IsPoweredOn())
+                    .OrderByDescending(s => s.MAX_MULE_CAPACITY - s.DockedMuleCount)
+                    .FirstOrDefault();
+            }
 
             return null;
         }
@@ -322,6 +335,8 @@ namespace Arsenal
             }
             else if (product.destinationType == typeof(Building_Quiver))
                 return cachedQuivers.Cast<Building>().ToList();
+            else if (product.destinationType == typeof(Building_Stable))
+                return cachedStables.Cast<Building>().ToList();
 
             return new List<Building>();
         }
@@ -568,6 +583,34 @@ namespace Arsenal
                 LaunchMissileToHub(missileItem, targetHub);
                 Messages.Message(Label + " Line " + (line.index + 1) + ": DAGGER launched to " + targetHub.Label,
                     this, MessageTypeDefOf.PositiveEvent);
+            }
+            else if (product.destinationType == typeof(Building_Stable))
+            {
+                // MULE - dock directly in STABLE (ground-based, no flyer needed)
+                Building_Stable targetStable = destination as Building_Stable;
+                if (targetStable == null || !targetStable.HasSpace)
+                {
+                    // No valid target - drop MULE item
+                    Thing muleItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_MULE_Item);
+                    GenPlace.TryPlaceThing(muleItem, Position, Map, ThingPlaceMode.Near);
+                    Messages.Message(Label + ": MULE completed but no valid STABLE available.", this, MessageTypeDefOf.NeutralEvent);
+                    return;
+                }
+
+                // Create and dock the MULE directly
+                MULE_Drone mule = targetStable.CreateAndDockMule();
+                if (mule != null)
+                {
+                    Messages.Message(Label + " Line " + (line.index + 1) + ": MULE delivered to " + targetStable.Label,
+                        this, MessageTypeDefOf.PositiveEvent);
+                }
+                else
+                {
+                    // Failed to dock - drop as item
+                    Thing muleItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_MULE_Item);
+                    GenPlace.TryPlaceThing(muleItem, Position, Map, ThingPlaceMode.Near);
+                    Messages.Message(Label + ": MULE completed but STABLE is full.", this, MessageTypeDefOf.NeutralEvent);
+                }
             }
         }
 

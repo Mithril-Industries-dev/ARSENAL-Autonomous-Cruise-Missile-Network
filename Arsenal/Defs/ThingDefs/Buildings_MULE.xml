@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- STABLE - MULE Storage, Charging, and Deployment Hub -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_Stable</defName>
+    <label>STABLE drone bay</label>
+    <description>STABLE (Storage Terminal And Battery Loading Enclosure) - A charging and deployment hub for MULE utility drones. Stores up to 10 MULEs and recharges their batteries when powered. MULEs are autonomous ground drones that handle mining and hauling tasks, coordinated by the LATTICE.
+
+Functions:
+- Stores up to 10 MULE drones
+- Charges docked MULEs when powered
+- Deploys MULEs to mining and hauling tasks
+- Receives returning MULEs
+
+Requires LATTICE for task coordination.</description>
+    <thingClass>Arsenal.Building_Stable</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_STABLE</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(3,3)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>true</blockWind>
+    <fillPercent>0.9</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>300</MaxHitPoints>
+      <WorkToBuild>15000</WorkToBuild>
+      <Mass>100</Mass>
+      <Flammability>0.4</Flammability>
+    </statBases>
+    <size>(3,3)</size>
+    <costList>
+      <Steel>200</Steel>
+      <Plasteel>80</Plasteel>
+      <ComponentIndustrial>12</ComponentIndustrial>
+      <ComponentSpacer>4</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>1500</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Green glow for STABLE - operational status -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>6</glowRadius>
+        <glowColor>(80,255,120,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Production</designationCategory>
+    <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_MULESystem</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+  <!-- MORIA - Materials Storage Node -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_Moria</defName>
+    <label>MORIA storage vault</label>
+    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A climate-controlled storage vault for raw materials, refined goods, and manufactured components. MULEs automatically deliver mining yields and hauled items here based on storage filter settings.
+
+Features:
+- Stores up to 10,000 of each item type
+- Configurable storage filters
+- Protected from deterioration
+- MULE delivery integration
+
+Set storage filters to control which items are accepted.</description>
+    <thingClass>Arsenal.Building_Moria</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_MORIA</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(4,4)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>true</blockWind>
+    <fillPercent>1</fillPercent>
+    <blockLight>true</blockLight>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>500</MaxHitPoints>
+      <WorkToBuild>25000</WorkToBuild>
+      <Mass>200</Mass>
+      <Flammability>0.2</Flammability>
+    </statBases>
+    <size>(4,4)</size>
+    <costList>
+      <Steel>350</Steel>
+      <Plasteel>100</Plasteel>
+      <Gold>30</Gold>
+      <ComponentIndustrial>15</ComponentIndustrial>
+      <ComponentSpacer>5</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>800</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Blue glow for MORIA - storage indicator -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>7</glowRadius>
+        <glowColor>(100,150,255,0)</glowColor>
+      </li>
+    </comps>
+    <building>
+      <fixedStorageSettings>
+        <filter>
+          <categories>
+            <li>ResourcesRaw</li>
+            <li>Manufactured</li>
+            <li>StoneBlocks</li>
+          </categories>
+        </filter>
+      </fixedStorageSettings>
+      <defaultStorageSettings>
+        <filter>
+          <categories>
+            <li>ResourcesRaw</li>
+            <li>StoneBlocks</li>
+          </categories>
+        </filter>
+      </defaultStorageSettings>
+    </building>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Production</designationCategory>
+    <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_MULESystem</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+</Defs>
