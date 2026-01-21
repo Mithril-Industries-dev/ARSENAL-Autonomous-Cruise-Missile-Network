@@ -615,6 +615,7 @@ namespace Arsenal
 
         /// <summary>
         /// Evaluates the threat level of a pawn.
+        /// Considers: race type, tech level, health, equipment, armor, and shields.
         /// </summary>
         private float EvaluateThreat(Pawn pawn)
         {
@@ -631,6 +632,30 @@ namespace Arsenal
                     baseThreat *= 1.5f;
                 }
             }
+            // Animals (manhunters, predators, etc.)
+            else if (pawn.RaceProps.Animal)
+            {
+                // Base threat on body size - larger animals are more dangerous
+                float bodySize = pawn.def.race.baseBodySize;
+
+                if (pawn.RaceProps.predator)
+                {
+                    // Predators: scale from 30 (small) to 120+ (thrumbo-sized)
+                    baseThreat = 30f + (bodySize * 30f);
+                }
+                else
+                {
+                    // Non-predators (manhunters, etc): lower base threat
+                    baseThreat = 20f + (bodySize * 15f);
+                }
+
+                // Manhunting animals are more aggressive - allocate more DARTs
+                if (pawn.MentalState?.def == MentalStateDefOf.Manhunter ||
+                    pawn.MentalState?.def == MentalStateDefOf.ManhunterPermanent)
+                {
+                    baseThreat *= 1.3f;
+                }
+            }
             else if (pawn.Faction?.def?.techLevel >= TechLevel.Industrial)
             {
                 baseThreat = BASE_THREAT_PIRATE;
@@ -644,7 +669,7 @@ namespace Arsenal
             float healthPct = pawn.health.summaryHealth.SummaryHealthPercent;
             baseThreat *= healthPct;
 
-            // Modify by equipment
+            // Modify by equipment (weapons)
             if (pawn.equipment?.Primary != null)
             {
                 var weapon = pawn.equipment.Primary;
@@ -658,7 +683,73 @@ namespace Arsenal
                 }
             }
 
+            // Modify by armor - more armor = need more DARTs to kill
+            float armorFactor = CalculateArmorFactor(pawn);
+            baseThreat *= armorFactor;
+
+            // Check for shield belt - need to overwhelm the shield
+            if (HasShieldBelt(pawn))
+            {
+                baseThreat *= 2.0f; // Double the DARTs needed for shielded targets
+            }
+
             return baseThreat;
+        }
+
+        /// <summary>
+        /// Calculates armor factor based on pawn's equipped armor.
+        /// Returns multiplier: 1.0 (no armor) to ~2.0 (heavy armor)
+        /// </summary>
+        private float CalculateArmorFactor(Pawn pawn)
+        {
+            if (pawn.apparel == null || pawn.apparel.WornApparelCount == 0)
+                return 1.0f;
+
+            float totalArmorSharp = 0f;
+            float totalArmorBlunt = 0f;
+            int armorPieces = 0;
+
+            foreach (Apparel apparel in pawn.apparel.WornApparel)
+            {
+                float sharp = apparel.GetStatValue(StatDefOf.ArmorRating_Sharp);
+                float blunt = apparel.GetStatValue(StatDefOf.ArmorRating_Blunt);
+
+                if (sharp > 0 || blunt > 0)
+                {
+                    totalArmorSharp += sharp;
+                    totalArmorBlunt += blunt;
+                    armorPieces++;
+                }
+            }
+
+            if (armorPieces == 0)
+                return 1.0f;
+
+            // Average armor rating (sharp matters more for DART explosives)
+            float avgArmor = (totalArmorSharp * 0.7f + totalArmorBlunt * 0.3f) / armorPieces;
+
+            // Convert to multiplier: 0% armor = 1.0x, 100% armor = 2.0x
+            // Heavily armored targets get more DARTs assigned
+            return 1.0f + Mathf.Clamp(avgArmor, 0f, 1f);
+        }
+
+        /// <summary>
+        /// Checks if pawn has an active shield belt equipped.
+        /// </summary>
+        private bool HasShieldBelt(Pawn pawn)
+        {
+            if (pawn.apparel == null)
+                return false;
+
+            foreach (Apparel apparel in pawn.apparel.WornApparel)
+            {
+                // Check for shield belt comp (vanilla and most mods)
+                var shieldComp = apparel.TryGetComp<CompShield>();
+                if (shieldComp != null)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
