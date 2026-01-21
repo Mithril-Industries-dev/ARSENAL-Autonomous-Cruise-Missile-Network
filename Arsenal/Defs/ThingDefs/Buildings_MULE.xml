@@ -64,17 +64,17 @@ Requires LATTICE for task coordination.</description>
     </researchPrerequisites>
   </ThingDef>
 
-  <!-- MORIA - Materials Storage Node -->
+  <!-- MORIA - Materials Storage Shelf -->
   <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_Moria</defName>
-    <label>MORIA storage vault</label>
-    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A climate-controlled storage vault for raw materials, refined goods, and manufactured components. MULEs automatically deliver mining yields and hauled items here based on storage filter settings.
+    <label>MORIA storage shelf</label>
+    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A powered storage shelf for raw materials, refined goods, and manufactured components. Works like a standard shelf but requires power and network connection. MULEs can automatically deliver items here based on storage filter settings.
 
 Features:
-- Stores up to 10,000 of each item type
-- Configurable storage filters
-- Protected from deterioration
-- MULE delivery integration
+- 16 storage cells (4x4)
+- Configurable storage filters (vanilla storage UI)
+- Requires power to accept items
+- MULE delivery integration via LATTICE
 
 Set storage filters to control which items are accepted.</description>
     <thingClass>Arsenal.Building_Moria</thingClass>
@@ -90,38 +90,38 @@ Set storage filters to control which items are accepted.</description>
       </damageData>
     </graphicData>
     <altitudeLayer>Building</altitudeLayer>
-    <passability>Impassable</passability>
-    <blockWind>true</blockWind>
-    <fillPercent>1</fillPercent>
-    <blockLight>true</blockLight>
+    <passability>PassThroughOnly</passability>
+    <fillPercent>0.4</fillPercent>
     <canOverlapZones>false</canOverlapZones>
+    <surfaceType>Item</surfaceType>
     <statBases>
-      <MaxHitPoints>500</MaxHitPoints>
-      <WorkToBuild>25000</WorkToBuild>
-      <Mass>200</Mass>
-      <Flammability>0.2</Flammability>
+      <MaxHitPoints>300</MaxHitPoints>
+      <WorkToBuild>12000</WorkToBuild>
+      <Mass>80</Mass>
+      <Flammability>0.3</Flammability>
     </statBases>
     <size>(4,4)</size>
     <costList>
-      <Steel>350</Steel>
-      <Plasteel>100</Plasteel>
-      <Gold>30</Gold>
-      <ComponentIndustrial>15</ComponentIndustrial>
-      <ComponentSpacer>5</ComponentSpacer>
+      <Steel>200</Steel>
+      <Plasteel>50</Plasteel>
+      <ComponentIndustrial>8</ComponentIndustrial>
+      <ComponentSpacer>2</ComponentSpacer>
     </costList>
     <comps>
       <li Class="CompProperties_Power">
         <compClass>CompPowerTrader</compClass>
-        <basePowerConsumption>800</basePowerConsumption>
+        <basePowerConsumption>200</basePowerConsumption>
       </li>
       <li Class="CompProperties_Flickable"/>
       <!-- Blue glow for MORIA - storage indicator -->
       <li Class="CompProperties_Glower">
-        <glowRadius>7</glowRadius>
+        <glowRadius>5</glowRadius>
         <glowColor>(100,150,255,0)</glowColor>
       </li>
     </comps>
     <building>
+      <preventDeteriorationOnTop>true</preventDeteriorationOnTop>
+      <ignoreStoredThingsBeauty>true</ignoreStoredThingsBeauty>
       <fixedStorageSettings>
         <filter>
           <categories>
@@ -140,9 +140,11 @@ Set storage filters to control which items are accepted.</description>
         </filter>
       </defaultStorageSettings>
     </building>
-    <tickerType>Rare</tickerType>
+    <inspectorTabs>
+      <li>ITab_Storage</li>
+    </inspectorTabs>
     <designationCategory>Production</designationCategory>
-    <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
+    <constructionSkillPrerequisite>8</constructionSkillPrerequisite>
     <researchPrerequisites>
       <li>Arsenal_MULESystem</li>
     </researchPrerequisites>
