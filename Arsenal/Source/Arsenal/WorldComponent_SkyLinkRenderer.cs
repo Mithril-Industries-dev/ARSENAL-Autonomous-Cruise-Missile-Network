@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using RimWorld.Planet;
 using UnityEngine;
 using Verse;
@@ -7,18 +5,18 @@ using Verse;
 namespace Arsenal
 {
     /// <summary>
-    /// Custom WorldLayer that renders the SKYLINK satellite in orbit.
-    /// WorldLayers are rendered every frame on the world map, ensuring visibility
-    /// regardless of which tiles are on screen.
+    /// WorldComponent that renders the SKYLINK satellite in orbit.
+    /// Uses WorldComponentUpdate to draw every frame when on the world map.
     /// </summary>
     [StaticConstructorOnStartup]
-    public class WorldLayer_SkyLinkSatellite : WorldLayer
+    public class WorldComponent_SkyLinkRenderer : WorldComponent
     {
         // Satellite icon material
         private static Material satelliteMat;
+        private static Material ringMat;
         private static readonly float ICON_SIZE = 6f;
 
-        static WorldLayer_SkyLinkSatellite()
+        static WorldComponent_SkyLinkRenderer()
         {
             // Load satellite texture or use fallback
             Texture2D tex = ContentFinder<Texture2D>.Get("World/WorldObjects/Arsenal/SkyLinkSatellite", false);
@@ -31,26 +29,25 @@ namespace Arsenal
                 // Fallback: bright blue for visibility
                 satelliteMat = SolidColorMaterials.SimpleSolidColorMaterial(new Color(0.3f, 0.6f, 1f, 1f));
             }
+
+            // Orbit ring material
+            ringMat = SolidColorMaterials.SimpleSolidColorMaterial(new Color(0.3f, 0.5f, 0.8f, 0.15f));
         }
 
-        public override IEnumerable Regenerate()
+        public WorldComponent_SkyLinkRenderer(World world) : base(world)
         {
-            // Clear existing sublayers
-            foreach (object obj in base.Regenerate())
-            {
-                yield return obj;
-            }
-
-            // We don't need to generate any static geometry
-            // Our satellite is drawn dynamically in Render()
         }
 
         /// <summary>
         /// Called every frame when on world map. Draws the orbiting satellite.
         /// </summary>
-        public override void Render()
+        public override void WorldComponentUpdate()
         {
-            base.Render();
+            base.WorldComponentUpdate();
+
+            // Only render when on world map
+            if (!WorldRendererUtility.WorldRenderedNow)
+                return;
 
             // Get satellite from network manager
             var satellite = ArsenalNetworkManager.GetOrbitalSatellite();
@@ -58,30 +55,28 @@ namespace Arsenal
                 return;
 
             // Get orbital position from satellite
-            Vector3 pos = satellite.DrawPos;
+            Vector3 pos = satellite.GetOrbitalPosition();
 
             // Draw satellite facing camera
-            Quaternion rotation = Quaternion.LookRotation(Find.WorldCamera.transform.position - pos);
+            Vector3 cameraPos = Find.WorldCamera.transform.position;
+            Quaternion rotation = Quaternion.LookRotation(cameraPos - pos);
             Vector3 scale = new Vector3(ICON_SIZE, 1f, ICON_SIZE);
 
             Matrix4x4 matrix = Matrix4x4.TRS(pos, rotation, scale);
             Graphics.DrawMesh(MeshPool.plane10, matrix, satelliteMat, WorldCameraManager.WorldLayer);
 
-            // Draw orbit trail (optional visual)
-            DrawOrbitRing(satellite);
+            // Draw orbit ring
+            DrawOrbitRing();
         }
 
         /// <summary>
         /// Draws a faint ring showing the satellite's orbital path.
         /// </summary>
-        private void DrawOrbitRing(WorldObject_SkyLinkSatellite satellite)
+        private void DrawOrbitRing()
         {
-            // Draw a simple orbit indicator ring
             const int segments = 72;
             float radius = WorldObject_SkyLinkSatellite.ORBIT_RADIUS;
             float height = WorldObject_SkyLinkSatellite.ORBIT_HEIGHT;
-
-            Material ringMat = SolidColorMaterials.SimpleSolidColorMaterial(new Color(0.3f, 0.5f, 0.8f, 0.2f));
 
             for (int i = 0; i < segments; i++)
             {
