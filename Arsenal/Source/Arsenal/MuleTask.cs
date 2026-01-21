@@ -94,7 +94,7 @@ namespace Arsenal
             Scribe_Values.Look(ref destinationCell, "destinationCell");
             Scribe_Defs.Look(ref resourceDef, "resourceDef");
             Scribe_Values.Look(ref resourceCount, "resourceCount");
-            Scribe_References.Look(ref miningDesignation, "miningDesignation");
+            // Note: miningDesignation is not saved - look it up via targetCell after load
             Scribe_Values.Look(ref isComplete, "isComplete");
             Scribe_Values.Look(ref estimatedBatteryCost, "estimatedBatteryCost");
         }

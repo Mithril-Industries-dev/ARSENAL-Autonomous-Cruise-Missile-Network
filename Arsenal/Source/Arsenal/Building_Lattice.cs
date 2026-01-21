@@ -638,8 +638,7 @@ namespace Arsenal
             {
                 case MuleTaskType.Mine:
                     // Check if mining designation still exists
-                    return task.miningDesignation != null &&
-                           !task.miningDesignation.def.removed &&
+                    return Map.designationManager.DesignationAt(task.targetCell, DesignationDefOf.Mine) != null &&
                            task.targetCell.GetFirstMineable(Map) != null;
 
                 case MuleTaskType.Haul:

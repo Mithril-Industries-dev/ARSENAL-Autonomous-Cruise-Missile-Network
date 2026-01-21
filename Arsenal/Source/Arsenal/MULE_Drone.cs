@@ -553,21 +553,72 @@ namespace Arsenal
         {
             if (Map == null) return;
 
-            // Use RimWorld's pathfinding
-            PawnPath path = Map.pathFinder.FindPath(Position, destination, TraverseParms.For(TraverseMode.NoPassClosedDoors));
+            // Simple direct path calculation for ground drone
+            // Uses a basic pathfinding approach that respects impassable terrain
+            currentPath = new List<IntVec3>();
+            IntVec3 current = Position;
+            HashSet<IntVec3> visited = new HashSet<IntVec3>();
+            int maxSteps = 500; // Safety limit
 
-            if (path != null && path.Found)
+            while (current != destination && currentPath.Count < maxSteps)
             {
-                currentPath = new List<IntVec3>(path.NodesReversed);
-                currentPath.Reverse();
-                pathIndex = 0;
-                path.ReleaseToPool();
-            }
-            else
-            {
-                currentPath = null;
+                visited.Add(current);
+
+                // Find best adjacent cell towards destination
+                IntVec3 bestNext = IntVec3.Invalid;
+                float bestDist = float.MaxValue;
+
+                foreach (IntVec3 adj in GenAdj.CardinalDirections)
+                {
+                    IntVec3 next = current + adj;
+                    if (!next.InBounds(Map)) continue;
+                    if (visited.Contains(next)) continue;
+                    if (!next.Walkable(Map)) continue;
+
+                    float dist = next.DistanceTo(destination);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        bestNext = next;
+                    }
+                }
+
+                if (!bestNext.IsValid)
+                {
+                    // Try diagonal if cardinal blocked
+                    foreach (IntVec3 adj in GenAdj.DiagonalDirections)
+                    {
+                        IntVec3 next = current + adj;
+                        if (!next.InBounds(Map)) continue;
+                        if (visited.Contains(next)) continue;
+                        if (!next.Walkable(Map)) continue;
+
+                        float dist = next.DistanceTo(destination);
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            bestNext = next;
+                        }
+                    }
+                }
+
+                if (!bestNext.IsValid)
+                {
+                    // No valid path found
+                    break;
+                }
+
+                currentPath.Add(bestNext);
+                current = bestNext;
+
+                // Close enough to destination
+                if (current.DistanceTo(destination) < 2f)
+                {
+                    break;
+                }
             }
 
+            pathIndex = 0;
             ticksSincePathCalc = 0;
         }
 

@@ -308,7 +308,7 @@ namespace Arsenal
 
                 return cachedStables
                     .Where(s => s.HasSpace && s.IsPoweredOn())
-                    .OrderByDescending(s => s.MAX_MULE_CAPACITY - s.DockedMuleCount)
+                    .OrderByDescending(s => Building_Stable.MAX_MULE_CAPACITY - s.DockedMuleCount)
                     .FirstOrDefault();
             }
 
