@@ -796,17 +796,13 @@ namespace Arsenal
             // Try to place at destination
             if (currentTask?.destination is Building_Moria moria)
             {
-                // Deliver to MORIA - place on a storage cell
-                IntVec3 storageCell = moria.GetStorageCell(carriedThing);
-                if (storageCell.IsValid)
+                // Deliver to MORIA vault - items are absorbed into internal storage
+                if (!moria.TryAcceptItem(carriedThing))
                 {
-                    GenPlace.TryPlaceThing(carriedThing, storageCell, Map, ThingPlaceMode.Near);
-                }
-                else
-                {
-                    // MORIA full/unpowered - drop near the MULE
+                    // MORIA rejected the item (full, unpowered, etc.) - drop near the MULE
                     GenPlace.TryPlaceThing(carriedThing, Position, Map, ThingPlaceMode.Near);
                 }
+                // Note: TryAcceptItem destroys the item if accepted
             }
             else
             {

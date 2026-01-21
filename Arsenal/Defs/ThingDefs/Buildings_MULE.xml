@@ -64,19 +64,21 @@ Requires LATTICE for task coordination.</description>
     </researchPrerequisites>
   </ThingDef>
 
-  <!-- MORIA - Materials Storage Shelf -->
+  <!-- MORIA - Climate-Controlled Storage Vault -->
   <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_Moria</defName>
-    <label>MORIA storage shelf</label>
-    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A powered storage shelf for raw materials, refined goods, and manufactured components. Works like a standard shelf but requires power and network connection. MULEs can automatically deliver items here based on storage filter settings.
+    <label>MORIA storage vault</label>
+    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A climate-controlled storage vault for raw materials, refined goods, and manufactured components. Items are stored internally with massive capacity. MULEs automatically deliver items here based on storage filter settings.
 
 Features:
-- 16 storage cells (4x4)
-- Configurable storage filters (vanilla storage UI)
-- Requires power to accept items
+- Up to 100,000 total items stored internally (not visible)
+- Up to 10,000 per item type, 100 different types
+- Built-in climate control (-40°C to 40°C)
+- Configurable storage filters
 - MULE delivery integration via LATTICE
+- Manual retrieval interface for colonists
 
-Set storage filters to control which items are accepted.</description>
+Requires power for storage acceptance and climate control.</description>
     <thingClass>Arsenal.Building_Moria</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_MORIA</texPath>
@@ -90,44 +92,44 @@ Set storage filters to control which items are accepted.</description>
       </damageData>
     </graphicData>
     <altitudeLayer>Building</altitudeLayer>
-    <passability>PassThroughOnly</passability>
-    <fillPercent>0.4</fillPercent>
+    <passability>Impassable</passability>
+    <blockWind>true</blockWind>
+    <fillPercent>1</fillPercent>
+    <blockLight>true</blockLight>
     <canOverlapZones>false</canOverlapZones>
-    <surfaceType>Item</surfaceType>
     <statBases>
-      <MaxHitPoints>300</MaxHitPoints>
-      <WorkToBuild>12000</WorkToBuild>
-      <Mass>80</Mass>
-      <Flammability>0.3</Flammability>
+      <MaxHitPoints>500</MaxHitPoints>
+      <WorkToBuild>20000</WorkToBuild>
+      <Mass>200</Mass>
+      <Flammability>0.2</Flammability>
     </statBases>
     <size>(4,4)</size>
     <costList>
-      <Steel>200</Steel>
-      <Plasteel>50</Plasteel>
-      <ComponentIndustrial>8</ComponentIndustrial>
-      <ComponentSpacer>2</ComponentSpacer>
+      <Steel>300</Steel>
+      <Plasteel>80</Plasteel>
+      <ComponentIndustrial>12</ComponentIndustrial>
+      <ComponentSpacer>4</ComponentSpacer>
     </costList>
     <comps>
       <li Class="CompProperties_Power">
         <compClass>CompPowerTrader</compClass>
-        <basePowerConsumption>200</basePowerConsumption>
+        <basePowerConsumption>500</basePowerConsumption>
       </li>
       <li Class="CompProperties_Flickable"/>
       <!-- Blue glow for MORIA - storage indicator -->
       <li Class="CompProperties_Glower">
-        <glowRadius>5</glowRadius>
+        <glowRadius>6</glowRadius>
         <glowColor>(100,150,255,0)</glowColor>
       </li>
     </comps>
     <building>
-      <preventDeteriorationOnTop>true</preventDeteriorationOnTop>
-      <ignoreStoredThingsBeauty>true</ignoreStoredThingsBeauty>
       <fixedStorageSettings>
         <filter>
           <categories>
             <li>ResourcesRaw</li>
             <li>Manufactured</li>
             <li>StoneBlocks</li>
+            <li>Foods</li>
           </categories>
         </filter>
       </fixedStorageSettings>
@@ -140,11 +142,9 @@ Set storage filters to control which items are accepted.</description>
         </filter>
       </defaultStorageSettings>
     </building>
-    <inspectorTabs>
-      <li>ITab_Storage</li>
-    </inspectorTabs>
+    <tickerType>Rare</tickerType>
     <designationCategory>Production</designationCategory>
-    <constructionSkillPrerequisite>8</constructionSkillPrerequisite>
+    <constructionSkillPrerequisite>10</constructionSkillPrerequisite>
     <researchPrerequisites>
       <li>Arsenal_MULESystem</li>
     </researchPrerequisites>
