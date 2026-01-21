@@ -41,7 +41,9 @@
         <li>FullHead</li>
       </bodyPartGroups>
       <wornGraphicPath>Arsenal/MITHRIL_HAWKEYE</wornGraphicPath>
+      <useWornGraphicMask>false</useWornGraphicMask>
       <wornGraphicData>
+        <graphicClass>Graphic_Multi</graphicClass>
         <renderSkipFlags>
           <li>None</li>
         </renderSkipFlags>
@@ -59,19 +61,19 @@
       <drawData>
         <dataNorth>
           <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
+          <scale>0.25</scale>
         </dataNorth>
         <dataSouth>
           <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
+          <scale>0.25</scale>
         </dataSouth>
         <dataEast>
           <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
+          <scale>0.25</scale>
         </dataEast>
         <dataWest>
           <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
+          <scale>0.25</scale>
         </dataWest>
       </drawData>
     </apparel>

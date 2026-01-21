@@ -479,6 +479,7 @@ namespace Arsenal
         /// <summary>
         /// Processes aggregated threats and assigns DARTs.
         /// No longer scans directly - relies on ARGUS reports.
+        /// Also considers HAWKEYE-marked priority targets.
         /// </summary>
         private void ProcessThreatsAndAssign()
         {
@@ -493,6 +494,35 @@ namespace Arsenal
 
             // Get threats from ARGUS aggregation (not direct scanning)
             List<Pawn> threats = GetAggregatedThreats();
+
+            // Also check for HAWKEYE priority target - it's valid even outside ARGUS range
+            Pawn hawkeyeTarget = CompHawkeyeSensor.GlobalPriorityTarget;
+            if (hawkeyeTarget != null && !hawkeyeTarget.Dead && hawkeyeTarget.Spawned &&
+                hawkeyeTarget.Map == Map && !threats.Contains(hawkeyeTarget))
+            {
+                threats.Add(hawkeyeTarget);
+            }
+
+            // Also include any threats detected by HAWKEYE sensors via SKYLINK
+            if (ArsenalNetworkManager.IsLatticeConnectedToSkylink())
+            {
+                foreach (var pawn in ArsenalNetworkManager.GetAllHawkeyePawns())
+                {
+                    if (pawn?.Map != Map) continue;
+                    var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                    var comp = hawkeye?.SensorComp;
+                    if (comp != null && comp.IsOperational)
+                    {
+                        foreach (var threat in comp.GetDetectedThreats())
+                        {
+                            if (!threats.Contains(threat))
+                            {
+                                threats.Add(threat);
+                            }
+                        }
+                    }
+                }
+            }
 
             if (threats.Count == 0)
             {
