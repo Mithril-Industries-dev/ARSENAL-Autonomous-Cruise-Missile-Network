@@ -19,6 +19,10 @@ namespace Arsenal
     {
         private CompHawkeyeSensor sensorComp;
 
+        // Cached directional textures for proper rendering
+        private static Graphic_Multi cachedGraphic;
+        private static readonly Vector2 DRAW_SIZE = new Vector2(0.5f, 0.5f); // 50% of normal size
+
         public CompHawkeyeSensor SensorComp
         {
             get
@@ -32,6 +36,58 @@ namespace Arsenal
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
+            InitGraphic();
+        }
+
+        private void InitGraphic()
+        {
+            if (cachedGraphic == null)
+            {
+                cachedGraphic = (Graphic_Multi)GraphicDatabase.Get<Graphic_Multi>(
+                    "Arsenal/MITHRIL_HAWKEYE",
+                    ShaderDatabase.Cutout,
+                    DRAW_SIZE,
+                    Color.white);
+            }
+        }
+
+        public override void DrawWornExtras()
+        {
+            if (Wearer == null || Wearer.Dead || !Wearer.Spawned)
+                return;
+
+            InitGraphic();
+            if (cachedGraphic == null)
+                return;
+
+            // Get the correct rotation based on pawn's facing direction
+            Rot4 facing = Wearer.Rotation;
+
+            // Get the correct material for this direction (this respects _north, _south, _east, _west textures)
+            Material mat = cachedGraphic.MatAt(facing);
+
+            // Calculate draw position - on top of head
+            Vector3 drawPos = Wearer.DrawPos;
+            drawPos.y += 0.03125f; // Slightly above pawn body (1/32 of a cell)
+
+            // Adjust vertical offset based on body type and posture
+            float yOffset = 0f;
+            if (Wearer.GetPosture() != PawnPosture.Standing)
+            {
+                // Pawn is lying down - don't draw helmet
+                return;
+            }
+
+            drawPos.z += yOffset;
+
+            // Calculate the mesh size
+            Vector3 scale = new Vector3(DRAW_SIZE.x, 1f, DRAW_SIZE.y);
+
+            // Create a matrix for proper positioning and scaling
+            Matrix4x4 matrix = Matrix4x4.TRS(drawPos, Quaternion.identity, scale);
+
+            // Draw the helmet with proper directional texture
+            Graphics.DrawMesh(MeshPool.plane10, matrix, mat, 0);
         }
 
         public override void Notify_Equipped(Pawn pawn)
