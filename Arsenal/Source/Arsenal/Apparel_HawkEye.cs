@@ -21,7 +21,7 @@ namespace Arsenal
 
         // Cached directional textures for proper rendering
         private static Graphic_Multi cachedGraphic;
-        private static readonly Vector2 DRAW_SIZE = new Vector2(0.5f, 0.5f); // 50% of normal size
+        private static readonly Vector2 DRAW_SIZE = new Vector2(1f, 1f); // Normal size
 
         public CompHawkeyeSensor SensorComp
         {
