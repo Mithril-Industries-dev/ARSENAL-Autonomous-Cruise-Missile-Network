@@ -36,11 +36,11 @@
       <ComponentIndustrial>4</ComponentIndustrial>
       <ComponentSpacer>2</ComponentSpacer>
     </costList>
-    <apparel>
+    <apparel Inherit="False">
       <bodyPartGroups>
         <li>FullHead</li>
       </bodyPartGroups>
-      <!-- Worn graphic rendering handled by custom DrawWornExtras() in C# -->
+      <!-- No wornGraphicPath - rendering handled by custom DrawWornExtras() in C# -->
       <!-- This ensures correct directional textures and 50% size reduction -->
       <layers>
         <li>Overhead</li>

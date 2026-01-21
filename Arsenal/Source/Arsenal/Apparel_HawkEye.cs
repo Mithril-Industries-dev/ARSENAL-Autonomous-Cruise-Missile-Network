@@ -56,6 +56,10 @@ namespace Arsenal
             if (Wearer == null || Wearer.Dead || !Wearer.Spawned)
                 return;
 
+            // Don't draw if pawn is not standing (lying down, etc.)
+            if (Wearer.GetPosture() != PawnPosture.Standing)
+                return;
+
             InitGraphic();
             if (cachedGraphic == null)
                 return;
@@ -66,24 +70,16 @@ namespace Arsenal
             // Get the correct material for this direction (this respects _north, _south, _east, _west textures)
             Material mat = cachedGraphic.MatAt(facing);
 
-            // Calculate draw position - on top of head
+            // Calculate draw position - on pawn's head
             Vector3 drawPos = Wearer.DrawPos;
-            drawPos.y += 0.03125f; // Slightly above pawn body (1/32 of a cell)
 
-            // Adjust vertical offset based on body type and posture
-            float yOffset = 0f;
-            if (Wearer.GetPosture() != PawnPosture.Standing)
-            {
-                // Pawn is lying down - don't draw helmet
-                return;
-            }
-
-            drawPos.z += yOffset;
-
-            // Calculate the mesh size
-            Vector3 scale = new Vector3(DRAW_SIZE.x, 1f, DRAW_SIZE.y);
+            // Head offset - move up to head level
+            // Y is render layer (depth), Z is vertical position on screen
+            drawPos.y = AltitudeLayer.MoteOverhead.AltitudeFor(); // Render above pawn
+            drawPos.z += 0.34f; // Vertical offset to head position
 
             // Create a matrix for proper positioning and scaling
+            Vector3 scale = new Vector3(DRAW_SIZE.x, 1f, DRAW_SIZE.y);
             Matrix4x4 matrix = Matrix4x4.TRS(drawPos, Quaternion.identity, scale);
 
             // Draw the helmet with proper directional texture
