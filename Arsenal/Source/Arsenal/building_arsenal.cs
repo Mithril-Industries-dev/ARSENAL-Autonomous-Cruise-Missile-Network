@@ -582,7 +582,7 @@ namespace Arsenal
             }
             else if (product.destinationType == typeof(Building_Stable))
             {
-                // MULE - dock directly in STABLE (ground-based, no flyer needed)
+                // MULE - spawn at ARSENAL and pathfind to STABLE
                 Building_Stable targetStable = destination as Building_Stable;
                 if (targetStable == null || !targetStable.HasSpace)
                 {
@@ -593,20 +593,27 @@ namespace Arsenal
                     return;
                 }
 
-                // Create and dock the MULE directly
-                MULE_Drone mule = targetStable.CreateAndDockMule();
-                if (mule != null)
+                // Create MULE and spawn at ARSENAL position
+                MULE_Drone mule = (MULE_Drone)ThingMaker.MakeThing(ArsenalDefOf.Arsenal_MULE_Drone);
+                mule.SetHomeStable(targetStable);
+
+                // Find a spawn cell near the ARSENAL
+                IntVec3 spawnCell = Position;
+                foreach (IntVec3 cell in GenAdj.CellsAdjacent8Way(this))
                 {
-                    Messages.Message(Label + " Line " + (line.index + 1) + ": MULE delivered to " + targetStable.Label,
-                        this, MessageTypeDefOf.PositiveEvent);
+                    if (cell.InBounds(Map) && cell.Walkable(Map) && !cell.Fogged(Map))
+                    {
+                        spawnCell = cell;
+                        break;
+                    }
                 }
-                else
-                {
-                    // Failed to dock - drop as item
-                    Thing muleItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_MULE_Item);
-                    GenPlace.TryPlaceThing(muleItem, Position, Map, ThingPlaceMode.Near);
-                    Messages.Message(Label + ": MULE completed but STABLE is full.", this, MessageTypeDefOf.NeutralEvent);
-                }
+
+                // Spawn the MULE and have it drive to the STABLE
+                GenSpawn.Spawn(mule, spawnCell, Map);
+                mule.InitializeForDelivery(targetStable);
+
+                Messages.Message(Label + " Line " + (line.index + 1) + ": MULE manufacturing complete. Delivering to " + targetStable.Label,
+                    this, MessageTypeDefOf.PositiveEvent);
             }
         }
 

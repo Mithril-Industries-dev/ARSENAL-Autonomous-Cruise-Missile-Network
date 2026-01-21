@@ -11,6 +11,9 @@ namespace Arsenal
         /// <summary>Docked at STABLE, actively charging.</summary>
         Charging,
 
+        /// <summary>Newly manufactured, traveling from ARSENAL to assigned STABLE.</summary>
+        DeliveringToStable,
+
         /// <summary>Traveling to task location.</summary>
         Deploying,
 

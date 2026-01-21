@@ -139,6 +139,17 @@ namespace Arsenal
             customName = name;
         }
 
+        /// <summary>
+        /// Initializes the MULE for delivery from ARSENAL to target STABLE.
+        /// Called when a newly manufactured MULE is spawned.
+        /// </summary>
+        public void InitializeForDelivery(Building_Stable targetStable)
+        {
+            homeStable = targetStable;
+            state = MuleState.DeliveringToStable;
+            CalculatePathTo(targetStable.Position);
+        }
+
         #endregion
 
         #region Battery Management
@@ -304,6 +315,10 @@ namespace Arsenal
                     TickCharging();
                     break;
 
+                case MuleState.DeliveringToStable:
+                    TickDeliveringToStable();
+                    break;
+
                 case MuleState.Deploying:
                     TickDeploying();
                     break;
@@ -326,8 +341,8 @@ namespace Arsenal
             }
 
             // Update trail
-            if (state == MuleState.Deploying || state == MuleState.Hauling ||
-                state == MuleState.ReturningHome)
+            if (state == MuleState.DeliveringToStable || state == MuleState.Deploying ||
+                state == MuleState.Hauling || state == MuleState.ReturningHome)
             {
                 UpdateTrail();
             }
@@ -346,6 +361,35 @@ namespace Arsenal
             if (IsBatteryFull)
             {
                 state = MuleState.Idle;
+            }
+        }
+
+        private void TickDeliveringToStable()
+        {
+            DrainBattery(ACTIVE_DRAIN_PER_TICK);
+            MoveAlongPath();
+
+            if (homeStable == null || homeStable.Destroyed)
+            {
+                // Target STABLE destroyed - find a new one
+                homeStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
+                if (homeStable != null)
+                {
+                    CalculatePathTo(homeStable.Position);
+                }
+                else
+                {
+                    // No STABLE available - go inert
+                    EnterInertState();
+                }
+                return;
+            }
+
+            // Check if arrived at STABLE
+            if (Position.DistanceTo(homeStable.Position) < 2f)
+            {
+                // Dock with STABLE
+                DockAtStable();
             }
         }
 
@@ -632,7 +676,7 @@ namespace Arsenal
 
             // Get current destination based on state
             IntVec3 dest = IntVec3.Invalid;
-            if (state == MuleState.ReturningHome)
+            if (state == MuleState.ReturningHome || state == MuleState.DeliveringToStable)
             {
                 dest = homeStable?.Position ?? Position;
             }
@@ -752,8 +796,13 @@ namespace Arsenal
             // Try to place at destination
             if (currentTask?.destination is Building_Moria moria)
             {
-                // Deliver to MORIA
-                moria.TryAcceptItem(carriedThing);
+                // Deliver to MORIA - if it rejects, drop on the ground
+                if (!moria.TryAcceptItem(carriedThing))
+                {
+                    // MORIA rejected the item (full, unpowered, etc.) - drop it
+                    GenPlace.TryPlaceThing(carriedThing, Position, Map, ThingPlaceMode.Near);
+                }
+                // Note: TryAcceptItem destroys the item if accepted, so carriedThing may be destroyed
             }
             else
             {
