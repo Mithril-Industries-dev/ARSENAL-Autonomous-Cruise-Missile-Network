@@ -74,9 +74,8 @@ namespace Arsenal
         private Sustainer scanningSustainer;
         private bool hadThreatsLastScan = false;
 
-        // Launch rate limiting - slight delay between DART launches
-        private const int LAUNCH_DELAY_TICKS = 15; // ~0.25 seconds between launches
-        private int lastLaunchTick = -999;
+        // Max DARTs launched per processing cycle (prevents overwhelming all at once)
+        private const int MAX_DARTS_PER_CYCLE = 8;
 
         // Properties
         public FlightPathGrid FlightGrid
@@ -552,16 +551,34 @@ namespace Arsenal
             // Sort threats by distance to nearest QUIVER (prioritize closer threats)
             threats = threats.OrderBy(t => GetDistanceToNearestQuiver(t.Position)).ToList();
 
-            // Evaluate and assign DARTs to threats
-            foreach (Pawn threat in threats)
-            {
-                int dartsNeeded = CalculateDartsNeeded(threat);
-                int dartsAlreadyAssigned = GetAssignedDarts(threat);
-                int additionalDartsNeeded = dartsNeeded - dartsAlreadyAssigned;
+            // Calculate launch budget for this cycle
+            // Allow multiple DARTs per processing cycle, distributed across threats
+            int launchBudget = Mathf.Min(MAX_DARTS_PER_CYCLE, Mathf.Max(4, threats.Count));
+            int dartsLaunched = 0;
 
-                if (additionalDartsNeeded > 0)
+            // Multiple passes to ensure each threat gets assigned DARTs
+            bool launchedThisPass = true;
+            while (launchedThisPass && dartsLaunched < launchBudget)
+            {
+                launchedThisPass = false;
+
+                foreach (Pawn threat in threats)
                 {
-                    AssignDarts(threat, additionalDartsNeeded);
+                    if (dartsLaunched >= launchBudget)
+                        break;
+
+                    int dartsNeeded = CalculateDartsNeeded(threat);
+                    int dartsAlreadyAssigned = GetAssignedDarts(threat);
+                    int additionalDartsNeeded = dartsNeeded - dartsAlreadyAssigned;
+
+                    if (additionalDartsNeeded > 0)
+                    {
+                        if (AssignDarts(threat, 1))
+                        {
+                            dartsLaunched++;
+                            launchedThisPass = true;
+                        }
+                    }
                 }
             }
         }
@@ -659,17 +676,12 @@ namespace Arsenal
         /// <summary>
         /// Assigns DARTs from QUIVERs to a threat.
         /// Pulls from nearest QUIVER first.
-        /// Rate-limited to prevent launching all DARTs at once.
+        /// Returns true if a DART was launched, false otherwise.
         /// </summary>
-        public void AssignDarts(Pawn target, int count)
+        public bool AssignDarts(Pawn target, int count)
         {
             if (count <= 0 || target == null)
-                return;
-
-            // Check launch cooldown - only launch one DART per cooldown period
-            int currentTick = Find.TickManager.TicksGame;
-            if (currentTick - lastLaunchTick < LAUNCH_DELAY_TICKS)
-                return; // Still on cooldown, will try again next scan
+                return false;
 
             // Sort QUIVERs by distance to target
             var sortedQuivers = registeredQuivers
@@ -677,7 +689,7 @@ namespace Arsenal
                 .OrderBy(q => q.Position.DistanceTo(target.Position))
                 .ToList();
 
-            // Only launch ONE dart per call (rate limiting)
+            // Launch one DART for this target
             foreach (var quiver in sortedQuivers)
             {
                 if (quiver.DartCount > 0)
@@ -692,14 +704,11 @@ namespace Arsenal
                         }
                         assignedDartsPerTarget[target]++;
 
-                        // Update launch cooldown
-                        lastLaunchTick = currentTick;
-
-                        // Only launch one DART per call - system will call again next scan
-                        return;
+                        return true;
                     }
                 }
             }
+            return false;
         }
 
         /// <summary>
