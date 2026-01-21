@@ -168,6 +168,8 @@ public enum DartState
 
 ### Threat Evaluation
 
+The LATTICE evaluates each threat to determine how many DARTs to assign:
+
 ```csharp
 // Base threat values (Building_Lattice.cs)
 BASE_THREAT_TRIBAL = 35f;
@@ -176,14 +178,53 @@ BASE_THREAT_MECHANOID = 150f;
 DART_LETHALITY = 20f;  // Each DART handles ~20 threat points
 ```
 
+**Evaluation Factors:**
+| Factor | Effect |
+|--------|--------|
+| **Race Type** | Mechanoid=150, Pirate=50, Tribal=35, Animal=size-based |
+| **Animals** | Predator: 30+(size×30), Non-predator: 20+(size×15), Manhunter: +30% |
+| **Health %** | Threat × healthPct |
+| **Ranged Weapon** | ×1.2 multiplier |
+| **Spacer Weapon** | ×1.3 multiplier |
+| **Armor** | 1.0× (naked) to 2.0× (100% armor), weighted 70% sharp / 30% blunt |
+| **Shield Belt** | ×2.0 multiplier (detects `CompShield`) |
+
+**Example DART Allocations:**
+| Target | Threat | DARTs |
+|--------|--------|-------|
+| Naked tribal | 35 | 2 |
+| Armored pirate (50% armor) | 75 | 4 |
+| Shielded pirate | 100 | 5 |
+| Manhunting thrumbo | 195 | 10 |
+| Centipede | 225 | 12 |
+
 DARTs needed = `Ceil(threatValue / DART_LETHALITY)`
+
+### DART Assignment Logic
+
+Per processing cycle (60 ticks), LATTICE assigns DARTs using a budget system:
+- **Launch Budget:** `min(MAX_DARTS_PER_CYCLE, max(4, threat_count))`
+- **MAX_DARTS_PER_CYCLE:** 8
+- **Distribution:** Multi-pass - one DART per threat per pass until budget exhausted
+- **QUIVER Selection:** Nearest QUIVER to target with available DARTs
+
+### DART Re-Tasking (Target Dies Mid-Flight)
+
+When a DART's target becomes invalid:
+1. **Immediate Reassignment:** `RequestReassignment()` tries instant redirect
+2. **Queue Fallback:** If no target found, DART added to `awaitingReassignment`
+3. **Loiter Pattern:** DART circles (2-cell radius, half speed) while waiting
+4. **Timeout:** After 180 ticks (3 sec), returns home
+5. **Valid Targets:** Includes both ARGUS and HAWKEYE-detected threats
 
 ### Key Behaviors
 
-- **Rate Limiting:** 15 ticks between DART launches
-- **Reassignment:** If target dies mid-flight, DART requests new target from LATTICE
+- **Multi-Target Engagement:** Up to 8 DARTs launched per processing cycle across multiple threats
+- **Immediate Reassignment:** DARTs redirect instantly when target dies (no queue delay)
+- **Loiter Pattern:** DARTs circle while awaiting reassignment instead of freezing
 - **Stale Threats:** Threats not seen for 180 ticks are removed
 - **Chain Explosion:** QUIVER explodes based on stored DART count when destroyed
+- **Assignment Tracking:** Properly decrements old target count on reassignment
 
 ---
 
@@ -221,6 +262,34 @@ Wearable helmet that acts as a mobile ARGUS node:
   - **MARK DART TARGET** - Priority target for DART convergence (30s duration, 30s cooldown)
 
 **Important:** HAWKEYE-detected targets ARE valid for DART engagement even outside ARGUS range.
+
+### Custom Rendering
+
+HAWKEYE uses custom `DrawWornExtras()` for proper directional textures:
+- **Reason:** RimWorld's default Overhead layer rendering flips east texture for west
+- **Solution:** Custom rendering with `Graphic_Multi` respects all 4 directional textures
+- **XML Config:** `<apparel Inherit="False">` prevents parent's wornGraphicPath
+- **Textures:** `Arsenal/MITHRIL_HAWKEYE_north/south/east/west.png`
+
+```csharp
+// Apparel_HawkEye.cs
+public override void DrawWornExtras()
+{
+    Rot4 facing = Wearer.Rotation;
+    Material mat = cachedGraphic.MatAt(facing);  // Gets correct directional texture
+    Vector3 drawPos = Wearer.DrawPos;
+    drawPos.y = AltitudeLayer.MoteOverhead.AltitudeFor();
+    drawPos.z += 0.34f;  // Head offset
+    // ... render with matrix transform
+}
+```
+
+### HAWKEYE Integration with LATTICE
+
+HAWKEYE threats are included in LATTICE processing via `GetAllValidThreats()`:
+- `CompHawkeyeSensor.GlobalPriorityTarget` - marked priority target
+- `comp.GetDetectedThreats()` - all threats in HAWKEYE's 30-tile LOS radius
+- Used for both initial assignment AND reassignment of DARTs
 
 ---
 
@@ -386,8 +455,8 @@ Messages.Message("Text", this, MessageTypeDefOf.RejectInput);
 | SCAN_INTERVAL | 60 | ARGUS threat scanning |
 | PROCESS_INTERVAL | 60 | LATTICE threat processing |
 | THREAT_STALE_TICKS | 180 | Remove unseen threats |
-| LAUNCH_DELAY_TICKS | 15 | Between DART launches |
-| REASSIGN_TIMEOUT | 180 | DART waits for new target |
+| MAX_DARTS_PER_CYCLE | 8 | Max DARTs launched per processing cycle |
+| REASSIGN_TIMEOUT | 180 | DART waits for new target before returning |
 | PATH_UPDATE_INTERVAL | 30 | DART path recalculation |
 | REFUEL_TICKS | 3600 | HOP refueling time |
 
