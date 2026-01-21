@@ -10,23 +10,65 @@ namespace Arsenal
     public class Building_Hop : Building
     {
         private CompRefuelable refuelableComp;
-        
+        private CompPowerTrader powerComp;
+
         private string customName;
         private static int hopCounter = 1;
-        
+
         // Refueling system
         private Thing missileBeingRefueled;
         private int destinationTile = -1;
         private Building_Hub destinationHub;
         private int refuelTicksRemaining = 0;
         private const int REFUEL_TICKS = 3600; // 1 minute real time
-        
+
+        // Range extension for DAGGER network
+        public int RangeExtension = 12;
+
         public bool IsRefueling => missileBeingRefueled != null;
+
+        // Properties for UI
+        public bool IsPoweredOn()
+        {
+            return powerComp == null || powerComp.PowerOn;
+        }
+
+        public bool HasFuel => refuelableComp != null && refuelableComp.Fuel >= 50f;
+
+        /// <summary>
+        /// Checks if HOP has network connectivity to LATTICE.
+        /// Required for remote coordination.
+        /// </summary>
+        public bool HasNetworkConnection()
+        {
+            if (Map == null) return false;
+            return ArsenalNetworkManager.IsTileConnected(Map.Tile);
+        }
+
+        /// <summary>
+        /// Gets network status message for UI.
+        /// </summary>
+        public string GetNetworkStatusMessage()
+        {
+            if (Map == null) return "OFFLINE — No map";
+            return ArsenalNetworkManager.GetNetworkStatus(Map.Tile);
+        }
+
+        public float FuelPercent
+        {
+            get
+            {
+                if (refuelableComp == null) return 0f;
+                float maxFuel = refuelableComp.Props.fuelCapacity;
+                return maxFuel > 0 ? refuelableComp.Fuel / maxFuel : 0f;
+            }
+        }
 
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
+            powerComp = GetComp<CompPowerTrader>();
             if (!respawningAfterLoad)
             {
                 ArsenalNetworkManager.RegisterHop(this);
@@ -199,9 +241,21 @@ namespace Arsenal
         public override string GetInspectString()
         {
             string str = base.GetInspectString();
+
+            // Network status
+            if (!str.NullOrEmpty()) str += "\n";
+            if (HasNetworkConnection())
+            {
+                str += $"Network: {GetNetworkStatusMessage()}";
+            }
+            else
+            {
+                str += $"<color=yellow>Network: {GetNetworkStatusMessage()}</color>";
+            }
+
             if (refuelableComp != null)
                 str += "\nFuel: " + refuelableComp.Fuel.ToString("F0") + " / 5000";
-            
+
             if (IsRefueling)
             {
                 str += "\nStatus: REFUELING";
@@ -213,7 +267,7 @@ namespace Arsenal
             {
                 str += "\nStatus: Ready";
             }
-            
+
             return str;
         }
 

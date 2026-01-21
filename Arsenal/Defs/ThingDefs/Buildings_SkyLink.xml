@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- SKYLINK Launch Pad - 5x5 building for satellite manufacturing and launch -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_SkyLinkLaunchPad</defName>
+    <label>SKYLINK launch pad</label>
+    <description>A massive launch facility for manufacturing and deploying SKYLINK communications satellites into orbit. Only one satellite can be in orbit at any time. If the satellite is destroyed, manufacture and launch a replacement here. Requires adjacent storage for manufacturing resources.\n\nSatellite cost:\n- Steel: 200\n- Plasteel: 150\n- Gold: 50\n- Components: 8\n- Adv. Components: 6\n- Build time: 4 days</description>
+    <thingClass>Arsenal.Building_SkyLinkLaunchPad</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_SkyLinkLaunchPad</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(5,5)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>true</blockWind>
+    <fillPercent>1</fillPercent>
+    <blockLight>true</blockLight>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>500</MaxHitPoints>
+      <WorkToBuild>18000</WorkToBuild>
+      <Mass>500</Mass>
+      <Flammability>0.3</Flammability>
+    </statBases>
+    <size>(5,5)</size>
+    <costList>
+      <Steel>350</Steel>
+      <Plasteel>100</Plasteel>
+      <ComponentIndustrial>12</ComponentIndustrial>
+      <ComponentSpacer>4</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>2000</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Orange glow for Launch Pad - industrial/ready indicator -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>10</glowRadius>
+        <glowColor>(255,150,50,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>14</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_SkyLink</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+  <!-- SKYLINK Terminal - 3x3 building that connects LATTICE to satellite -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_SkyLinkTerminal</defName>
+    <label>SKYLINK terminal</label>
+    <description>Satellite uplink terminal that connects the local LATTICE to the orbital SKYLINK network. Must be placed within 15 tiles of a LATTICE hub. When operational, enables global MITHRIL network operations including HERALD relays and HAWKEYE systems.\n\nRequires:\n- SKYLINK satellite in orbit\n- Placed within 15 tiles of LATTICE\n- Power connection</description>
+    <thingClass>Arsenal.Building_SkyLinkTerminal</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_SkyLinkTerminal</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(3,3)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>Impassable</passability>
+    <blockWind>false</blockWind>
+    <fillPercent>0.7</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>200</MaxHitPoints>
+      <WorkToBuild>6000</WorkToBuild>
+      <Mass>80</Mass>
+      <Flammability>0.4</Flammability>
+    </statBases>
+    <size>(3,3)</size>
+    <costList>
+      <Steel>120</Steel>
+      <Plasteel>40</Plasteel>
+      <ComponentIndustrial>6</ComponentIndustrial>
+      <ComponentSpacer>2</ComponentSpacer>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>1000</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Blue glow for Terminal - satellite link indicator -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>6</glowRadius>
+        <glowColor>(100,150,255,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Rare</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_SkyLink</li>
+    </researchPrerequisites>
+    <placeWorkers>
+      <li>Arsenal.PlaceWorker_NearLattice</li>
+    </placeWorkers>
+  </ThingDef>
+
+  <!-- SKYLINK Launching Rocket - visual effect for launch -->
+  <ThingDef>
+    <defName>Arsenal_SkyLinkLaunchingRocket</defName>
+    <label>SKYLINK rocket</label>
+    <thingClass>Arsenal.SkyLinkLaunchingRocket</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_SkyLinkRocket</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(3,4)</drawSize>
+    </graphicData>
+    <altitudeLayer>Skyfaller</altitudeLayer>
+    <useHitPoints>false</useHitPoints>
+    <tickerType>Normal</tickerType>
+    <drawerType>RealtimeOnly</drawerType>
+    <selectable>false</selectable>
+  </ThingDef>
+
+</Defs>

@@ -15,16 +15,67 @@ namespace Arsenal
         private const float LAUNCH_RADIUS = 100f;
 
         private CompRefuelable refuelableComp;
-        
+        private CompPowerTrader powerComp;
+
         private string customName;
         private static int hubCounter = 1;
-        
+
         private int pendingStrikeTile = -1;
+
+        // Priority for auto-selection (1-10, lower = higher priority)
+        public int priority = 5;
+
+        // Range properties for DAGGER delivery
+        public int BaseRange = 18;
+        private const int RANGE_PER_HOP = 12;
+
+        // Properties for UI and manufacturing
+        public int MaxCapacity => MAX_STORED;
+        public int CurrentCount => storedMissiles.Count;
+        public int EmptySlots => MAX_STORED - storedMissiles.Count;
+        public bool IsFull => storedMissiles.Count >= MAX_STORED;
+
+        public bool IsPoweredOn()
+        {
+            return powerComp == null || powerComp.PowerOn;
+        }
+
+        /// <summary>
+        /// Checks if HUB has network connectivity to LATTICE.
+        /// Required for remote operations.
+        /// </summary>
+        public bool HasNetworkConnection()
+        {
+            if (Map == null) return false;
+            return ArsenalNetworkManager.IsTileConnected(Map.Tile);
+        }
+
+        /// <summary>
+        /// Gets network status message for UI.
+        /// </summary>
+        public string GetNetworkStatusMessage()
+        {
+            if (Map == null) return "OFFLINE — No map";
+            return ArsenalNetworkManager.GetNetworkStatus(Map.Tile);
+        }
+
+        public int GetExtendedRange(List<Building_Hop> hopChain)
+        {
+            if (hopChain == null || hopChain.Count == 0) return BaseRange;
+
+            int range = BaseRange;
+            foreach (var hop in hopChain)
+            {
+                range += hop.RangeExtension;
+            }
+            return range;
+        }
 
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
+            powerComp = GetComp<CompPowerTrader>();
             if (!respawningAfterLoad)
             {
                 ArsenalNetworkManager.RegisterHub(this);
@@ -47,7 +98,54 @@ namespace Arsenal
         public void SetCustomName(string name) => customName = name;
 
         public int GetStoredMissileCount() => storedMissiles.Count;
+        public int StoredMissileCount => storedMissiles.Count;
         public bool CanStoreMissile() => storedMissiles.Count < MAX_STORED;
+
+        /// <summary>
+        /// Launches a missile at a local target cell (used by HAWKEYE designation).
+        /// Returns true if launch was successful.
+        /// </summary>
+        public bool LaunchMissileAt(IntVec3 targetCell)
+        {
+            if (storedMissiles.Count == 0)
+                return false;
+
+            if (!IsPoweredOn())
+                return false;
+
+            if (!HasNetworkConnection())
+                return false;
+
+            // Find target map from the target cell's context
+            // For HAWKEYE, target is always on pawn's current map
+            Map targetMap = Find.CurrentMap;
+            if (targetMap == null)
+                return false;
+
+            int targetTile = targetMap.Tile;
+
+            Thing missile = storedMissiles[0];
+            storedMissiles.RemoveAt(0);
+
+            int dist = Find.WorldGrid.TraversalDistanceBetween(Map.Tile, targetTile);
+
+            // Create strike world object
+            WorldObject_MissileStrike strike =
+                (WorldObject_MissileStrike)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_MissileStrike);
+            strike.Tile = Map.Tile;
+            strike.destinationTile = targetTile;
+            strike.targetCell = targetCell;
+            strike.arrivalTick = Find.TickManager.TicksGame + (dist * 50);
+            strike.sourceHubLabel = Label;
+
+            // Spawn takeoff skyfaller
+            MissileLaunchingSkyfaller skyfaller = (MissileLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                ArsenalDefOf.Arsenal_MissileLaunching);
+            skyfaller.missileStrike = strike;
+
+            GenSpawn.Spawn(skyfaller, Position, Map);
+            return true;
+        }
 
         public bool StoreMissile(Thing missile)
         {
@@ -283,6 +381,18 @@ namespace Arsenal
         public override string GetInspectString()
         {
             string str = base.GetInspectString();
+
+            // Network status
+            if (!str.NullOrEmpty()) str += "\n";
+            if (HasNetworkConnection())
+            {
+                str += $"Network: {GetNetworkStatusMessage()}";
+            }
+            else
+            {
+                str += $"<color=yellow>Network: {GetNetworkStatusMessage()}</color>";
+            }
+
             str += "\nStored missiles: " + storedMissiles.Count + " / " + MAX_STORED;
             str += "\nStrike range: " + LAUNCH_RADIUS + " tiles";
             return str;
@@ -292,6 +402,7 @@ namespace Arsenal
         {
             base.ExposeData();
             Scribe_Values.Look(ref customName, "customName");
+            Scribe_Values.Look(ref priority, "priority", 5);
             Scribe_Collections.Look(ref storedMissiles, "storedMissiles", LookMode.Deep);
             if (storedMissiles == null) storedMissiles = new List<Thing>();
         }

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- DART OWA Drone (Flyer) - spawned when flying, not a regular item -->
+  <ThingDef>
+    <defName>Arsenal_DART_Flyer</defName>
+    <label>DART drone</label>
+    <description>A small one-way-attack (OWA) drone. Autonomous kamikaze munition that detonates on impact with hostile targets. Coordinated by the LATTICE C2 system.</description>
+    <thingClass>Arsenal.DART_Flyer</thingClass>
+    <category>Projectile</category>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_DART</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(0.8,0.8)</drawSize>
+      <shaderType>TransparentPostLight</shaderType>
+    </graphicData>
+    <altitudeLayer>MoteOverhead</altitudeLayer>
+    <useHitPoints>false</useHitPoints>
+    <neverMultiSelect>true</neverMultiSelect>
+    <tickerType>Normal</tickerType>
+    <statBases>
+      <Mass>5</Mass>
+    </statBases>
+    <drawOffscreen>true</drawOffscreen>
+    <selectable>true</selectable>
+  </ThingDef>
+
+  <!-- DART Item (storable, for recipes/hauling if needed in future) -->
+  <ThingDef ParentName="ResourceBase">
+    <defName>Arsenal_DART_Item</defName>
+    <label>DART drone</label>
+    <description>A small autonomous one-way-attack drone. Can be loaded into QUIVERs for automated defense. Explodes on impact with targets.</description>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_DART</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(0.8,0.8)</drawSize>
+    </graphicData>
+    <soundInteract>Metal_Drop</soundInteract>
+    <soundDrop>Metal_Drop</soundDrop>
+    <stackLimit>25</stackLimit>
+    <statBases>
+      <MaxHitPoints>50</MaxHitPoints>
+      <Mass>5</Mass>
+      <MarketValue>400</MarketValue>
+      <Flammability>0.4</Flammability>
+    </statBases>
+    <thingCategories>
+      <li>Arsenal_Drones</li>
+    </thingCategories>
+    <tradeTags>
+      <li>ExoticMisc</li>
+    </tradeTags>
+  </ThingDef>
+
+  <!-- Thing Category for Drones -->
+  <ThingCategoryDef>
+    <defName>Arsenal_Drones</defName>
+    <label>attack drones</label>
+    <parent>Manufactured</parent>
+    <iconPath>Arsenal/Arsenal_DART</iconPath>
+  </ThingCategoryDef>
+
+</Defs>
