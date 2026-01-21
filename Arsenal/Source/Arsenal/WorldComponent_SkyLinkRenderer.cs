@@ -45,10 +45,6 @@ namespace Arsenal
         {
             base.WorldComponentUpdate();
 
-            // Only render when on world map
-            if (!WorldRendererUtility.WorldRenderedNow)
-                return;
-
             // Get satellite from network manager
             var satellite = ArsenalNetworkManager.GetOrbitalSatellite();
             if (satellite == null || !satellite.IsOperational)
