@@ -6,8 +6,8 @@ using UnityEngine;
 namespace Arsenal
 {
     /// <summary>
-    /// MORIA - A simple powered storage shelf.
-    /// Works exactly like a vanilla shelf but requires power.
+    /// MORIA - A simple storage shelf with power connection.
+    /// Works exactly like a vanilla shelf.
     /// </summary>
     public class Building_Moria : Building_Storage
     {
@@ -44,20 +44,13 @@ namespace Arsenal
             Scribe_Values.Look(ref customName, "customName");
         }
 
-        public override bool Accepts(Thing t)
-        {
-            if (!IsPoweredOn)
-                return false;
-            return base.Accepts(t);
-        }
-
         public override string GetInspectString()
         {
             string text = base.GetInspectString();
             if (!IsPoweredOn)
             {
                 if (!text.NullOrEmpty()) text += "\n";
-                text += "<color=#ff6666>No power - storage disabled</color>";
+                text += "<color=#ff6666>No power</color>";
             }
             return text;
         }
@@ -87,13 +80,12 @@ namespace Arsenal
         // For MULE compatibility
         public bool CanAcceptItem(Thing item)
         {
-            return Accepts(item);
+            return IsPoweredOn && settings.AllowedToAccept(item);
         }
 
         public bool NeedsResource(ThingDef def)
         {
-            if (!IsPoweredOn) return false;
-            return settings.AllowedToAccept(def);
+            return IsPoweredOn && settings.AllowedToAccept(def);
         }
     }
 
