@@ -408,15 +408,55 @@ namespace Arsenal
             DrainBattery(ACTIVE_DRAIN_PER_TICK);
             MoveAlongPath();
 
-            // Check if arrived at task location
-            if (currentTask != null && Position.DistanceTo(currentTask.targetCell) < 2f)
+            // Validate task is still valid while traveling
+            if (currentTask == null)
             {
+                Log.Message($"[MULE] {Label}: TickDeploying - task became null, looking for new task");
+                TryGetNewTaskOrGoHome();
+                return;
+            }
+
+            // For haul tasks, check if item still exists mid-travel
+            if (currentTask.taskType == MuleTaskType.Haul || currentTask.taskType == MuleTaskType.MoriaFeed)
+            {
+                if (currentTask.targetThing == null || currentTask.targetThing.Destroyed || !currentTask.targetThing.Spawned)
+                {
+                    Log.Message($"[MULE] {Label}: TickDeploying - haul target gone mid-travel, looking for new task");
+                    TryGetNewTaskOrGoHome();
+                    return;
+                }
+                // Check if item is being carried by someone
+                if (currentTask.targetThing.ParentHolder != null && !(currentTask.targetThing.ParentHolder is Map))
+                {
+                    Log.Message($"[MULE] {Label}: TickDeploying - haul target being carried by someone else");
+                    TryGetNewTaskOrGoHome();
+                    return;
+                }
+            }
+
+            // For mining tasks, check if mineable still exists
+            if (currentTask.taskType == MuleTaskType.Mine)
+            {
+                Building mineable = currentTask.targetCell.GetFirstMineable(Map);
+                if (mineable == null)
+                {
+                    Log.Message($"[MULE] {Label}: TickDeploying - mine target already gone, looking for new task");
+                    TryGetNewTaskOrGoHome();
+                    return;
+                }
+            }
+
+            // Check if arrived at task location
+            if (Position.DistanceTo(currentTask.targetCell) < 2f)
+            {
+                Log.Message($"[MULE] {Label}: Arrived at task location {currentTask.targetCell} for {currentTask.taskType}");
                 // Start the actual task
                 switch (currentTask.taskType)
                 {
                     case MuleTaskType.Mine:
                         state = MuleState.Mining;
                         miningProgress = 0;
+                        Log.Message($"[MULE] {Label}: Starting mining");
                         break;
                     case MuleTaskType.Haul:
                     case MuleTaskType.MoriaFeed:
@@ -437,8 +477,8 @@ namespace Arsenal
 
             if (currentTask == null)
             {
-                state = MuleState.ReturningHome;
-                CalculatePathTo(homeStable?.InteractionCell ?? Position);
+                Log.Message($"[MULE] {Label}: TickMining - no current task, looking for new task");
+                TryGetNewTaskOrGoHome();
                 return;
             }
 
@@ -446,15 +486,25 @@ namespace Arsenal
             IntVec3 mineCell = currentTask.targetCell;
             if (!mineCell.InBounds(Map))
             {
-                CompleteTask();
+                Log.Message($"[MULE] {Label}: TickMining - mine cell out of bounds, looking for new task");
+                TryGetNewTaskOrGoHome();
                 return;
             }
 
             Building mineable = mineCell.GetFirstMineable(Map);
             if (mineable == null)
             {
-                // Mining complete - collect resources
+                // Rock is gone - either we finished it or a colonist did
+                // Try to collect any dropped resources
                 CollectMinedResources(mineCell);
+
+                // Remove mining designation if it exists
+                if (currentTask.miningDesignation != null && Map.designationManager != null)
+                {
+                    Map.designationManager.RemoveDesignation(currentTask.miningDesignation);
+                }
+
+                Log.Message($"[MULE] {Label}: TickMining - mineable gone, collected={carriedThing?.LabelShort ?? "nothing"}");
                 TransitionToHaulingOrComplete();
                 return;
             }
@@ -591,8 +641,8 @@ namespace Arsenal
 
             if (currentTask == null)
             {
-                state = MuleState.ReturningHome;
-                CalculatePathTo(homeStable?.InteractionCell ?? Position);
+                Log.Message($"[MULE] {Label}: TickHauling - no current task, looking for new task");
+                TryGetNewTaskOrGoHome();
                 return;
             }
 
@@ -864,24 +914,65 @@ namespace Arsenal
         {
             if (currentTask?.targetThing == null)
             {
-                CompleteTask();
+                Log.Message($"[MULE] {Label}: TryPickupItem - targetThing is null, looking for new task");
+                TryGetNewTaskOrGoHome();
                 return;
             }
 
             Thing item = currentTask.targetThing;
             if (item.Destroyed || !item.Spawned)
             {
-                CompleteTask();
+                Log.Message($"[MULE] {Label}: TryPickupItem - item destroyed/not spawned, looking for new task");
+                TryGetNewTaskOrGoHome();
+                return;
+            }
+
+            // Check if item is being held/carried by someone
+            if (item.ParentHolder != null && !(item.ParentHolder is Map))
+            {
+                Log.Message($"[MULE] {Label}: TryPickupItem - item is held by something else, looking for new task");
+                TryGetNewTaskOrGoHome();
                 return;
             }
 
             // Pick up the item
             int pickupCount = Mathf.Min(item.stackCount, MAX_CARRY_STACK);
             carriedThing = item.SplitOff(pickupCount);
+            Log.Message($"[MULE] {Label}: Picked up {carriedThing.LabelShort} x{carriedThing.stackCount}");
 
             // Now haul to destination
             state = MuleState.Hauling;
             CalculatePathTo(currentTask.destinationCell);
+        }
+
+        /// <summary>
+        /// Tries to get a new task from LATTICE, or returns home if none available.
+        /// </summary>
+        private void TryGetNewTaskOrGoHome()
+        {
+            currentTask = null;
+            miningProgress = 0;
+
+            // Try to get a new task from LATTICE
+            Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (lattice != null)
+            {
+                MuleTask newTask = lattice.RequestNewTaskForMule(this);
+                if (newTask != null)
+                {
+                    Log.Message($"[MULE] {Label}: Got new task {newTask.taskType} at {newTask.targetCell}");
+                    AssignTask(newTask);
+                    return;
+                }
+            }
+
+            // No task available - return home
+            Log.Message($"[MULE] {Label}: No new task available, returning home");
+            state = MuleState.ReturningHome;
+            if (homeStable != null)
+            {
+                CalculatePathTo(homeStable.InteractionCell);
+            }
         }
 
         private void DeliverCarriedItem()

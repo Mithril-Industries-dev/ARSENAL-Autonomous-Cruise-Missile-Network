@@ -282,12 +282,9 @@ namespace Arsenal
 
         private void MaintainScanningSound()
         {
-            if (scanningSustainer == null || scanningSustainer.Ended)
-            {
-                SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
-                scanningSustainer = SoundDefOf.MechSerumUsed.TrySpawnSustainer(info);
-            }
-            scanningSustainer?.Maintain();
+            // Sound sustainer removed - MechSerumUsed is not a sustainer-compatible sound
+            // and was causing 99+ errors per tick. LATTICE operates silently now.
+            // Visual effects in SpawnScanningEffects() provide feedback instead.
         }
 
         private void StopScanningSound()
@@ -529,6 +526,9 @@ namespace Arsenal
                 Building mineable = cell.GetFirstMineable(Map);
                 if (mineable == null) continue;
 
+                // Skip if reserved by a colonist (they're already heading there)
+                if (Map.reservationManager.IsReservedByAnyoneOf(mineable, Faction.OfPlayer)) continue;
+
                 // Check if we already have a task for this cell
                 bool alreadyQueued = pendingMuleTasks.Any(t =>
                     t.taskType == MuleTaskType.Mine && t.targetCell == cell);
@@ -560,6 +560,15 @@ namespace Arsenal
             foreach (Thing item in haulableItems)
             {
                 if (item == null || item.Destroyed || !item.Spawned) continue;
+
+                // Skip forbidden items
+                if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                // Skip items that are reserved by colonists (prevents race condition)
+                if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
+
+                // Skip items currently being carried
+                if (item.ParentHolder != null && !(item.ParentHolder is Map)) continue;
 
                 // Find a MORIA that wants this item
                 Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
@@ -650,17 +659,39 @@ namespace Arsenal
             {
                 case MuleTaskType.Mine:
                     // Check if mining designation still exists
-                    return Map.designationManager.DesignationAt(task.targetCell, DesignationDefOf.Mine) != null &&
-                           task.targetCell.GetFirstMineable(Map) != null;
+                    if (Map.designationManager.DesignationAt(task.targetCell, DesignationDefOf.Mine) == null)
+                        return false;
+
+                    // Check if mineable still exists
+                    Building mineable = task.targetCell.GetFirstMineable(Map);
+                    if (mineable == null)
+                        return false;
+
+                    // Check if a colonist has reserved it
+                    if (Map.reservationManager.IsReservedByAnyoneOf(mineable, Faction.OfPlayer))
+                        return false;
+
+                    return true;
 
                 case MuleTaskType.Haul:
                 case MuleTaskType.MoriaFeed:
-                    // Check if item still exists and destination still valid
-                    return task.targetThing != null &&
-                           !task.targetThing.Destroyed &&
-                           task.targetThing.Spawned &&
-                           task.destination != null &&
-                           !task.destination.Destroyed;
+                    // Check if item still exists
+                    if (task.targetThing == null || task.targetThing.Destroyed || !task.targetThing.Spawned)
+                        return false;
+
+                    // Check if destination still valid
+                    if (task.destination == null || task.destination.Destroyed)
+                        return false;
+
+                    // Check if item is being carried
+                    if (task.targetThing.ParentHolder != null && !(task.targetThing.ParentHolder is Map))
+                        return false;
+
+                    // Check if reserved by colonist
+                    if (Map.reservationManager.IsReservedByAnyoneOf(task.targetThing, Faction.OfPlayer))
+                        return false;
+
+                    return true;
 
                 default:
                     return false;
@@ -671,6 +702,57 @@ namespace Arsenal
         /// Gets the count of pending MULE tasks.
         /// </summary>
         public int PendingMuleTaskCount => pendingMuleTasks.Count;
+
+        /// <summary>
+        /// Allows a MULE to request a new task directly.
+        /// Returns null if no suitable task is available.
+        /// </summary>
+        public MuleTask RequestNewTaskForMule(MULE_Drone mule)
+        {
+            if (pendingMuleTasks.Count == 0) return null;
+
+            // Try to find a valid task from the queue
+            int attempts = Mathf.Min(pendingMuleTasks.Count, 10);
+            List<MuleTask> checkedTasks = new List<MuleTask>();
+
+            for (int i = 0; i < attempts; i++)
+            {
+                if (pendingMuleTasks.Count == 0) break;
+
+                MuleTask task = pendingMuleTasks.Dequeue();
+
+                // Validate task
+                if (!IsTaskValid(task))
+                {
+                    // Invalid task - discard
+                    continue;
+                }
+
+                // Check if MULE can handle this task
+                if (mule.CanAcceptTask(task))
+                {
+                    // Re-queue any tasks we checked but didn't take
+                    foreach (var t in checkedTasks)
+                    {
+                        pendingMuleTasks.Enqueue(t);
+                    }
+                    return task;
+                }
+                else
+                {
+                    // Can't take this task (battery too low?), keep it for later
+                    checkedTasks.Add(task);
+                }
+            }
+
+            // Re-queue tasks we couldn't assign
+            foreach (var t in checkedTasks)
+            {
+                pendingMuleTasks.Enqueue(t);
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Gets the count of active MULEs on this map.
