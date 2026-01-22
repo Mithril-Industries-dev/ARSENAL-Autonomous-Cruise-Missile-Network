@@ -52,7 +52,8 @@ namespace Arsenal
 
         // Mining
         private int miningProgress;
-        private const int MINING_WORK_PER_TICK = 2; // Mining speed
+        private const int MINING_WORK_PER_TICK = 18; // Fast mining - equivalent to level 19 miner
+        private Sustainer miningSustainer; // Mining sound effect
 
         // Visual
         private const int TRAIL_LENGTH = 5;
@@ -86,6 +87,9 @@ namespace Arsenal
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
+            // Stop any active sounds
+            StopMiningSound();
+
             // Drop carried item
             if (carriedThing != null && Map != null)
             {
@@ -434,6 +438,7 @@ namespace Arsenal
 
             if (currentTask == null)
             {
+                StopMiningSound();
                 state = MuleState.ReturningHome;
                 CalculatePathTo(homeStable?.InteractionCell ?? Position);
                 return;
@@ -443,6 +448,7 @@ namespace Arsenal
             IntVec3 mineCell = currentTask.targetCell;
             if (!mineCell.InBounds(Map))
             {
+                StopMiningSound();
                 CompleteTask();
                 return;
             }
@@ -451,25 +457,41 @@ namespace Arsenal
             if (mineable == null)
             {
                 // Mining complete - collect resources
+                StopMiningSound();
                 CollectMinedResources(mineCell);
-                CompleteTask();
+                TransitionToHaulingOrComplete();
                 return;
             }
+
+            // Maintain mining sound
+            MaintainMiningSound();
 
             // Do mining work
             miningProgress += MINING_WORK_PER_TICK;
 
-            // Visual effect
-            if (this.IsHashIntervalTick(30))
+            // Visual effects - more frequent for better feedback
+            if (this.IsHashIntervalTick(15))
             {
+                // Rock chunks and sparks
                 FleckMaker.ThrowMicroSparks(mineCell.ToVector3Shifted(), Map);
-                FleckMaker.ThrowDustPuff(mineCell, Map, 0.5f);
+                FleckMaker.ThrowDustPuff(mineCell, Map, 0.8f);
+
+                // Occasional debris
+                if (Rand.Chance(0.3f))
+                {
+                    FleckMaker.ThrowDustPuffThick(mineCell.ToVector3Shifted() + new Vector3(Rand.Range(-0.3f, 0.3f), 0, Rand.Range(-0.3f, 0.3f)), Map, 0.5f, new Color(0.5f, 0.5f, 0.5f));
+                }
             }
 
-            // Check if mining complete (simplified - real mining uses work amount)
-            float mineWork = mineable.def.building?.mineableScatterCommonality > 0 ? 1000f : 500f;
+            // Use actual mineable work amount from def
+            float mineWork = mineable.def.building?.mineableNonMinedEfficiency > 0
+                ? mineable.MaxHitPoints * 1.5f  // Use hitpoints as proxy if available
+                : 800f; // Default work amount
+
             if (miningProgress >= mineWork)
             {
+                StopMiningSound();
+
                 // Destroy the mineable and spawn resources
                 var resourceDef = mineable.def.building?.mineableThing;
                 int yield = mineable.def.building?.mineableYield ?? 0;
@@ -477,7 +499,7 @@ namespace Arsenal
                 mineable.Destroy(DestroyMode.KillFinalize);
 
                 // Remove mining designation
-                if (currentTask.miningDesignation != null)
+                if (currentTask.miningDesignation != null && Map.designationManager != null)
                 {
                     Map.designationManager.RemoveDesignation(currentTask.miningDesignation);
                 }
@@ -488,31 +510,67 @@ namespace Arsenal
                     Thing resource = ThingMaker.MakeThing(resourceDef);
                     resource.stackCount = Mathf.Min(yield, MAX_CARRY_STACK);
                     carriedThing = resource;
-
-                    // Find a place to haul the mined resources
-                    IntVec3 haulDest = FindHaulDestination(resource);
-                    if (haulDest.IsValid)
-                    {
-                        // Haul the resources instead of just going home
-                        currentTask = null;
-                        miningProgress = 0;
-                        state = MuleState.Hauling;
-                        // Create implicit haul task
-                        currentTask = new MuleTask
-                        {
-                            taskType = MuleTaskType.Haul,
-                            targetThing = resource,
-                            destinationCell = haulDest,
-                            resourceDef = resourceDef,
-                            resourceCount = resource.stackCount
-                        };
-                        CalculatePathTo(haulDest);
-                        return;
-                    }
                 }
 
-                CompleteTask();
+                TransitionToHaulingOrComplete();
             }
+        }
+
+        /// <summary>
+        /// After mining, either haul resources or complete task.
+        /// </summary>
+        private void TransitionToHaulingOrComplete()
+        {
+            miningProgress = 0;
+
+            // If carrying something, try to haul it
+            if (carriedThing != null)
+            {
+                IntVec3 haulDest = FindHaulDestination(carriedThing);
+                if (haulDest.IsValid)
+                {
+                    // Create haul task and transition to hauling
+                    currentTask = new MuleTask
+                    {
+                        taskType = MuleTaskType.Haul,
+                        targetThing = carriedThing,
+                        destinationCell = haulDest,
+                        resourceDef = carriedThing.def,
+                        resourceCount = carriedThing.stackCount
+                    };
+                    state = MuleState.Hauling;
+                    CalculatePathTo(haulDest);
+                    return;
+                }
+            }
+
+            // No hauling needed or no destination found - complete and go home
+            CompleteTask();
+        }
+
+        /// <summary>
+        /// Maintains the mining sound sustainer.
+        /// </summary>
+        private void MaintainMiningSound()
+        {
+            if (miningSustainer == null || miningSustainer.Ended)
+            {
+                SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
+                miningSustainer = SoundDefOf.Recipe_Machining.TrySpawnSustainer(info);
+            }
+            miningSustainer?.Maintain();
+        }
+
+        /// <summary>
+        /// Stops the mining sound.
+        /// </summary>
+        private void StopMiningSound()
+        {
+            if (miningSustainer != null && !miningSustainer.Ended)
+            {
+                miningSustainer.End();
+            }
+            miningSustainer = null;
         }
 
         /// <summary>

@@ -64,18 +64,19 @@ Requires LATTICE for task coordination.</description>
     </researchPrerequisites>
   </ThingDef>
 
-  <!-- MORIA - Powered Storage Shelf -->
+  <!-- MORIA - Powered Storage Vault (4x4) -->
   <ThingDef ParentName="FurnitureBase">
     <defName>Arsenal_Moria</defName>
-    <label>MORIA storage shelf</label>
-    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A powered storage shelf. Works like a standard shelf but requires power to accept items. Items stored here won't deteriorate.
+    <label>MORIA storage vault</label>
+    <description>MORIA (Materials Orchestration and Resource Integration Archive) - A large powered storage vault with 16 storage cells. Works like a standard shelf but requires power to accept items. Items stored here won't deteriorate.
 
+Storage capacity: 16 cells (4x4)
 Requires power to function.</description>
     <thingClass>Arsenal.Building_Moria</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_MORIA</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(2,1)</drawSize>
+      <drawSize>(4,4)</drawSize>
     </graphicData>
     <altitudeLayer>Building</altitudeLayer>
     <passability>PassThroughOnly</passability>
@@ -83,22 +84,28 @@ Requires power to function.</description>
     <castEdgeShadows>true</castEdgeShadows>
     <surfaceType>Item</surfaceType>
     <statBases>
-      <MaxHitPoints>100</MaxHitPoints>
-      <WorkToBuild>2000</WorkToBuild>
-      <Mass>20</Mass>
-      <Flammability>1.0</Flammability>
+      <MaxHitPoints>400</MaxHitPoints>
+      <WorkToBuild>6000</WorkToBuild>
+      <Mass>80</Mass>
+      <Flammability>0.5</Flammability>
     </statBases>
-    <size>(2,1)</size>
+    <size>(4,4)</size>
     <costList>
-      <Steel>50</Steel>
-      <ComponentIndustrial>2</ComponentIndustrial>
+      <Steel>200</Steel>
+      <Plasteel>40</Plasteel>
+      <ComponentIndustrial>6</ComponentIndustrial>
     </costList>
     <comps>
       <li Class="CompProperties_Power">
         <compClass>CompPowerTrader</compClass>
-        <basePowerConsumption>50</basePowerConsumption>
+        <basePowerConsumption>150</basePowerConsumption>
       </li>
       <li Class="CompProperties_Flickable"/>
+      <!-- Blue glow for MORIA - storage status -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>4</glowRadius>
+        <glowColor>(100,150,255,0)</glowColor>
+      </li>
     </comps>
     <building>
       <preventDeteriorationOnTop>true</preventDeteriorationOnTop>
@@ -123,6 +130,7 @@ Requires power to function.</description>
     <inspectorTabs>
       <li>ITab_Storage</li>
     </inspectorTabs>
+    <tickerType>Rare</tickerType>
     <designationCategory>Production</designationCategory>
     <researchPrerequisites>
       <li>Arsenal_MULESystem</li>
