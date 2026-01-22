@@ -147,7 +147,8 @@ namespace Arsenal
         {
             homeStable = targetStable;
             state = MuleState.DeliveringToStable;
-            CalculatePathTo(targetStable.Position);
+            // Use interaction cell for pathing to buildings
+            CalculatePathTo(targetStable.InteractionCell);
         }
 
         #endregion
@@ -244,14 +245,14 @@ namespace Arsenal
         {
             if (homeStable == null || Map == null) return;
 
-            float returnCost = EstimatePathCost(Position, homeStable.Position);
+            float returnCost = EstimatePathCost(Position, homeStable.InteractionCell);
             float buffer = MAX_BATTERY * SAFETY_BUFFER_PERCENT;
 
             if (currentBattery < returnCost + buffer)
             {
                 AbortCurrentTask();
                 SetState(MuleState.ReturningHome);
-                CalculatePathTo(homeStable.Position);
+                CalculatePathTo(homeStable.InteractionCell);
             }
         }
 
@@ -293,7 +294,7 @@ namespace Arsenal
             state = MuleState.ReturningHome;
             if (homeStable != null)
             {
-                CalculatePathTo(homeStable.Position);
+                CalculatePathTo(homeStable.InteractionCell);
             }
         }
 
@@ -375,7 +376,7 @@ namespace Arsenal
                 homeStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
                 if (homeStable != null)
                 {
-                    CalculatePathTo(homeStable.Position);
+                    CalculatePathTo(homeStable.InteractionCell);
                 }
                 else
                 {
@@ -385,8 +386,8 @@ namespace Arsenal
                 return;
             }
 
-            // Check if arrived at STABLE
-            if (Position.DistanceTo(homeStable.Position) < 2f)
+            // Check if arrived at STABLE (use interaction cell or adjacent check)
+            if (IsAdjacentToBuilding(homeStable))
             {
                 // Dock with STABLE
                 DockAtStable();
@@ -434,7 +435,7 @@ namespace Arsenal
             if (currentTask == null)
             {
                 state = MuleState.ReturningHome;
-                CalculatePathTo(homeStable?.Position ?? Position);
+                CalculatePathTo(homeStable?.InteractionCell ?? Position);
                 return;
             }
 
@@ -487,10 +488,78 @@ namespace Arsenal
                     Thing resource = ThingMaker.MakeThing(resourceDef);
                     resource.stackCount = Mathf.Min(yield, MAX_CARRY_STACK);
                     carriedThing = resource;
+
+                    // Find a place to haul the mined resources
+                    IntVec3 haulDest = FindHaulDestination(resource);
+                    if (haulDest.IsValid)
+                    {
+                        // Haul the resources instead of just going home
+                        currentTask = null;
+                        miningProgress = 0;
+                        state = MuleState.Hauling;
+                        // Create implicit haul task
+                        currentTask = new MuleTask
+                        {
+                            taskType = MuleTaskType.Haul,
+                            targetThing = resource,
+                            destinationCell = haulDest,
+                            resourceDef = resourceDef,
+                            resourceCount = resource.stackCount
+                        };
+                        CalculatePathTo(haulDest);
+                        return;
+                    }
                 }
 
                 CompleteTask();
             }
+        }
+
+        /// <summary>
+        /// Finds a suitable destination for hauling an item.
+        /// Checks MORIA first, then stockpiles.
+        /// </summary>
+        private IntVec3 FindHaulDestination(Thing item)
+        {
+            if (Map == null || item == null) return IntVec3.Invalid;
+
+            // First, check for MORIA that wants this item
+            Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+            if (targetMoria != null)
+            {
+                return targetMoria.InteractionCell;
+            }
+
+            // Fall back to any stockpile that accepts this item
+            SlotGroup slotGroup = StoreUtility.GetSlotGroup(item, Map);
+            if (slotGroup != null)
+            {
+                IntVec3 destCell;
+                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoreUtility.CurrentStoragePriorityOf(item), null, out destCell))
+                {
+                    return destCell;
+                }
+            }
+
+            // Try to find any valid storage cell
+            foreach (var zone in Map.zoneManager.AllZones)
+            {
+                if (zone is Zone_Stockpile stockpile)
+                {
+                    if (stockpile.GetStoreSettings().AllowedToAccept(item))
+                    {
+                        foreach (IntVec3 cell in stockpile.Cells)
+                        {
+                            if (StoreUtility.IsGoodStoreCell(cell, Map, item, null, null))
+                            {
+                                return cell;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return IntVec3.Invalid;
         }
 
         private void TickHauling()
@@ -506,13 +575,21 @@ namespace Arsenal
             if (currentTask == null)
             {
                 state = MuleState.ReturningHome;
-                CalculatePathTo(homeStable?.Position ?? Position);
+                CalculatePathTo(homeStable?.InteractionCell ?? Position);
                 return;
             }
 
             // Check if arrived at destination
             IntVec3 dest = currentTask.destinationCell;
-            if (Position.DistanceTo(dest) < 2f)
+            // Also check if destination is a building (MORIA, etc.) and we're adjacent
+            Thing destThing = currentTask.destination;
+            bool arrived = Position.DistanceTo(dest) < 2f;
+            if (!arrived && destThing != null)
+            {
+                arrived = IsAdjacentToBuilding(destThing);
+            }
+
+            if (arrived)
             {
                 DeliverCarriedItem();
                 CompleteTask();
@@ -530,7 +607,7 @@ namespace Arsenal
                 homeStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
                 if (homeStable != null)
                 {
-                    CalculatePathTo(homeStable.Position);
+                    CalculatePathTo(homeStable.InteractionCell);
                 }
                 else
                 {
@@ -540,8 +617,8 @@ namespace Arsenal
                 return;
             }
 
-            // Check if arrived at STABLE
-            if (Position.DistanceTo(homeStable.Position) < 2f)
+            // Check if arrived at STABLE (use adjacency check for multi-cell buildings)
+            if (IsAdjacentToBuilding(homeStable))
             {
                 // Dock with STABLE
                 DockAtStable();
@@ -558,14 +635,14 @@ namespace Arsenal
             {
                 if (homeStable != null && !homeStable.Destroyed)
                 {
-                    float returnCost = EstimatePathCost(Position, homeStable.Position);
+                    float returnCost = EstimatePathCost(Position, homeStable.InteractionCell);
                     float buffer = MAX_BATTERY * SAFETY_BUFFER_PERCENT;
 
                     if (currentBattery >= returnCost + buffer)
                     {
                         // Can return home now
                         state = MuleState.ReturningHome;
-                        CalculatePathTo(homeStable.Position);
+                        CalculatePathTo(homeStable.InteractionCell);
                     }
                 }
             }
@@ -678,7 +755,8 @@ namespace Arsenal
             IntVec3 dest = IntVec3.Invalid;
             if (state == MuleState.ReturningHome || state == MuleState.DeliveringToStable)
             {
-                dest = homeStable?.Position ?? Position;
+                // Use interaction cell for buildings (walkable cell adjacent to building)
+                dest = homeStable?.InteractionCell ?? Position;
             }
             else if (state == MuleState.Hauling && currentTask != null)
             {
@@ -815,7 +893,16 @@ namespace Arsenal
 
         private void DockAtStable()
         {
-            if (homeStable == null || homeStable.Destroyed) return;
+            if (homeStable == null || homeStable.Destroyed)
+            {
+                // Find a new home
+                homeStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
+                if (homeStable == null)
+                {
+                    EnterInertState();
+                }
+                return;
+            }
 
             // Deliver any carried item first
             if (carriedThing != null)
@@ -824,11 +911,49 @@ namespace Arsenal
                 carriedThing = null;
             }
 
-            // Dock with STABLE
-            homeStable.DockMule(this);
+            // Try to dock with STABLE
+            if (homeStable.DockMule(this))
+            {
+                // Successfully docked - set state based on battery
+                // Note: MULE is now despawned, but state assignment still works
+                state = IsBatteryFull ? MuleState.Idle : MuleState.Charging;
+            }
+            else
+            {
+                // Docking failed (STABLE full?) - find another STABLE
+                Building_Stable newStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
+                if (newStable != null && newStable != homeStable)
+                {
+                    homeStable = newStable;
+                    state = MuleState.ReturningHome;
+                    CalculatePathTo(homeStable.InteractionCell);
+                }
+                else
+                {
+                    // No available STABLE - just wait here as Idle
+                    state = MuleState.Idle;
+                }
+            }
+        }
 
-            // Set state based on battery
-            state = IsBatteryFull ? MuleState.Idle : MuleState.Charging;
+        /// <summary>
+        /// Checks if MULE is adjacent to a building (within 1 cell of any occupied cell).
+        /// </summary>
+        private bool IsAdjacentToBuilding(Thing building)
+        {
+            if (building == null || Map == null) return false;
+
+            // Get the building's occupied rectangle
+            CellRect rect = building.OccupiedRect();
+
+            // Check if our position is adjacent to any cell in the rectangle
+            foreach (IntVec3 cell in rect.ExpandedBy(1))
+            {
+                if (cell == Position)
+                    return true;
+            }
+
+            return false;
         }
 
         #endregion
@@ -890,7 +1015,7 @@ namespace Arsenal
                         state = MuleState.ReturningHome;
                         if (homeStable != null)
                         {
-                            CalculatePathTo(homeStable.Position);
+                            CalculatePathTo(homeStable.InteractionCell);
                         }
                     }
                 };
