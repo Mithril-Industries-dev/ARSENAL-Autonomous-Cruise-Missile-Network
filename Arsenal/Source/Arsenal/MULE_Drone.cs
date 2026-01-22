@@ -150,6 +150,7 @@ namespace Arsenal
             state = MuleState.DeliveringToStable;
             // Use interaction cell for pathing to buildings
             CalculatePathTo(targetStable.InteractionCell);
+            Log.Message($"[MULE] {Label}: Initialized for delivery to {targetStable.Label} at {targetStable.InteractionCell}");
         }
 
         #endregion
@@ -267,6 +268,7 @@ namespace Arsenal
             task.estimatedBatteryCost = EstimateBatteryCost(task.targetCell, task.taskType);
             state = MuleState.Deploying;
             CalculatePathTo(task.targetCell);
+            Log.Message($"[MULE] {Label}: Assigned task {task.taskType} at {task.targetCell}, battery={BatteryPercent:P0}");
         }
 
         private void AbortCurrentTask()
@@ -511,11 +513,13 @@ namespace Arsenal
         private void TransitionToHaulingOrComplete()
         {
             miningProgress = 0;
+            Log.Message($"[MULE] {Label}: TransitionToHaulingOrComplete, carrying={carriedThing?.LabelShort ?? "nothing"}");
 
             // If carrying something, try to haul it
             if (carriedThing != null)
             {
                 IntVec3 haulDest = FindHaulDestination(carriedThing);
+                Log.Message($"[MULE] {Label}: Found haul destination: {(haulDest.IsValid ? haulDest.ToString() : "NONE")}");
                 if (haulDest.IsValid)
                 {
                     // Create haul task and transition to hauling
@@ -529,11 +533,13 @@ namespace Arsenal
                     };
                     state = MuleState.Hauling;
                     CalculatePathTo(haulDest);
+                    Log.Message($"[MULE] {Label}: Transitioning to Hauling state, dest={haulDest}");
                     return;
                 }
             }
 
             // No hauling needed or no destination found - complete and go home
+            Log.Message($"[MULE] {Label}: No haul destination, completing task and going home");
             CompleteTask();
         }
 
@@ -906,10 +912,12 @@ namespace Arsenal
         {
             if (homeStable == null || homeStable.Destroyed)
             {
+                Log.Message($"[MULE] {Label}: DockAtStable - homeStable null/destroyed, finding new one");
                 // Find a new home
                 homeStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
                 if (homeStable == null)
                 {
+                    Log.Warning($"[MULE] {Label}: No STABLE found, going inert");
                     EnterInertState();
                 }
                 return;
@@ -918,19 +926,23 @@ namespace Arsenal
             // Deliver any carried item first
             if (carriedThing != null)
             {
+                Log.Message($"[MULE] {Label}: Dropping carried item {carriedThing.LabelShort} before docking");
                 GenPlace.TryPlaceThing(carriedThing, Position, Map, ThingPlaceMode.Near);
                 carriedThing = null;
             }
 
             // Try to dock with STABLE
+            Log.Message($"[MULE] {Label}: Attempting to dock at {homeStable.Label}");
             if (homeStable.DockMule(this))
             {
                 // Successfully docked - set state based on battery
                 // Note: MULE is now despawned, but state assignment still works
                 state = IsBatteryFull ? MuleState.Idle : MuleState.Charging;
+                Log.Message($"[MULE] {Label}: Successfully docked, state={state}");
             }
             else
             {
+                Log.Warning($"[MULE] {Label}: Docking failed at {homeStable.Label}, finding another STABLE");
                 // Docking failed (STABLE full?) - find another STABLE
                 Building_Stable newStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
                 if (newStable != null && newStable != homeStable)
@@ -938,11 +950,13 @@ namespace Arsenal
                     homeStable = newStable;
                     state = MuleState.ReturningHome;
                     CalculatePathTo(homeStable.InteractionCell);
+                    Log.Message($"[MULE] {Label}: Redirecting to {newStable.Label}");
                 }
                 else
                 {
                     // No available STABLE - just wait here as Idle
                     state = MuleState.Idle;
+                    Log.Warning($"[MULE] {Label}: No STABLE available, waiting as Idle");
                 }
             }
         }
@@ -958,6 +972,7 @@ namespace Arsenal
             CellRect rect = building.OccupiedRect();
 
             // Check if our position is adjacent to any cell in the rectangle
+            // ExpandedBy(1) includes the building cells AND one cell around them
             foreach (IntVec3 cell in rect.ExpandedBy(1))
             {
                 if (cell == Position)
