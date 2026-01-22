@@ -512,27 +512,34 @@ namespace Arsenal
             // Do mining work
             miningProgress += MINING_WORK_PER_TICK;
 
-            // Visual and sound effects - more frequent for better feedback
+            // Visual effects for mining - dust, sparks, debris
             if (this.IsHashIntervalTick(15))
             {
-                // Rock chunks and sparks
                 FleckMaker.ThrowMicroSparks(mineCell.ToVector3Shifted(), Map);
                 FleckMaker.ThrowDustPuff(mineCell, Map, 0.8f);
 
-                // Occasional debris
                 if (Rand.Chance(0.3f))
                 {
                     FleckMaker.ThrowDustPuffThick(mineCell.ToVector3Shifted() + new Vector3(Rand.Range(-0.3f, 0.3f), 0, Rand.Range(-0.3f, 0.3f)), Map, 0.5f, new Color(0.5f, 0.5f, 0.5f));
                 }
             }
 
-            // Use actual mineable work amount from def
-            float mineWork = mineable.def.building?.mineableNonMinedEfficiency > 0
-                ? mineable.MaxHitPoints * 1.5f  // Use hitpoints as proxy if available
-                : 800f; // Default work amount
+            // Mining work threshold - based on rock's hitpoints
+            // Standard rocks have ~1500 HP, we want to mine quickly
+            // Level 19 miner with 400% mining speed would take ~2-3 seconds per rock
+            // Using HP * 0.5 as work needed, with 18 work/tick = ~40-50 ticks (~1 second) per rock
+            float mineWork = mineable.MaxHitPoints * 0.5f;
+
+            // Log progress periodically
+            if (this.IsHashIntervalTick(30))
+            {
+                Log.Message($"[MULE] {Label}: Mining progress {miningProgress}/{mineWork}");
+            }
 
             if (miningProgress >= mineWork)
             {
+                Log.Message($"[MULE] {Label}: Mining complete! Destroying rock and collecting resources");
+
                 // Destroy the mineable and spawn resources
                 var resourceDef = mineable.def.building?.mineableThing;
                 int yield = mineable.def.building?.mineableYield ?? 0;
@@ -551,6 +558,7 @@ namespace Arsenal
                     Thing resource = ThingMaker.MakeThing(resourceDef);
                     resource.stackCount = Mathf.Min(yield, MAX_CARRY_STACK);
                     carriedThing = resource;
+                    Log.Message($"[MULE] {Label}: Collected {carriedThing.LabelShort} x{carriedThing.stackCount}");
                 }
 
                 TransitionToHaulingOrComplete();

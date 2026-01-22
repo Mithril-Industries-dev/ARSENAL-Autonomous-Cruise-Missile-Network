@@ -511,6 +511,8 @@ namespace Arsenal
 
         /// <summary>
         /// Scans for mining designations and creates MULE tasks.
+        /// Note: We don't check colonist reservations here - MULEs will compete with colonists.
+        /// If a colonist mines the rock first, the MULE will detect it and get a new task.
         /// </summary>
         private void ScanMiningDesignations()
         {
@@ -522,12 +524,9 @@ namespace Arsenal
             {
                 IntVec3 cell = des.target.Cell;
 
-                // Check if mineable
+                // Check if mineable exists
                 Building mineable = cell.GetFirstMineable(Map);
                 if (mineable == null) continue;
-
-                // Skip if reserved by a colonist (they're already heading there)
-                if (Map.reservationManager.IsReservedByAnyoneOf(mineable, Faction.OfPlayer)) continue;
 
                 // Check if we already have a task for this cell
                 bool alreadyQueued = pendingMuleTasks.Any(t =>
@@ -547,14 +546,13 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Scans for items that should be hauled to MORIA.
+        /// Scans for items that should be hauled to MORIA or stockpiles.
+        /// Note: We don't check colonist reservations here - MULEs will compete with colonists.
+        /// If a colonist picks up the item first, the MULE will detect it and get a new task.
         /// </summary>
         private void ScanMoriaHaulTasks()
         {
-            var morias = ArsenalNetworkManager.GetMoriasOnMap(Map);
-            if (morias.Count == 0) return;
-
-            // Find items on the ground that match MORIA storage settings
+            // Find items on the ground that need hauling
             var haulableItems = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
 
             foreach (Thing item in haulableItems)
@@ -564,19 +562,13 @@ namespace Arsenal
                 // Skip forbidden items
                 if (item.IsForbidden(Faction.OfPlayer)) continue;
 
-                // Skip items that are reserved by colonists (prevents race condition)
-                if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
-
                 // Skip items currently being carried
                 if (item.ParentHolder != null && !(item.ParentHolder is Map)) continue;
 
-                // Find a MORIA that wants this item
-                Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
-                if (targetMoria == null) continue;
-
                 // Check if we already have a task for this item
                 bool alreadyQueued = pendingMuleTasks.Any(t =>
-                    t.taskType == MuleTaskType.MoriaFeed && t.targetThing == item);
+                    (t.taskType == MuleTaskType.MoriaFeed || t.taskType == MuleTaskType.Haul) &&
+                    t.targetThing == item);
                 if (alreadyQueued) continue;
 
                 // Check if a MULE is already working on this
@@ -584,10 +576,47 @@ namespace Arsenal
                     .Any(m => m.CurrentTask?.targetThing == item);
                 if (muleAssigned) continue;
 
-                // Create MORIA feed task
-                MuleTask task = MuleTask.CreateMoriaFeedTask(item, targetMoria);
-                pendingMuleTasks.Enqueue(task);
+                // First priority: MORIA storage
+                Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+                if (targetMoria != null)
+                {
+                    MuleTask task = MuleTask.CreateMoriaFeedTask(item, targetMoria);
+                    pendingMuleTasks.Enqueue(task);
+                    continue;
+                }
+
+                // Second priority: Regular stockpile
+                IntVec3 stockpileCell = FindStockpileCellForItem(item);
+                if (stockpileCell.IsValid)
+                {
+                    MuleTask task = MuleTask.CreateHaulTask(item, null, stockpileCell);
+                    pendingMuleTasks.Enqueue(task);
+                }
             }
+        }
+
+        /// <summary>
+        /// Finds a stockpile cell that can accept the given item.
+        /// </summary>
+        private IntVec3 FindStockpileCellForItem(Thing item)
+        {
+            foreach (var zone in Map.zoneManager.AllZones)
+            {
+                if (zone is Zone_Stockpile stockpile)
+                {
+                    if (stockpile.GetStoreSettings().AllowedToAccept(item))
+                    {
+                        foreach (IntVec3 cell in stockpile.Cells)
+                        {
+                            if (StoreUtility.IsGoodStoreCell(cell, Map, item, null, null))
+                            {
+                                return cell;
+                            }
+                        }
+                    }
+                }
+            }
+            return IntVec3.Invalid;
         }
 
         /// <summary>
@@ -650,6 +679,8 @@ namespace Arsenal
 
         /// <summary>
         /// Validates that a task is still valid.
+        /// Note: We don't check colonist reservations - MULEs compete with colonists.
+        /// The MULE will detect if work is done while traveling and get a new task.
         /// </summary>
         private bool IsTaskValid(MuleTask task)
         {
@@ -667,28 +698,31 @@ namespace Arsenal
                     if (mineable == null)
                         return false;
 
-                    // Check if a colonist has reserved it
-                    if (Map.reservationManager.IsReservedByAnyoneOf(mineable, Faction.OfPlayer))
-                        return false;
-
                     return true;
 
                 case MuleTaskType.Haul:
+                    // Check if item still exists
+                    if (task.targetThing == null || task.targetThing.Destroyed || !task.targetThing.Spawned)
+                        return false;
+
+                    // Check if item is being carried (colonist picked it up)
+                    if (task.targetThing.ParentHolder != null && !(task.targetThing.ParentHolder is Map))
+                        return false;
+
+                    // Haul tasks to stockpile don't need destination building check
+                    return task.destinationCell.IsValid;
+
                 case MuleTaskType.MoriaFeed:
                     // Check if item still exists
                     if (task.targetThing == null || task.targetThing.Destroyed || !task.targetThing.Spawned)
                         return false;
 
-                    // Check if destination still valid
+                    // Check if destination MORIA still valid
                     if (task.destination == null || task.destination.Destroyed)
                         return false;
 
-                    // Check if item is being carried
+                    // Check if item is being carried (colonist picked it up)
                     if (task.targetThing.ParentHolder != null && !(task.targetThing.ParentHolder is Map))
-                        return false;
-
-                    // Check if reserved by colonist
-                    if (Map.reservationManager.IsReservedByAnyoneOf(task.targetThing, Faction.OfPlayer))
                         return false;
 
                     return true;
