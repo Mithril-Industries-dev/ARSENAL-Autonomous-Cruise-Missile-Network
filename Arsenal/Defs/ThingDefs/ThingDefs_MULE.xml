@@ -7,11 +7,12 @@
     <label>MULE drone</label>
     <description>MULE (Mobile Utility Logistics Engine) - An autonomous ground drone for mining and hauling tasks. Features battery-powered operation with automatic return-to-base for recharging. Coordinated by the LATTICE C2 system and stored in STABLE bays when idle.</description>
     <thingClass>Arsenal.MULE_Drone</thingClass>
-    <category>Item</category>
+    <category>Building</category>
+    <size>(1,1)</size>
     <graphicData>
       <texPath>Arsenal/Arsenal_MULE</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(1.5,1.5)</drawSize>
+      <drawSize>(1,1)</drawSize>
       <shaderType>CutoutComplex</shaderType>
     </graphicData>
     <altitudeLayer>Pawn</altitudeLayer>
@@ -24,7 +25,8 @@
     </statBases>
     <selectable>true</selectable>
     <drawerType>MapMeshAndRealTime</drawerType>
-    <pathCost>30</pathCost>
+    <passability>Standable</passability>
+    <fillPercent>0.2</fillPercent>
   </ThingDef>
 
   <!-- MULE Item (storable, for manufacturing/hauling) -->
