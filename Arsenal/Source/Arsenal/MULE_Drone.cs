@@ -557,7 +557,7 @@ namespace Arsenal
             if (miningSustainer == null || miningSustainer.Ended)
             {
                 SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
-                miningSustainer = SoundDefOf.Recipe_Machining.TrySpawnSustainer(info);
+                miningSustainer = SoundDefOf.Interact_Mining.TrySpawnSustainer(info);
             }
             miningSustainer?.Maintain();
         }
