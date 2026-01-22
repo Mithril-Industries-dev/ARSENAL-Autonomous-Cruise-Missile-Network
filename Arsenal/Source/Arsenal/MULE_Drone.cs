@@ -530,18 +530,7 @@ namespace Arsenal
                 return targetMoria.InteractionCell;
             }
 
-            // Fall back to any stockpile that accepts this item
-            SlotGroup slotGroup = StoreUtility.GetSlotGroup(item, Map);
-            if (slotGroup != null)
-            {
-                IntVec3 destCell;
-                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoreUtility.CurrentStoragePriorityOf(item), null, out destCell))
-                {
-                    return destCell;
-                }
-            }
-
-            // Try to find any valid storage cell
+            // Try to find any valid storage cell for this item type
             foreach (var zone in Map.zoneManager.AllZones)
             {
                 if (zone is Zone_Stockpile stockpile)
