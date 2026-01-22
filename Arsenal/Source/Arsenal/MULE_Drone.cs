@@ -472,9 +472,6 @@ namespace Arsenal
                 {
                     FleckMaker.ThrowDustPuffThick(mineCell.ToVector3Shifted() + new Vector3(Rand.Range(-0.3f, 0.3f), 0, Rand.Range(-0.3f, 0.3f)), Map, 0.5f, new Color(0.5f, 0.5f, 0.5f));
                 }
-
-                // Play mining hit sound periodically
-                SoundDefOf.Designate_Mine.PlayOneShot(new TargetInfo(mineCell, Map));
             }
 
             // Use actual mineable work amount from def
