@@ -54,7 +54,6 @@ namespace Arsenal
         // Mining
         private int miningProgress;
         private const int MINING_WORK_PER_TICK = 18; // Fast mining - equivalent to level 19 miner
-        private Sustainer miningSustainer; // Mining sound effect
 
         // Visual
         private const int TRAIL_LENGTH = 5;
@@ -88,9 +87,6 @@ namespace Arsenal
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
-            // Stop any active sounds
-            StopMiningSound();
-
             // Drop carried item
             if (carriedThing != null && Map != null)
             {
@@ -439,7 +435,6 @@ namespace Arsenal
 
             if (currentTask == null)
             {
-                StopMiningSound();
                 state = MuleState.ReturningHome;
                 CalculatePathTo(homeStable?.InteractionCell ?? Position);
                 return;
@@ -449,7 +444,6 @@ namespace Arsenal
             IntVec3 mineCell = currentTask.targetCell;
             if (!mineCell.InBounds(Map))
             {
-                StopMiningSound();
                 CompleteTask();
                 return;
             }
@@ -458,19 +452,15 @@ namespace Arsenal
             if (mineable == null)
             {
                 // Mining complete - collect resources
-                StopMiningSound();
                 CollectMinedResources(mineCell);
                 TransitionToHaulingOrComplete();
                 return;
             }
 
-            // Maintain mining sound
-            MaintainMiningSound();
-
             // Do mining work
             miningProgress += MINING_WORK_PER_TICK;
 
-            // Visual effects - more frequent for better feedback
+            // Visual and sound effects - more frequent for better feedback
             if (this.IsHashIntervalTick(15))
             {
                 // Rock chunks and sparks
@@ -482,6 +472,9 @@ namespace Arsenal
                 {
                     FleckMaker.ThrowDustPuffThick(mineCell.ToVector3Shifted() + new Vector3(Rand.Range(-0.3f, 0.3f), 0, Rand.Range(-0.3f, 0.3f)), Map, 0.5f, new Color(0.5f, 0.5f, 0.5f));
                 }
+
+                // Play mining hit sound periodically
+                SoundDefOf.Designate_Mine.PlayOneShot(new TargetInfo(mineCell, Map));
             }
 
             // Use actual mineable work amount from def
@@ -491,8 +484,6 @@ namespace Arsenal
 
             if (miningProgress >= mineWork)
             {
-                StopMiningSound();
-
                 // Destroy the mineable and spawn resources
                 var resourceDef = mineable.def.building?.mineableThing;
                 int yield = mineable.def.building?.mineableYield ?? 0;
@@ -547,31 +538,6 @@ namespace Arsenal
 
             // No hauling needed or no destination found - complete and go home
             CompleteTask();
-        }
-
-        /// <summary>
-        /// Maintains the mining sound sustainer.
-        /// </summary>
-        private void MaintainMiningSound()
-        {
-            if (miningSustainer == null || miningSustainer.Ended)
-            {
-                SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
-                miningSustainer = SoundDefOf.Interact_Mining.TrySpawnSustainer(info);
-            }
-            miningSustainer?.Maintain();
-        }
-
-        /// <summary>
-        /// Stops the mining sound.
-        /// </summary>
-        private void StopMiningSound()
-        {
-            if (miningSustainer != null && !miningSustainer.Ended)
-            {
-                miningSustainer.End();
-            }
-            miningSustainer = null;
         }
 
         /// <summary>
