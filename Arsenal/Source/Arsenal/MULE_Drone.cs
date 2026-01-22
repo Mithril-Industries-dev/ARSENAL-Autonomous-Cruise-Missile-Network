@@ -1159,6 +1159,117 @@ namespace Arsenal
                     defaultLabel = "DEV: Deplete Battery",
                     action = delegate { currentBattery = 0f; EnterInertState(); }
                 };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Log State",
+                    action = delegate
+                    {
+                        Log.Warning($"=== MULE DEBUG: {Label} ===");
+                        Log.Warning($"State: {state}");
+                        Log.Warning($"Position: {Position}");
+                        Log.Warning($"ExactPosition: {exactPosition}");
+                        Log.Warning($"Battery: {currentBattery}/{MAX_BATTERY} ({BatteryPercent:P0})");
+                        Log.Warning($"HomeStable: {homeStable?.Label ?? "NULL"}");
+                        Log.Warning($"CurrentTask: {currentTask?.ToString() ?? "NULL"}");
+                        if (currentTask != null)
+                        {
+                            Log.Warning($"  Task Type: {currentTask.taskType}");
+                            Log.Warning($"  Target Cell: {currentTask.targetCell}");
+                            Log.Warning($"  Distance to target: {Position.DistanceTo(currentTask.targetCell)}");
+                            if (currentTask.taskType == MuleTaskType.Mine)
+                            {
+                                Building mineable = currentTask.targetCell.GetFirstMineable(Map);
+                                Log.Warning($"  Mineable at target: {mineable?.Label ?? "NULL"}");
+                            }
+                        }
+                        Log.Warning($"MiningProgress: {miningProgress}");
+                        Log.Warning($"CarriedThing: {carriedThing?.LabelShort ?? "NULL"}");
+                        Log.Warning($"Path: {currentPath?.Count ?? 0} waypoints, index={pathIndex}");
+                        if (currentPath != null && currentPath.Count > 0)
+                        {
+                            Log.Warning($"  Path start: {currentPath[0]}");
+                            Log.Warning($"  Path end: {currentPath[currentPath.Count - 1]}");
+                        }
+                        Log.Warning($"=== END DEBUG ===");
+                    }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Force Mining State",
+                    action = delegate
+                    {
+                        // Find nearest mining designation
+                        var des = Map.designationManager.AllDesignations
+                            .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
+                            .OrderBy(d => d.target.Cell.DistanceTo(Position))
+                            .FirstOrDefault();
+
+                        if (des != null)
+                        {
+                            IntVec3 cell = des.target.Cell;
+                            Building mineable = cell.GetFirstMineable(Map);
+                            if (mineable != null)
+                            {
+                                currentTask = MuleTask.CreateMiningTask(cell, des);
+                                state = MuleState.Mining;
+                                miningProgress = 0;
+                                Log.Warning($"[MULE] {Label}: Forced into Mining state for {cell}, mineable={mineable.Label}");
+                            }
+                            else
+                            {
+                                Log.Warning($"[MULE] {Label}: No mineable at {cell}");
+                            }
+                        }
+                        else
+                        {
+                            Log.Warning($"[MULE] {Label}: No mining designations found");
+                        }
+                    }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Step Mining",
+                    action = delegate
+                    {
+                        if (state == MuleState.Mining && currentTask != null)
+                        {
+                            IntVec3 mineCell = currentTask.targetCell;
+                            Building mineable = mineCell.GetFirstMineable(Map);
+                            float mineWork = mineable?.MaxHitPoints * 0.5f ?? 750f;
+
+                            Log.Warning($"[MULE] {Label}: Manual mining step");
+                            Log.Warning($"  Before: progress={miningProgress}, threshold={mineWork}");
+
+                            // Do 100 ticks worth of mining
+                            miningProgress += MINING_WORK_PER_TICK * 100;
+
+                            Log.Warning($"  After: progress={miningProgress}");
+
+                            if (miningProgress >= mineWork && mineable != null)
+                            {
+                                Log.Warning($"  Mining complete! Destroying rock...");
+                                var resourceDef = mineable.def.building?.mineableThing;
+                                int yield = mineable.def.building?.mineableYield ?? 0;
+                                mineable.Destroy(DestroyMode.KillFinalize);
+
+                                if (resourceDef != null && yield > 0)
+                                {
+                                    Thing resource = ThingMaker.MakeThing(resourceDef);
+                                    resource.stackCount = Mathf.Min(yield, MAX_CARRY_STACK);
+                                    carriedThing = resource;
+                                    Log.Warning($"  Collected: {carriedThing.LabelShort} x{carriedThing.stackCount}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Log.Warning($"[MULE] {Label}: Not in Mining state (state={state})");
+                        }
+                    }
+                };
             }
         }
 

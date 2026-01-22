@@ -371,6 +371,74 @@ namespace Arsenal
                         }
                     }
                 };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Deploy to Mine",
+                    action = delegate
+                    {
+                        // Find a mining designation and deploy a MULE to it
+                        var des = Map.designationManager.AllDesignations
+                            .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
+                            .OrderBy(d => d.target.Cell.DistanceTo(Position))
+                            .FirstOrDefault();
+
+                        if (des == null)
+                        {
+                            Messages.Message("No mining designations found.", MessageTypeDefOf.RejectInput);
+                            return;
+                        }
+
+                        IntVec3 cell = des.target.Cell;
+                        Building mineable = cell.GetFirstMineable(Map);
+                        if (mineable == null)
+                        {
+                            Messages.Message($"No mineable at {cell}.", MessageTypeDefOf.RejectInput);
+                            return;
+                        }
+
+                        var mule = GetAvailableMule();
+                        if (mule == null)
+                        {
+                            Messages.Message("No available MULE.", MessageTypeDefOf.RejectInput);
+                            return;
+                        }
+
+                        MuleTask task = MuleTask.CreateMiningTask(cell, des);
+                        Log.Warning($"[STABLE] Deploying {mule.Label} to mine at {cell}");
+                        Log.Warning($"  Mineable: {mineable.Label}, HP={mineable.HitPoints}/{mineable.MaxHitPoints}");
+                        Log.Warning($"  Resource: {mineable.def.building?.mineableThing?.label ?? "none"}");
+                        Log.Warning($"  Yield: {mineable.def.building?.mineableYield ?? 0}");
+
+                        if (DeployMule(mule, task))
+                        {
+                            Messages.Message($"Deployed {mule.Label} to mine at {cell}", MessageTypeDefOf.PositiveEvent);
+                        }
+                        else
+                        {
+                            Messages.Message("Deploy failed!", MessageTypeDefOf.RejectInput);
+                        }
+                    }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Log All MULEs",
+                    action = delegate
+                    {
+                        var allMules = ArsenalNetworkManager.GetAllMules();
+                        Log.Warning($"=== ALL MULES ({allMules.Count()}) ===");
+                        foreach (var m in allMules)
+                        {
+                            Log.Warning($"{m.Label}: state={m.state}, pos={m.Position}, spawned={m.Spawned}, battery={m.BatteryPercent:P0}");
+                            if (m.CurrentTask != null)
+                            {
+                                Log.Warning($"  Task: {m.CurrentTask.taskType} at {m.CurrentTask.targetCell}");
+                            }
+                        }
+                        Log.Warning($"=== END ===");
+                    }
+                };
             }
         }
 
