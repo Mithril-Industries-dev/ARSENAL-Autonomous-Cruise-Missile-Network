@@ -107,16 +107,26 @@ namespace Arsenal
             // Charge docked MULEs if powered
             if (IsPoweredOn())
             {
+                // TickRare is called every 250 ticks - charge proportionally
+                float chargeAmount = MULE_Drone.STABLE_RECHARGE_RATE * 250f;
+
                 foreach (var mule in dockedMules)
                 {
                     if (mule.state == MuleState.Charging || mule.state == MuleState.Idle)
                     {
-                        // Charging is handled in MULE's tick, but we ensure state is correct
-                        if (mule.BatteryPercent < 1f && mule.state != MuleState.Charging)
+                        // Actually charge the battery (MULEs are despawned so they don't tick)
+                        if (!mule.IsBatteryFull)
                         {
-                            mule.SetState(MuleState.Charging);
+                            mule.currentBattery = Mathf.Min(MULE_Drone.MAX_BATTERY, mule.currentBattery + chargeAmount);
+
+                            if (mule.state != MuleState.Charging)
+                            {
+                                mule.SetState(MuleState.Charging);
+                            }
                         }
-                        else if (mule.IsBatteryFull && mule.state == MuleState.Charging)
+
+                        // Transition to Idle when fully charged
+                        if (mule.IsBatteryFull && mule.state == MuleState.Charging)
                         {
                             mule.SetState(MuleState.Idle);
                         }

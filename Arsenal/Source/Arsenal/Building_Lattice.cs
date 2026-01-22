@@ -588,17 +588,23 @@ namespace Arsenal
         {
             if (pendingMuleTasks.Count == 0) return;
 
-            int maxAssignPerCycle = 3; // Limit assignments per cycle
+            int maxAssignPerCycle = 5; // Limit assignments per cycle
+            int maxAttemptsPerCycle = 20; // Prevent infinite loops
             int assigned = 0;
+            int attempts = 0;
 
-            while (pendingMuleTasks.Count > 0 && assigned < maxAssignPerCycle)
+            // Temporary list for tasks we couldn't assign this cycle
+            List<MuleTask> deferredTasks = new List<MuleTask>();
+
+            while (pendingMuleTasks.Count > 0 && assigned < maxAssignPerCycle && attempts < maxAttemptsPerCycle)
             {
-                MuleTask task = pendingMuleTasks.Peek();
+                attempts++;
+                MuleTask task = pendingMuleTasks.Dequeue();
 
                 // Validate task is still valid
                 if (!IsTaskValid(task))
                 {
-                    pendingMuleTasks.Dequeue();
+                    // Invalid task - discard it entirely
                     continue;
                 }
 
@@ -610,20 +616,26 @@ namespace Arsenal
                     // Deploy the MULE
                     if (stable.DeployMule(mule, task))
                     {
-                        pendingMuleTasks.Dequeue();
                         assigned++;
+                        // Task successfully assigned - don't re-queue
                     }
                     else
                     {
-                        // Couldn't deploy - skip this task for now
-                        break;
+                        // Deployment failed (e.g., spawn cell blocked) - defer for later
+                        deferredTasks.Add(task);
                     }
                 }
                 else
                 {
-                    // No MULE available - stop trying for this cycle
-                    break;
+                    // No MULE available for this task right now - defer for later
+                    deferredTasks.Add(task);
                 }
+            }
+
+            // Re-add deferred tasks to the back of the queue
+            foreach (var task in deferredTasks)
+            {
+                pendingMuleTasks.Enqueue(task);
             }
         }
 
