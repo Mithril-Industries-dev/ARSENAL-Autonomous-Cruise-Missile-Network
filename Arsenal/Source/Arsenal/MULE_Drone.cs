@@ -505,11 +505,8 @@ namespace Arsenal
                 return;
             }
 
-            // Deal damage to rock - same as pawns do
-            // MINING_WORK_PER_TICK of 18 means we deal 18 damage per tick
-            // Most rocks have 1500 HP, so ~83 ticks (~1.4 seconds) to mine
-            int damage = MINING_WORK_PER_TICK;
-            mineable.TakeDamage(new DamageInfo(DamageDefOf.Mining, damage));
+            // Track mining progress (damage-based approach didn't give proper yields)
+            miningProgress += MINING_WORK_PER_TICK;
 
             // Visual effects
             if (this.IsHashIntervalTick(15))
@@ -518,8 +515,31 @@ namespace Arsenal
                 FleckMaker.ThrowDustPuff(mineCell, Map, 0.8f);
             }
 
-            // Rock will auto-destroy and drop resources when HP reaches 0
-            // Next tick, mineable will be null and we'll collect resources above
+            // Mining complete when we've done enough work (based on HP)
+            // Most rocks have ~1500 HP, with 18 work/tick = ~83 ticks (~1.4 seconds)
+            if (miningProgress >= mineable.MaxHitPoints)
+            {
+                // Use Mineable's DestroyMined for proper yield calculation
+                Mineable mineableThing = mineable as Mineable;
+                if (mineableThing != null)
+                {
+                    // DestroyMined spawns resources with proper yield
+                    mineableThing.DestroyMined(null); // null pawn = no skill bonus, but full base yield
+                }
+                else
+                {
+                    // Fallback for non-Mineable buildings
+                    mineable.Destroy(DestroyMode.KillFinalize);
+                }
+
+                // Remove mining designation
+                if (currentTask.miningDesignation != null && Map.designationManager != null)
+                {
+                    Map.designationManager.RemoveDesignation(currentTask.miningDesignation);
+                }
+
+                // Next tick we'll collect the dropped resources
+            }
         }
 
         /// <summary>
