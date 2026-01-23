@@ -478,16 +478,13 @@ namespace Arsenal
 
             if (currentTask == null)
             {
-                Log.Message($"[MULE] {Label}: TickMining - no current task, looking for new task");
                 TryGetNewTaskOrGoHome();
                 return;
             }
 
-            // Check if mining target still valid
             IntVec3 mineCell = currentTask.targetCell;
             if (!mineCell.InBounds(Map))
             {
-                Log.Message($"[MULE] {Label}: TickMining - mine cell out of bounds, looking for new task");
                 TryGetNewTaskOrGoHome();
                 return;
             }
@@ -495,8 +492,7 @@ namespace Arsenal
             Building mineable = mineCell.GetFirstMineable(Map);
             if (mineable == null)
             {
-                // Rock is gone - either we finished it or a colonist did
-                // Try to collect any dropped resources
+                // Rock is gone - collect any dropped resources and move on
                 CollectMinedResources(mineCell);
 
                 // Remove mining designation if it exists
@@ -505,65 +501,25 @@ namespace Arsenal
                     Map.designationManager.RemoveDesignation(currentTask.miningDesignation);
                 }
 
-                Log.Message($"[MULE] {Label}: TickMining - mineable gone, collected={carriedThing?.LabelShort ?? "nothing"}");
                 TransitionToHaulingOrComplete();
                 return;
             }
 
-            // Do mining work
-            miningProgress += MINING_WORK_PER_TICK;
+            // Deal damage to rock - same as pawns do
+            // MINING_WORK_PER_TICK of 18 means we deal 18 damage per tick
+            // Most rocks have 1500 HP, so ~83 ticks (~1.4 seconds) to mine
+            int damage = MINING_WORK_PER_TICK;
+            mineable.TakeDamage(new DamageInfo(DamageDefOf.Mining, damage));
 
-            // Visual effects for mining - dust, sparks, debris
+            // Visual effects
             if (this.IsHashIntervalTick(15))
             {
                 FleckMaker.ThrowMicroSparks(mineCell.ToVector3Shifted(), Map);
                 FleckMaker.ThrowDustPuff(mineCell, Map, 0.8f);
-
-                if (Rand.Chance(0.3f))
-                {
-                    FleckMaker.ThrowDustPuffThick(mineCell.ToVector3Shifted() + new Vector3(Rand.Range(-0.3f, 0.3f), 0, Rand.Range(-0.3f, 0.3f)), Map, 0.5f, new Color(0.5f, 0.5f, 0.5f));
-                }
             }
 
-            // Mining work threshold - based on rock's hitpoints
-            // Standard rocks have ~1500 HP, we want to mine quickly
-            // Level 19 miner with 400% mining speed would take ~2-3 seconds per rock
-            // Using HP * 0.5 as work needed, with 18 work/tick = ~40-50 ticks (~1 second) per rock
-            float mineWork = mineable.MaxHitPoints * 0.5f;
-
-            // Log progress periodically
-            if (this.IsHashIntervalTick(30))
-            {
-                Log.Message($"[MULE] {Label}: Mining progress {miningProgress}/{mineWork}");
-            }
-
-            if (miningProgress >= mineWork)
-            {
-                Log.Message($"[MULE] {Label}: Mining complete! Destroying rock and collecting resources");
-
-                // Destroy the mineable and spawn resources
-                var resourceDef = mineable.def.building?.mineableThing;
-                int yield = mineable.def.building?.mineableYield ?? 0;
-
-                mineable.Destroy(DestroyMode.KillFinalize);
-
-                // Remove mining designation
-                if (currentTask.miningDesignation != null && Map.designationManager != null)
-                {
-                    Map.designationManager.RemoveDesignation(currentTask.miningDesignation);
-                }
-
-                // Try to pick up resources
-                if (resourceDef != null && yield > 0)
-                {
-                    Thing resource = ThingMaker.MakeThing(resourceDef);
-                    resource.stackCount = Mathf.Min(yield, MAX_CARRY_STACK);
-                    carriedThing = resource;
-                    Log.Message($"[MULE] {Label}: Collected {carriedThing.LabelShort} x{carriedThing.stackCount}");
-                }
-
-                TransitionToHaulingOrComplete();
-            }
+            // Rock will auto-destroy and drop resources when HP reaches 0
+            // Next tick, mineable will be null and we'll collect resources above
         }
 
         /// <summary>
@@ -986,14 +942,23 @@ namespace Arsenal
 
         private void CollectMinedResources(IntVec3 mineCell)
         {
-            // Look for dropped resources nearby
-            foreach (Thing t in mineCell.GetThingList(Map).ToArray())
+            if (carriedThing != null) return; // Already carrying something
+
+            // Look for dropped resources at and around the mine cell
+            for (int i = 0; i < 9; i++)
             {
-                if (t.def.category == ThingCategory.Item && carriedThing == null)
+                IntVec3 checkCell = (i == 0) ? mineCell : mineCell + GenAdj.AdjacentCells[i - 1];
+                if (!checkCell.InBounds(Map)) continue;
+
+                foreach (Thing t in checkCell.GetThingList(Map).ToArray())
                 {
-                    int pickupCount = Mathf.Min(t.stackCount, MAX_CARRY_STACK);
-                    carriedThing = t.SplitOff(pickupCount);
-                    break;
+                    if (t.def.category == ThingCategory.Item)
+                    {
+                        int pickupCount = Mathf.Min(t.stackCount, MAX_CARRY_STACK);
+                        carriedThing = t.SplitOff(pickupCount);
+                        Log.Message($"[MULE] {Label}: Collected {carriedThing.LabelShort} x{carriedThing.stackCount}");
+                        return;
+                    }
                 }
             }
         }
