@@ -526,8 +526,8 @@ namespace Arsenal
                 float yieldMultiplier = Find.Storyteller?.difficulty?.mineYieldFactor ?? 1f;
                 yieldAmount = Mathf.RoundToInt(yieldAmount * yieldMultiplier);
 
-                // Destroy the mineable
-                mineable.Destroy(DestroyMode.KillFinalize);
+                // Destroy the mineable (use Vanish to prevent RimWorld from also spawning resources)
+                mineable.Destroy(DestroyMode.Vanish);
 
                 // Remove mining designation
                 if (currentTask.miningDesignation != null && Map.designationManager != null)
