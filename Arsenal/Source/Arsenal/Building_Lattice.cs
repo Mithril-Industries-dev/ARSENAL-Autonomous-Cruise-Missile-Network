@@ -597,24 +597,14 @@ namespace Arsenal
 
         /// <summary>
         /// Finds a stockpile cell that can accept the given item.
+        /// Uses RimWorld's built-in storage finding.
         /// </summary>
         private IntVec3 FindStockpileCellForItem(Thing item)
         {
-            foreach (var zone in Map.zoneManager.AllZones)
+            IntVec3 result;
+            if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
             {
-                if (zone is Zone_Stockpile stockpile)
-                {
-                    if (stockpile.GetStoreSettings().AllowedToAccept(item))
-                    {
-                        foreach (IntVec3 cell in stockpile.Cells)
-                        {
-                            if (StoreUtility.IsGoodStoreCell(cell, Map, item, null, null))
-                            {
-                                return cell;
-                            }
-                        }
-                    }
-                }
+                return result;
             }
             return IntVec3.Invalid;
         }

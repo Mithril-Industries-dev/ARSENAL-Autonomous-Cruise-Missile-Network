@@ -604,76 +604,27 @@ namespace Arsenal
 
         /// <summary>
         /// Finds a suitable destination for hauling an item.
-        /// Checks MORIA first, then stockpiles.
+        /// Uses RimWorld's built-in haul destination system.
         /// </summary>
         private IntVec3 FindHaulDestination(Thing item)
         {
             if (Map == null || item == null) return IntVec3.Invalid;
 
-            Log.Message($"[MULE] {Label}: FindHaulDestination for {item.def.defName}");
-
-            // First, check for MORIA that wants this item
-            Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
-            if (targetMoria != null)
+            // Use RimWorld's built-in storage finding - same as colonists use
+            IntVec3 result;
+            if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
             {
-                Log.Message($"[MULE] {Label}: Found MORIA at {targetMoria.InteractionCell}");
-                return targetMoria.InteractionCell;
-            }
-
-            // Try to find a stockpile that accepts this item type
-            foreach (var zone in Map.zoneManager.AllZones)
-            {
-                if (zone is Zone_Stockpile stockpile)
-                {
-                    // Check if stockpile settings allow this item type
-                    if (!stockpile.GetStoreSettings().AllowedToAccept(item))
-                        continue;
-
-                    Log.Message($"[MULE] {Label}: Stockpile '{stockpile.label}' accepts {item.def.defName}");
-
-                    // Find an empty or stackable cell in this stockpile
-                    foreach (IntVec3 cell in stockpile.Cells)
-                    {
-                        if (!cell.InBounds(Map) || !cell.Walkable(Map))
-                            continue;
-
-                        // Check what's already in the cell
-                        List<Thing> thingsInCell = cell.GetThingList(Map);
-
-                        // Check if cell is empty (no items)
-                        bool hasItem = false;
-                        bool canStack = false;
-                        foreach (Thing t in thingsInCell)
-                        {
-                            if (t.def.category == ThingCategory.Item)
-                            {
-                                hasItem = true;
-                                // Can we stack with this?
-                                if (t.def == item.def && t.stackCount < t.def.stackLimit)
-                                {
-                                    canStack = true;
-                                }
-                                break;
-                            }
-                        }
-
-                        if (!hasItem || canStack)
-                        {
-                            Log.Message($"[MULE] {Label}: Found valid stockpile cell at {cell}");
-                            return cell;
-                        }
-                    }
-                }
+                Log.Message($"[MULE] {Label}: Found storage cell at {result} for {item.def.defName}");
+                return result;
             }
 
             // Fallback: drop near home STABLE
             if (homeStable != null)
             {
-                Log.Message($"[MULE] {Label}: No stockpile found, will drop near STABLE");
+                Log.Message($"[MULE] {Label}: No storage found, will drop near STABLE");
                 return homeStable.InteractionCell;
             }
 
-            Log.Message($"[MULE] {Label}: No destination found at all!");
             return IntVec3.Invalid;
         }
 
