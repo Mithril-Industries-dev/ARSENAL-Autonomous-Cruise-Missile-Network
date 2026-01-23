@@ -597,15 +597,42 @@ namespace Arsenal
 
         /// <summary>
         /// Finds a stockpile cell that can accept the given item.
-        /// Uses RimWorld's built-in storage finding.
+        /// Uses RimWorld's built-in system when possible, falls back to manual search.
         /// </summary>
         private IntVec3 FindStockpileCellForItem(Thing item)
         {
-            IntVec3 result;
-            if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
+            // Try RimWorld's built-in storage finding first (works for spawned items)
+            if (item.Spawned)
             {
-                return result;
+                IntVec3 result;
+                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
+                {
+                    return result;
+                }
             }
+
+            // Manual search (for unspawned items or when built-in fails)
+            foreach (var slotGroup in Map.haulDestinationManager.AllGroupsListForReading)
+            {
+                if (slotGroup?.Settings == null) continue;
+                if (!slotGroup.Settings.AllowedToAccept(item)) continue;
+
+                foreach (IntVec3 cell in slotGroup.CellsList)
+                {
+                    if (!cell.InBounds(Map) || !cell.Walkable(Map)) continue;
+
+                    Thing existing = cell.GetFirstItem(Map);
+                    if (existing == null)
+                    {
+                        return cell;
+                    }
+                    if (existing.def == item.def && existing.stackCount < existing.def.stackLimit)
+                    {
+                        return cell;
+                    }
+                }
+            }
+
             return IntVec3.Invalid;
         }
 

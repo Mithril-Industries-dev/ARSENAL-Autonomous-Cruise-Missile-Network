@@ -560,24 +560,48 @@ namespace Arsenal
 
         /// <summary>
         /// Finds a suitable destination for hauling an item.
-        /// Uses RimWorld's built-in haul destination system.
+        /// Uses RimWorld's built-in system when possible, falls back to manual search.
         /// </summary>
         private IntVec3 FindHaulDestination(Thing item)
         {
             if (Map == null || item == null) return IntVec3.Invalid;
 
-            // Use RimWorld's built-in storage finding - same as colonists use
-            IntVec3 result;
-            if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
+            // Try RimWorld's built-in storage finding first (works for spawned items)
+            if (item.Spawned)
             {
-                Log.Message($"[MULE] {Label}: Found storage cell at {result} for {item.def.defName}");
-                return result;
+                IntVec3 result;
+                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
+                {
+                    return result;
+                }
+            }
+
+            // Manual search for unspawned items (like resources we just created from mining)
+            foreach (var slotGroup in Map.haulDestinationManager.AllGroupsListForReading)
+            {
+                if (slotGroup?.Settings == null) continue;
+                if (!slotGroup.Settings.AllowedToAccept(item)) continue;
+
+                foreach (IntVec3 cell in slotGroup.CellsList)
+                {
+                    if (!cell.InBounds(Map) || !cell.Walkable(Map)) continue;
+
+                    // Check if cell can accept the item (empty or stackable)
+                    Thing existing = cell.GetFirstItem(Map);
+                    if (existing == null)
+                    {
+                        return cell; // Empty cell
+                    }
+                    if (existing.def == item.def && existing.stackCount < existing.def.stackLimit)
+                    {
+                        return cell; // Can stack
+                    }
+                }
             }
 
             // Fallback: drop near home STABLE
             if (homeStable != null)
             {
-                Log.Message($"[MULE] {Label}: No storage found, will drop near STABLE");
                 return homeStable.InteractionCell;
             }
 
