@@ -505,7 +505,7 @@ namespace Arsenal
                 return;
             }
 
-            // Track mining progress (damage-based approach didn't give proper yields)
+            // Track mining progress
             miningProgress += MINING_WORK_PER_TICK;
 
             // Visual effects
@@ -516,21 +516,18 @@ namespace Arsenal
             }
 
             // Mining complete when we've done enough work (based on HP)
-            // Most rocks have ~1500 HP, with 18 work/tick = ~83 ticks (~1.4 seconds)
             if (miningProgress >= mineable.MaxHitPoints)
             {
-                // Use Mineable's DestroyMined for proper yield calculation
-                Mineable mineableThing = mineable as Mineable;
-                if (mineableThing != null)
-                {
-                    // DestroyMined spawns resources with proper yield
-                    mineableThing.DestroyMined(null); // null pawn = no skill bonus, but full base yield
-                }
-                else
-                {
-                    // Fallback for non-Mineable buildings
-                    mineable.Destroy(DestroyMode.KillFinalize);
-                }
+                // Get yield info before destroying
+                ThingDef resourceDef = mineable.def.building?.mineableThing;
+                int yieldAmount = mineable.def.building?.mineableYield ?? 0;
+
+                // Apply yield multiplier from difficulty/settings if available
+                float yieldMultiplier = Find.Storyteller?.difficulty?.mineYieldFactor ?? 1f;
+                yieldAmount = Mathf.RoundToInt(yieldAmount * yieldMultiplier);
+
+                // Destroy the mineable
+                mineable.Destroy(DestroyMode.KillFinalize);
 
                 // Remove mining designation
                 if (currentTask.miningDesignation != null && Map.designationManager != null)
@@ -538,7 +535,26 @@ namespace Arsenal
                     Map.designationManager.RemoveDesignation(currentTask.miningDesignation);
                 }
 
-                // Next tick we'll collect the dropped resources
+                // Spawn and pick up resources manually (DestroyMined with null pawn doesn't work well)
+                if (resourceDef != null && yieldAmount > 0)
+                {
+                    int pickupAmount = Mathf.Min(yieldAmount, MAX_CARRY_STACK);
+                    Thing resource = ThingMaker.MakeThing(resourceDef);
+                    resource.stackCount = pickupAmount;
+                    carriedThing = resource;
+                    Log.Message($"[MULE] {Label}: Mined {resourceDef.defName} x{pickupAmount}");
+
+                    // If there's leftover, spawn it on the ground
+                    if (yieldAmount > pickupAmount)
+                    {
+                        Thing leftover = ThingMaker.MakeThing(resourceDef);
+                        leftover.stackCount = yieldAmount - pickupAmount;
+                        GenPlace.TryPlaceThing(leftover, mineCell, Map, ThingPlaceMode.Near);
+                    }
+                }
+
+                miningProgress = 0;
+                TransitionToHaulingOrComplete();
             }
         }
 
@@ -548,15 +564,15 @@ namespace Arsenal
         private void TransitionToHaulingOrComplete()
         {
             miningProgress = 0;
-            Log.Message($"[MULE] {Label}: TransitionToHaulingOrComplete, carrying={carriedThing?.LabelShort ?? "nothing"}");
 
             // If carrying something, try to haul it
             if (carriedThing != null)
             {
                 IntVec3 haulDest = FindHaulDestination(carriedThing);
-                Log.Message($"[MULE] {Label}: Found haul destination: {(haulDest.IsValid ? haulDest.ToString() : "NONE")}");
                 if (haulDest.IsValid)
                 {
+                    Log.Message($"[MULE] {Label}: Hauling {carriedThing.LabelShort} to {haulDest}");
+
                     // Create haul task and transition to hauling
                     currentTask = new MuleTask
                     {
@@ -568,13 +584,18 @@ namespace Arsenal
                     };
                     state = MuleState.Hauling;
                     CalculatePathTo(haulDest);
-                    Log.Message($"[MULE] {Label}: Transitioning to Hauling state, dest={haulDest}");
                     return;
+                }
+                else
+                {
+                    // No destination - drop the item here
+                    Log.Message($"[MULE] {Label}: No haul destination, dropping {carriedThing.LabelShort} here");
+                    GenPlace.TryPlaceThing(carriedThing, Position, Map, ThingPlaceMode.Near);
+                    carriedThing = null;
                 }
             }
 
-            // No hauling needed or no destination found - complete and go home
-            Log.Message($"[MULE] {Label}: No haul destination, completing task and going home");
+            // Go home
             CompleteTask();
         }
 
@@ -630,24 +651,26 @@ namespace Arsenal
 
         private void TickHauling()
         {
-            if (this.IsHashIntervalTick(60))
-            {
-                RecalculateReturnViability();
-            }
+            // Don't check return viability while hauling - we're committed to delivering
+            // (checking every 60 ticks was causing MULEs to abort mid-haul)
 
             DrainBattery(ACTIVE_DRAIN_PER_TICK);
             MoveAlongPath();
 
             if (currentTask == null)
             {
-                Log.Message($"[MULE] {Label}: TickHauling - no current task, looking for new task");
-                TryGetNewTaskOrGoHome();
+                Log.Message($"[MULE] {Label}: TickHauling - no current task, completing");
+                // Drop item if we have one
+                if (carriedThing != null)
+                {
+                    DeliverCarriedItem();
+                }
+                CompleteTask();
                 return;
             }
 
             // Check if arrived at destination
             IntVec3 dest = currentTask.destinationCell;
-            // Also check if destination is a building (MORIA, etc.) and we're adjacent
             Thing destThing = currentTask.destination;
             bool arrived = Position.DistanceTo(dest) < 2f;
             if (!arrived && destThing != null)
@@ -657,6 +680,7 @@ namespace Arsenal
 
             if (arrived)
             {
+                Log.Message($"[MULE] {Label}: Arrived at haul destination, delivering {carriedThing?.LabelShort ?? "nothing"}");
                 DeliverCarriedItem();
                 CompleteTask();
             }
