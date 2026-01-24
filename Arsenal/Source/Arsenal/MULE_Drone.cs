@@ -868,11 +868,13 @@ namespace Arsenal
                     bool isDiagonal = dir.x != 0 && dir.z != 0;
                     float moveCost = isDiagonal ? 1.41f : 1f;
 
-                    // Add terrain cost from RimWorld's pathgrid
-                    int terrainCost = Map.pathGrid.PerceivedPathCostAt(neighbor);
-                    if (terrainCost >= 10000) continue; // Impassable
-
-                    moveCost += terrainCost * 0.01f; // Small terrain weight
+                    // Add small cost for terrain (water, rough ground, etc.)
+                    // MULEs treat all walkable terrain similarly but slightly prefer smooth paths
+                    TerrainDef terrain = neighbor.GetTerrain(Map);
+                    if (terrain != null && terrain.passability == Traversability.PassThroughOnly)
+                    {
+                        moveCost += 2f; // Slightly avoid pass-through terrain
+                    }
 
                     float tentativeG = current.gCost + moveCost;
 
