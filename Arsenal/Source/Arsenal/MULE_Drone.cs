@@ -38,8 +38,15 @@ namespace Arsenal
         private float currentRotation;
 
         // Pathfinding
-        private const int PATH_RECALC_INTERVAL = 120; // Recalculate path every 2 seconds
+        private const int PATH_RECALC_INTERVAL = 60; // Recalculate path every 1 second
+        private const int STUCK_THRESHOLD_TICKS = 90; // Consider stuck after 1.5 seconds no movement
+        private const int MAX_PATH_ITERATIONS = 10000; // A* iteration limit
         private int ticksSincePathCalc;
+        private IntVec3 currentDestination;
+
+        // Stuck detection
+        private IntVec3 lastProgressPosition;
+        private int ticksSinceProgress;
 
         // Inert recovery
         private const int INERT_CHECK_INTERVAL = 120; // Check recovery every 2 seconds
@@ -110,6 +117,7 @@ namespace Arsenal
             Scribe_Values.Look(ref exactPosition, "exactPosition");
             Scribe_Values.Look(ref currentRotation, "currentRotation");
             Scribe_Values.Look(ref pathIndex, "pathIndex");
+            Scribe_Values.Look(ref currentDestination, "currentDestination");
             Scribe_Collections.Look(ref currentPath, "currentPath", LookMode.Value);
             Scribe_References.Look(ref carriedThing, "carriedThing");
             Scribe_Values.Look(ref customName, "customName");
@@ -773,7 +781,22 @@ namespace Arsenal
 
         #region Movement
 
-        private IntVec3 currentDestination = IntVec3.Invalid;
+        /// <summary>
+        /// A* pathfinding node for priority queue
+        /// </summary>
+        private struct PathNode
+        {
+            public IntVec3 cell;
+            public float fCost; // g + h
+            public float gCost; // distance from start
+
+            public PathNode(IntVec3 cell, float gCost, float hCost)
+            {
+                this.cell = cell;
+                this.gCost = gCost;
+                this.fCost = gCost + hCost;
+            }
+        }
 
         private void CalculatePathTo(IntVec3 destination)
         {
@@ -793,40 +816,90 @@ namespace Arsenal
                 return;
             }
 
-            // BFS pathfinding - guaranteed to find path if one exists
-            Queue<IntVec3> frontier = new Queue<IntVec3>();
+            // A* pathfinding - efficient directed search
+            // Open set as a list we keep sorted by fCost
+            List<PathNode> openSet = new List<PathNode>();
             Dictionary<IntVec3, IntVec3> cameFrom = new Dictionary<IntVec3, IntVec3>();
+            Dictionary<IntVec3, float> gScore = new Dictionary<IntVec3, float>();
+            HashSet<IntVec3> closedSet = new HashSet<IntVec3>();
 
-            frontier.Enqueue(Position);
+            float startH = HeuristicDistance(Position, destination);
+            openSet.Add(new PathNode(Position, 0, startH));
+            gScore[Position] = 0;
             cameFrom[Position] = Position;
 
             IntVec3 reached = IntVec3.Invalid;
-            int maxIterations = 3000;
             int iterations = 0;
 
-            while (frontier.Count > 0 && iterations < maxIterations)
+            while (openSet.Count > 0 && iterations < MAX_PATH_ITERATIONS)
             {
                 iterations++;
-                IntVec3 current = frontier.Dequeue();
 
-                // Check if close enough to destination
-                if (current.DistanceTo(destination) < 2f)
+                // Find node with lowest fCost
+                int bestIndex = 0;
+                for (int i = 1; i < openSet.Count; i++)
                 {
-                    reached = current;
+                    if (openSet[i].fCost < openSet[bestIndex].fCost)
+                        bestIndex = i;
+                }
+
+                PathNode current = openSet[bestIndex];
+                openSet.RemoveAt(bestIndex);
+
+                // Check if we've reached the destination (or close enough)
+                if (current.cell.DistanceTo(destination) < 1.5f)
+                {
+                    reached = current.cell;
                     break;
                 }
 
-                // Check all 8 neighbors (cardinal first, then diagonal)
+                closedSet.Add(current.cell);
+
+                // Check all 8 neighbors
                 foreach (IntVec3 dir in GenAdj.AdjacentCells)
                 {
-                    IntVec3 next = current + dir;
+                    IntVec3 neighbor = current.cell + dir;
 
-                    if (!next.InBounds(Map)) continue;
-                    if (cameFrom.ContainsKey(next)) continue;
-                    if (!next.Walkable(Map)) continue;
+                    if (!neighbor.InBounds(Map)) continue;
+                    if (closedSet.Contains(neighbor)) continue;
+                    if (!neighbor.Walkable(Map)) continue;
 
-                    frontier.Enqueue(next);
-                    cameFrom[next] = current;
+                    // Calculate movement cost (diagonal costs more)
+                    bool isDiagonal = dir.x != 0 && dir.z != 0;
+                    float moveCost = isDiagonal ? 1.41f : 1f;
+
+                    // Add terrain cost from RimWorld's pathgrid
+                    int terrainCost = Map.pathGrid.PerceivedPathCostAt(neighbor);
+                    if (terrainCost >= 10000) continue; // Impassable
+
+                    moveCost += terrainCost * 0.01f; // Small terrain weight
+
+                    float tentativeG = current.gCost + moveCost;
+
+                    if (!gScore.ContainsKey(neighbor) || tentativeG < gScore[neighbor])
+                    {
+                        gScore[neighbor] = tentativeG;
+                        cameFrom[neighbor] = current.cell;
+
+                        float h = HeuristicDistance(neighbor, destination);
+                        PathNode newNode = new PathNode(neighbor, tentativeG, h);
+
+                        // Add to open set if not already there
+                        bool found = false;
+                        for (int i = 0; i < openSet.Count; i++)
+                        {
+                            if (openSet[i].cell == neighbor)
+                            {
+                                openSet[i] = newNode;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found)
+                        {
+                            openSet.Add(newNode);
+                        }
+                    }
                 }
             }
 
@@ -836,7 +909,7 @@ namespace Arsenal
                 List<IntVec3> reversePath = new List<IntVec3>();
                 IntVec3 step = reached;
 
-                while (step != Position)
+                while (step != Position && cameFrom.ContainsKey(step))
                 {
                     reversePath.Add(step);
                     step = cameFrom[step];
@@ -844,21 +917,116 @@ namespace Arsenal
 
                 reversePath.Reverse();
                 currentPath = reversePath;
+
+                // Path smoothing - remove unnecessary waypoints
+                SmoothPath();
             }
 
             pathIndex = 0;
             ticksSincePathCalc = 0;
+            lastProgressPosition = Position;
+            ticksSinceProgress = 0;
+        }
+
+        /// <summary>
+        /// Heuristic distance for A* - uses Euclidean distance
+        /// </summary>
+        private float HeuristicDistance(IntVec3 a, IntVec3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
+        }
+
+        /// <summary>
+        /// Simplifies path by removing intermediate waypoints when direct line is clear
+        /// </summary>
+        private void SmoothPath()
+        {
+            if (currentPath == null || currentPath.Count < 3) return;
+
+            List<IntVec3> smoothed = new List<IntVec3>();
+            smoothed.Add(currentPath[0]);
+
+            int i = 0;
+            while (i < currentPath.Count - 1)
+            {
+                // Try to skip ahead as far as possible with clear line of sight
+                int furthest = i + 1;
+                for (int j = i + 2; j < currentPath.Count; j++)
+                {
+                    if (HasClearPath(currentPath[i], currentPath[j]))
+                    {
+                        furthest = j;
+                    }
+                    else
+                    {
+                        break; // Can't skip further
+                    }
+                }
+
+                smoothed.Add(currentPath[furthest]);
+                i = furthest;
+            }
+
+            currentPath = smoothed;
+        }
+
+        /// <summary>
+        /// Checks if there's a clear walkable line between two points
+        /// </summary>
+        private bool HasClearPath(IntVec3 from, IntVec3 to)
+        {
+            // Bresenham's line algorithm to check all cells
+            int dx = Mathf.Abs(to.x - from.x);
+            int dz = Mathf.Abs(to.z - from.z);
+            int sx = from.x < to.x ? 1 : -1;
+            int sz = from.z < to.z ? 1 : -1;
+            int err = dx - dz;
+
+            int x = from.x;
+            int z = from.z;
+
+            while (x != to.x || z != to.z)
+            {
+                IntVec3 cell = new IntVec3(x, 0, z);
+                if (!cell.InBounds(Map) || !cell.Walkable(Map))
+                    return false;
+
+                int e2 = 2 * err;
+                if (e2 > -dz)
+                {
+                    err -= dz;
+                    x += sx;
+                }
+                if (e2 < dx)
+                {
+                    err += dx;
+                    z += sz;
+                }
+            }
+
+            return true;
         }
 
         private void MoveAlongPath()
         {
             ticksSincePathCalc++;
+            ticksSinceProgress++;
+
+            // Stuck detection - if we haven't moved in a while, force recalc
+            if (Position != lastProgressPosition)
+            {
+                lastProgressPosition = Position;
+                ticksSinceProgress = 0;
+            }
+
+            bool isStuck = ticksSinceProgress >= STUCK_THRESHOLD_TICKS;
 
             // Get current destination based on state
             IntVec3 dest = IntVec3.Invalid;
             if (state == MuleState.ReturningHome || state == MuleState.DeliveringToStable)
             {
-                // Use interaction cell for buildings (walkable cell adjacent to building)
                 dest = homeStable?.InteractionCell ?? Position;
             }
             else if (state == MuleState.Hauling && currentTask != null)
@@ -870,31 +1038,36 @@ namespace Arsenal
                 dest = currentTask.targetCell;
             }
 
-            // Recalculate path periodically or if we're stuck
+            // Recalculate path if: periodic interval, empty path, or stuck
             bool needsRecalc = ticksSincePathCalc >= PATH_RECALC_INTERVAL;
             bool pathEmpty = currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count;
+            bool nextCellBlocked = false;
 
-            if ((needsRecalc || pathEmpty) && dest.IsValid)
+            // Check if next cell in path is now blocked
+            if (!pathEmpty && pathIndex < currentPath.Count)
             {
+                IntVec3 nextCell = currentPath[pathIndex];
+                if (!nextCell.Walkable(Map))
+                {
+                    nextCellBlocked = true;
+                }
+            }
+
+            if ((needsRecalc || pathEmpty || isStuck || nextCellBlocked) && dest.IsValid)
+            {
+                if (isStuck)
+                {
+                    // When stuck, try to find alternate path by clearing old path first
+                    currentPath = null;
+                    pathIndex = 0;
+                }
                 CalculatePathTo(dest);
             }
 
-            // If still no path, try direct movement
+            // If still no path, try direct movement as fallback
             if ((currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count) && dest.IsValid)
             {
-                // Direct movement fallback - move towards destination if possible
-                Vector3 targetDir = (dest.ToVector3Shifted() - exactPosition).normalized;
-                Vector3 nextPos = exactPosition + targetDir * SPEED;
-                IntVec3 nextCell = nextPos.ToIntVec3();
-
-                if (nextCell.InBounds(Map) && nextCell.Walkable(Map))
-                {
-                    exactPosition = nextPos;
-                    if (nextCell != Position)
-                    {
-                        Position = nextCell;
-                    }
-                }
+                TryDirectMovement(dest);
                 return;
             }
 
@@ -903,9 +1076,21 @@ namespace Arsenal
                 return;
             }
 
+            // Move along path
             IntVec3 targetCell = currentPath[pathIndex];
-            Vector3 targetPos = targetCell.ToVector3Shifted();
 
+            // Skip waypoint if it became unwalkable
+            if (!targetCell.Walkable(Map))
+            {
+                pathIndex++;
+                if (pathIndex >= currentPath.Count)
+                {
+                    CalculatePathTo(dest);
+                }
+                return;
+            }
+
+            Vector3 targetPos = targetCell.ToVector3Shifted();
             Vector3 direction = (targetPos - exactPosition).normalized;
             float distance = Vector3.Distance(exactPosition, targetPos);
 
@@ -916,7 +1101,20 @@ namespace Arsenal
             }
             else
             {
-                exactPosition += direction * SPEED;
+                // Check if next position is walkable before moving
+                Vector3 nextPos = exactPosition + direction * SPEED;
+                IntVec3 nextIntCell = nextPos.ToIntVec3();
+
+                if (nextIntCell.InBounds(Map) && nextIntCell.Walkable(Map))
+                {
+                    exactPosition = nextPos;
+                }
+                else
+                {
+                    // Can't move forward, recalculate path
+                    CalculatePathTo(dest);
+                    return;
+                }
             }
 
             // Update rotation
@@ -930,6 +1128,65 @@ namespace Arsenal
             if (newCell != Position && newCell.InBounds(Map))
             {
                 Position = newCell;
+            }
+        }
+
+        /// <summary>
+        /// Direct movement fallback when A* can't find a path
+        /// </summary>
+        private void TryDirectMovement(IntVec3 dest)
+        {
+            Vector3 targetDir = (dest.ToVector3Shifted() - exactPosition).normalized;
+            Vector3 nextPos = exactPosition + targetDir * SPEED;
+            IntVec3 nextCell = nextPos.ToIntVec3();
+
+            if (nextCell.InBounds(Map) && nextCell.Walkable(Map))
+            {
+                exactPosition = nextPos;
+                if (nextCell != Position)
+                {
+                    Position = nextCell;
+                }
+
+                // Update rotation
+                if (targetDir.sqrMagnitude > 0.001f)
+                {
+                    currentRotation = Mathf.Atan2(targetDir.x, targetDir.z) * Mathf.Rad2Deg;
+                }
+            }
+            else
+            {
+                // Try moving around obstacle
+                TryMoveAroundObstacle(dest);
+            }
+        }
+
+        /// <summary>
+        /// Attempts to move around an obstacle when direct path is blocked
+        /// </summary>
+        private void TryMoveAroundObstacle(IntVec3 dest)
+        {
+            // Try perpendicular directions
+            Vector3 toDest = (dest.ToVector3Shifted() - exactPosition);
+            Vector3 perp1 = new Vector3(-toDest.z, 0, toDest.x).normalized;
+            Vector3 perp2 = new Vector3(toDest.z, 0, -toDest.x).normalized;
+
+            Vector3[] attempts = { perp1, perp2 };
+
+            foreach (Vector3 dir in attempts)
+            {
+                Vector3 nextPos = exactPosition + dir * SPEED;
+                IntVec3 nextCell = nextPos.ToIntVec3();
+
+                if (nextCell.InBounds(Map) && nextCell.Walkable(Map))
+                {
+                    exactPosition = nextPos;
+                    if (nextCell != Position)
+                    {
+                        Position = nextCell;
+                    }
+                    break;
+                }
             }
         }
 
