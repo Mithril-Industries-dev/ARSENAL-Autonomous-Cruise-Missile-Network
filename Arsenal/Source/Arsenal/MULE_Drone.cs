@@ -321,7 +321,7 @@ namespace Arsenal
             switch (state)
             {
                 case MuleState.Idle:
-                    // Do nothing, wait for task
+                    TickIdle();
                     break;
 
                 case MuleState.Charging:
@@ -374,6 +374,41 @@ namespace Arsenal
             if (IsBatteryFull)
             {
                 state = MuleState.Idle;
+            }
+        }
+
+        /// <summary>
+        /// Idle state - periodically look for tasks on remote tiles (without local LATTICE).
+        /// On home tile, LATTICE will assign tasks directly.
+        /// </summary>
+        private void TickIdle()
+        {
+            // Only check periodically to avoid performance impact
+            if (!this.IsHashIntervalTick(120)) return; // Every 2 seconds
+
+            // Check if we have network connectivity
+            if (homeStable == null || !homeStable.HasNetworkConnection()) return;
+
+            // On home tile with LATTICE, let LATTICE assign tasks
+            Building_Lattice localLattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (localLattice != null) return; // LATTICE handles task assignment
+
+            // On remote tile - actively scan for tasks
+            MuleTask localTask = ScanForLocalTask();
+            if (localTask != null)
+            {
+                Log.Message($"[MULE] {Label}: Idle scan found task: {localTask.taskType} at {localTask.targetCell}");
+
+                // Request deployment from STABLE
+                if (homeStable != null && homeStable.DeployMule(this, localTask))
+                {
+                    // Successfully deployed
+                }
+                else
+                {
+                    // Direct assignment if already out of STABLE
+                    AssignTask(localTask);
+                }
             }
         }
 
@@ -862,7 +897,13 @@ namespace Arsenal
 
                     if (!neighbor.InBounds(Map)) continue;
                     if (closedSet.Contains(neighbor)) continue;
+
+                    // Check terrain walkability
                     if (!neighbor.Walkable(Map)) continue;
+
+                    // Check for impassable buildings (generators, walls, etc.)
+                    Building edifice = neighbor.GetEdifice(Map);
+                    if (edifice != null && !IsPassableBuilding(edifice)) continue;
 
                     // Calculate movement cost (diagonal costs more)
                     bool isDiagonal = dir.x != 0 && dir.z != 0;
@@ -995,6 +1036,11 @@ namespace Arsenal
                 if (!cell.InBounds(Map) || !cell.Walkable(Map))
                     return false;
 
+                // Check for impassable buildings
+                Building edifice = cell.GetEdifice(Map);
+                if (edifice != null && !IsPassableBuilding(edifice))
+                    return false;
+
                 int e2 = 2 * err;
                 if (e2 > -dz)
                 {
@@ -1007,6 +1053,40 @@ namespace Arsenal
                     z += sz;
                 }
             }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks if a building can be passed through by MULEs.
+        /// Doors and certain small furniture are passable, walls and machines are not.
+        /// </summary>
+        private bool IsPassableBuilding(Building building)
+        {
+            if (building == null) return true;
+
+            // Doors are passable (will open for MULEs or MULE can wait)
+            if (building is Building_Door) return true;
+
+            // Check the building's passability from its def
+            if (building.def.passability == Traversability.Impassable) return false;
+            if (building.def.passability == Traversability.PassThroughOnly) return true;
+            if (building.def.passability == Traversability.Standable) return true;
+
+            // Default: check if it blocks movement
+            return !building.def.blockWind && building.def.fillPercent < 0.5f;
+        }
+
+        /// <summary>
+        /// Checks if a cell is passable by MULEs (terrain + buildings).
+        /// </summary>
+        private bool IsCellPassable(IntVec3 cell)
+        {
+            if (!cell.InBounds(Map)) return false;
+            if (!cell.Walkable(Map)) return false;
+
+            Building edifice = cell.GetEdifice(Map);
+            if (edifice != null && !IsPassableBuilding(edifice)) return false;
 
             return true;
         }
@@ -1049,7 +1129,7 @@ namespace Arsenal
             if (!pathEmpty && pathIndex < currentPath.Count)
             {
                 IntVec3 nextCell = currentPath[pathIndex];
-                if (!nextCell.Walkable(Map))
+                if (!IsCellPassable(nextCell))
                 {
                     nextCellBlocked = true;
                 }
@@ -1081,8 +1161,8 @@ namespace Arsenal
             // Move along path
             IntVec3 targetCell = currentPath[pathIndex];
 
-            // Skip waypoint if it became unwalkable
-            if (!targetCell.Walkable(Map))
+            // Skip waypoint if it became blocked
+            if (!IsCellPassable(targetCell))
             {
                 pathIndex++;
                 if (pathIndex >= currentPath.Count)
@@ -1103,11 +1183,11 @@ namespace Arsenal
             }
             else
             {
-                // Check if next position is walkable before moving
+                // Check if next position is passable before moving
                 Vector3 nextPos = exactPosition + direction * SPEED;
                 IntVec3 nextIntCell = nextPos.ToIntVec3();
 
-                if (nextIntCell.InBounds(Map) && nextIntCell.Walkable(Map))
+                if (nextIntCell.InBounds(Map) && IsCellPassable(nextIntCell))
                 {
                     exactPosition = nextPos;
                 }
@@ -1142,7 +1222,7 @@ namespace Arsenal
             Vector3 nextPos = exactPosition + targetDir * SPEED;
             IntVec3 nextCell = nextPos.ToIntVec3();
 
-            if (nextCell.InBounds(Map) && nextCell.Walkable(Map))
+            if (IsCellPassable(nextCell))
             {
                 exactPosition = nextPos;
                 if (nextCell != Position)
@@ -1180,7 +1260,7 @@ namespace Arsenal
                 Vector3 nextPos = exactPosition + dir * SPEED;
                 IntVec3 nextCell = nextPos.ToIntVec3();
 
-                if (nextCell.InBounds(Map) && nextCell.Walkable(Map))
+                if (IsCellPassable(nextCell))
                 {
                     exactPosition = nextPos;
                     if (nextCell != Position)
