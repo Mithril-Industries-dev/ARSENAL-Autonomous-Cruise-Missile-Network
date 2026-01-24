@@ -244,57 +244,11 @@ namespace Arsenal
         {
             if (!HasSpace) return null;
 
-            // Generate a new MULE pawn
+            // Generate a new MULE pawn with simplified request
             PawnGenerationRequest request = new PawnGenerationRequest(
                 kind: ArsenalDefOf.Arsenal_MULE_Kind,
                 faction: Faction.OfPlayer,
-                context: PawnGenerationContext.NonPlayer,
-                tile: -1,
-                forceGenerateNewPawn: true,
-                allowDead: false,
-                allowDowned: false,
-                canGeneratePawnRelations: false,
-                mustBeCapableOfViolence: false,
-                colonistRelationChanceFactor: 0f,
-                forceAddFreeWarmLayerIfNeeded: false,
-                allowGay: false,
-                allowPregnant: false,
-                allowFood: false,
-                allowAddictions: false,
-                inhabitant: false,
-                certainlyBeenInCryptosleep: false,
-                forceRedressWorldPawnIfFormerColonist: false,
-                worldPawnFactionDoesntMatter: false,
-                biocodeWeaponChance: 0f,
-                biocodeApparelChance: 0f,
-                extraPawnForExtraRelationChance: null,
-                relationWithExtraPawnChanceFactor: 0f,
-                validatorPreGear: null,
-                validatorPostGear: null,
-                forcedTraits: null,
-                prohibitedTraits: null,
-                minChanceToRedressWorldPawn: null,
-                fixedBiologicalAge: null,
-                fixedChronologicalAge: null,
-                fixedGender: null,
-                fixedLastName: null,
-                fixedBirthName: null,
-                fixedTitle: null,
-                fixedIdeo: null,
-                forceNoIdeo: true,
-                forceNoBackstory: true,
-                forbidAnyTitle: true,
-                forceDead: false,
-                forcedXenotype: null,
-                forcedCustomXenotype: null,
-                allowedXenotypes: null,
-                forceBaselinerXenotype: true,
-                developmentalStages: DevelopmentalStage.Adult,
-                pawnKindDefGetter: null,
-                excludeBiologicalAgeRange: null,
-                biologicalAgeRange: null,
-                forceRecruitable: false,
-                dontGiveWeapon: true
+                forceGenerateNewPawn: true
             );
 
             MULE_Pawn newMule = (MULE_Pawn)PawnGenerator.GeneratePawn(request);

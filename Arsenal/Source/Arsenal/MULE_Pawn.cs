@@ -219,7 +219,7 @@ namespace Arsenal
                 case MuleTaskType.MoriaFeed:
                     if (task.targetThing != null && task.targetThing.Spawned)
                     {
-                        job = HaulAIUtility.HaulToStorageJob(this, task.targetThing);
+                        job = HaulAIUtility.HaulToStorageJob(this, task.targetThing, false);
                         if (job == null && task.destinationCell.IsValid)
                         {
                             job = HaulAIUtility.HaulToCellStorageJob(this, task.targetThing, task.destinationCell, false);
@@ -409,15 +409,18 @@ namespace Arsenal
             }
 
             // Return to STABLE
-            yield return new Command_Action
+            var returnCmd = new Command_Action
             {
                 defaultLabel = "Return to STABLE",
                 defaultDesc = "Order this MULE to return to its home STABLE for charging.",
                 icon = ContentFinder<Texture2D>.Get("UI/Commands/PodEject", false),
-                action = delegate { ReturnToStable(); },
-                disabled = homeStable == null,
-                disabledReason = "No home STABLE assigned"
+                action = delegate { ReturnToStable(); }
             };
+            if (homeStable == null)
+            {
+                returnCmd.Disable("No home STABLE assigned");
+            }
+            yield return returnCmd;
 
             // Rename
             yield return new Command_Action

@@ -619,8 +619,13 @@ namespace Arsenal
                     return;
                 }
 
-                // Create MULE and spawn at ARSENAL position
-                MULE_Drone mule = (MULE_Drone)ThingMaker.MakeThing(ArsenalDefOf.Arsenal_MULE_Drone);
+                // Create MULE pawn and spawn at ARSENAL position
+                PawnGenerationRequest request = new PawnGenerationRequest(
+                    kind: ArsenalDefOf.Arsenal_MULE_Kind,
+                    faction: Faction.OfPlayer,
+                    forceGenerateNewPawn: true
+                );
+                MULE_Pawn mule = (MULE_Pawn)PawnGenerator.GeneratePawn(request);
                 mule.SetHomeStable(targetStable);
 
                 // Find a spawn cell near the ARSENAL
