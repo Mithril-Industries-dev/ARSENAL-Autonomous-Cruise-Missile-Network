@@ -57,32 +57,58 @@ namespace Arsenal
         #region Adjacent Storage System
 
         /// <summary>
-        /// Gets all cells adjacent to ARSENAL that contain valid storage.
+        /// Gets all cells from storage adjacent to ARSENAL.
+        /// For multi-cell storage buildings (shelves, MORIA, etc.), returns ALL cells of that building.
         /// </summary>
         public IEnumerable<IntVec3> GetAdjacentStorageCells()
         {
-            foreach (IntVec3 cell in GenAdj.CellsAdjacent8Way(this))
+            HashSet<IntVec3> storageCells = new HashSet<IntVec3>();
+            HashSet<Thing> processedBuildings = new HashSet<Thing>();
+
+            foreach (IntVec3 adjacentCell in GenAdj.CellsAdjacent8Way(this))
             {
-                if (!cell.InBounds(Map)) continue;
+                if (!adjacentCell.InBounds(Map)) continue;
 
                 // Check if cell is part of a stockpile zone
-                Zone zone = cell.GetZone(Map);
-                if (zone is Zone_Stockpile)
+                Zone zone = adjacentCell.GetZone(Map);
+                if (zone is Zone_Stockpile stockpile)
                 {
-                    yield return cell;
+                    // Add ALL cells of this stockpile zone (not just the adjacent one)
+                    foreach (IntVec3 zoneCell in stockpile.Cells)
+                    {
+                        storageCells.Add(zoneCell);
+                    }
                     continue;
                 }
 
-                // Check if cell has a storage building (shelf, etc.)
-                foreach (Thing thing in cell.GetThingList(Map))
+                // Check for storage buildings (shelf, MORIA, etc.)
+                foreach (Thing thing in adjacentCell.GetThingList(Map))
                 {
-                    if (thing is Building_Storage)
+                    // Check for Building_Storage (shelves, hoppers, etc.)
+                    if (thing is Building_Storage storageBuilding && !processedBuildings.Contains(thing))
                     {
-                        yield return cell;
-                        break;
+                        processedBuildings.Add(thing);
+                        // Add ALL cells this storage building occupies
+                        foreach (IntVec3 buildingCell in storageBuilding.AllSlotCellsList())
+                        {
+                            storageCells.Add(buildingCell);
+                        }
+                    }
+
+                    // Check for MORIA (custom storage)
+                    if (thing is Building_Moria moria && !processedBuildings.Contains(thing))
+                    {
+                        processedBuildings.Add(thing);
+                        // Add all cells the MORIA occupies
+                        foreach (IntVec3 moriaCell in moria.AllSlotCellsList())
+                        {
+                            storageCells.Add(moriaCell);
+                        }
                     }
                 }
             }
+
+            return storageCells;
         }
 
         /// <summary>

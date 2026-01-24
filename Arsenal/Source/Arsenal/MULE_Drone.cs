@@ -529,6 +529,19 @@ namespace Arsenal
                 // Destroy the mineable (use Vanish to prevent RimWorld from also spawning resources)
                 mineable.Destroy(DestroyMode.Vanish);
 
+                // Clean up any resources that RimWorld might have spawned anyway
+                // (some mineables have special destroy handlers that ignore DestroyMode)
+                if (resourceDef != null)
+                {
+                    foreach (Thing t in mineCell.GetThingList(Map).ToArray())
+                    {
+                        if (t.def == resourceDef && t.def.category == ThingCategory.Item)
+                        {
+                            t.Destroy(DestroyMode.Vanish);
+                        }
+                    }
+                }
+
                 // Remove mining designation
                 if (currentTask.miningDesignation != null && Map.designationManager != null)
                 {
