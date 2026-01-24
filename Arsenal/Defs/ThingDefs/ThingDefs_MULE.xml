@@ -19,7 +19,7 @@
     </statBases>
     <race>
       <thinkTreeMain>Arsenal_MULE_ThinkTree</thinkTreeMain>
-      <intelligence>ToolUser</intelligence>
+      <intelligence>Animal</intelligence>
       <fleshType>Mechanoid</fleshType>
       <bloodDef>Filth_MachineBits</bloodDef>
       <needsRest>false</needsRest>
@@ -29,10 +29,17 @@
       <body>MULE_Body</body>
       <baseBodySize>0.5</baseBodySize>
       <baseHealthScale>1.0</baseHealthScale>
+      <makesFootprints>false</makesFootprints>
       <soundMeleeHitPawn>Pawn_Melee_MechanoidBash_HitPawn</soundMeleeHitPawn>
       <soundMeleeHitBuilding>Pawn_Melee_MechanoidBash_HitBuilding</soundMeleeHitBuilding>
       <soundMeleeMiss>Pawn_Melee_MechanoidBash_Miss</soundMeleeMiss>
       <trainability>None</trainability>
+      <lifeStageAges>
+        <li>
+          <def>MechanoidFullyFormed</def>
+          <minAge>0</minAge>
+        </li>
+      </lifeStageAges>
     </race>
     <graphicData>
       <texPath>Arsenal/Arsenal_MULE</texPath>
@@ -71,12 +78,14 @@
     <race>Arsenal_MULE_Race</race>
     <combatPower>30</combatPower>
     <defaultFactionType>PlayerColony</defaultFactionType>
+    <isFighter>false</isFighter>
     <lifeStages>
       <li>
         <bodyGraphicData>
           <texPath>Arsenal/Arsenal_MULE</texPath>
           <graphicClass>Graphic_Multi</graphicClass>
           <drawSize>(1,1)</drawSize>
+          <shaderType>CutoutComplex</shaderType>
         </bodyGraphicData>
       </li>
     </lifeStages>
