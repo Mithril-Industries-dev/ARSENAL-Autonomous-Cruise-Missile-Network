@@ -38,15 +38,9 @@ namespace Arsenal
         private float currentRotation;
 
         // Pathfinding
-        private const int PATH_RECALC_INTERVAL = 60; // Recalculate path every 1 second
-        private const int STUCK_THRESHOLD_TICKS = 90; // Consider stuck after 1.5 seconds no movement
-        private const int MAX_PATH_ITERATIONS = 10000; // A* iteration limit
+        private const int PATH_RECALC_INTERVAL = 120; // Recalculate path every 2 seconds
         private int ticksSincePathCalc;
         private IntVec3 currentDestination;
-
-        // Stuck detection
-        private IntVec3 lastProgressPosition;
-        private int ticksSinceProgress;
 
         // Inert recovery
         private const int INERT_CHECK_INTERVAL = 120; // Check recovery every 2 seconds
@@ -817,342 +811,61 @@ namespace Arsenal
         #region Movement
 
         /// <summary>
-        /// A* pathfinding node for priority queue
+        /// Calculates path using RimWorld's built-in pathfinder.
         /// </summary>
-        private struct PathNode
-        {
-            public IntVec3 cell;
-            public float fCost; // g + h
-            public float gCost; // distance from start
-
-            public PathNode(IntVec3 cell, float gCost, float hCost)
-            {
-                this.cell = cell;
-                this.gCost = gCost;
-                this.fCost = gCost + hCost;
-            }
-        }
-
         private void CalculatePathTo(IntVec3 destination)
         {
             if (Map == null) return;
 
             currentPath = new List<IntVec3>();
             currentDestination = destination;
-
-            if (!destination.InBounds(Map))
-            {
-                return;
-            }
-
-            // If already at destination, no path needed
-            if (Position.DistanceTo(destination) < 2f)
-            {
-                return;
-            }
-
-            // A* pathfinding - efficient directed search
-            // Open set as a list we keep sorted by fCost
-            List<PathNode> openSet = new List<PathNode>();
-            Dictionary<IntVec3, IntVec3> cameFrom = new Dictionary<IntVec3, IntVec3>();
-            Dictionary<IntVec3, float> gScore = new Dictionary<IntVec3, float>();
-            HashSet<IntVec3> closedSet = new HashSet<IntVec3>();
-
-            float startH = HeuristicDistance(Position, destination);
-            openSet.Add(new PathNode(Position, 0, startH));
-            gScore[Position] = 0;
-            cameFrom[Position] = Position;
-
-            IntVec3 reached = IntVec3.Invalid;
-            int iterations = 0;
-
-            while (openSet.Count > 0 && iterations < MAX_PATH_ITERATIONS)
-            {
-                iterations++;
-
-                // Find node with lowest fCost
-                int bestIndex = 0;
-                for (int i = 1; i < openSet.Count; i++)
-                {
-                    if (openSet[i].fCost < openSet[bestIndex].fCost)
-                        bestIndex = i;
-                }
-
-                PathNode current = openSet[bestIndex];
-                openSet.RemoveAt(bestIndex);
-
-                // Check if we've reached the destination (or close enough)
-                if (current.cell.DistanceTo(destination) < 1.5f)
-                {
-                    reached = current.cell;
-                    break;
-                }
-
-                closedSet.Add(current.cell);
-
-                // Check all 8 neighbors
-                foreach (IntVec3 dir in GenAdj.AdjacentCells)
-                {
-                    IntVec3 neighbor = current.cell + dir;
-
-                    if (!neighbor.InBounds(Map)) continue;
-                    if (closedSet.Contains(neighbor)) continue;
-
-                    // Check terrain walkability
-                    if (!neighbor.Walkable(Map)) continue;
-
-                    // Check for impassable buildings (generators, walls, etc.)
-                    Building edifice = neighbor.GetEdifice(Map);
-                    if (edifice != null && !IsPassableBuilding(edifice)) continue;
-
-                    // Calculate movement cost (diagonal costs more)
-                    bool isDiagonal = dir.x != 0 && dir.z != 0;
-                    float moveCost = isDiagonal ? 1.41f : 1f;
-
-                    // Add small cost for terrain (water, rough ground, etc.)
-                    // MULEs treat all walkable terrain similarly but slightly prefer smooth paths
-                    TerrainDef terrain = neighbor.GetTerrain(Map);
-                    if (terrain != null && terrain.passability == Traversability.PassThroughOnly)
-                    {
-                        moveCost += 2f; // Slightly avoid pass-through terrain
-                    }
-
-                    float tentativeG = current.gCost + moveCost;
-
-                    if (!gScore.ContainsKey(neighbor) || tentativeG < gScore[neighbor])
-                    {
-                        gScore[neighbor] = tentativeG;
-                        cameFrom[neighbor] = current.cell;
-
-                        float h = HeuristicDistance(neighbor, destination);
-                        PathNode newNode = new PathNode(neighbor, tentativeG, h);
-
-                        // Add to open set if not already there
-                        bool found = false;
-                        for (int i = 0; i < openSet.Count; i++)
-                        {
-                            if (openSet[i].cell == neighbor)
-                            {
-                                openSet[i] = newNode;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found)
-                        {
-                            openSet.Add(newNode);
-                        }
-                    }
-                }
-            }
-
-            // Reconstruct path if we found the destination
-            if (reached.IsValid)
-            {
-                List<IntVec3> reversePath = new List<IntVec3>();
-                IntVec3 step = reached;
-
-                while (step != Position && cameFrom.ContainsKey(step))
-                {
-                    reversePath.Add(step);
-                    step = cameFrom[step];
-                }
-
-                reversePath.Reverse();
-                currentPath = reversePath;
-
-                // Path smoothing - remove unnecessary waypoints
-                SmoothPath();
-            }
-
             pathIndex = 0;
             ticksSincePathCalc = 0;
-            lastProgressPosition = Position;
-            ticksSinceProgress = 0;
-        }
 
-        /// <summary>
-        /// Heuristic distance for A* - uses Euclidean distance
-        /// </summary>
-        private float HeuristicDistance(IntVec3 a, IntVec3 b)
-        {
-            float dx = a.x - b.x;
-            float dz = a.z - b.z;
-            return Mathf.Sqrt(dx * dx + dz * dz);
-        }
+            if (!destination.InBounds(Map)) return;
 
-        /// <summary>
-        /// Simplifies path by removing intermediate waypoints when direct line is clear
-        /// </summary>
-        private void SmoothPath()
-        {
-            if (currentPath == null || currentPath.Count < 3) return;
+            // Already at destination
+            if (Position.DistanceTo(destination) < 1.5f) return;
 
-            List<IntVec3> smoothed = new List<IntVec3>();
-            smoothed.Add(currentPath[0]);
+            // Use RimWorld's pathfinder - treats MULE like a pawn that can pass through doors
+            TraverseParms traverseParms = TraverseParms.For(TraverseMode.PassDoors, Danger.Deadly, false);
 
-            int i = 0;
-            while (i < currentPath.Count - 1)
+            using (PawnPath pawnPath = Map.pathFinder.FindPath(Position, destination, traverseParms, PathEndMode.Touch))
             {
-                // Try to skip ahead as far as possible with clear line of sight
-                int furthest = i + 1;
-                for (int j = i + 2; j < currentPath.Count; j++)
+                if (pawnPath != null && pawnPath.Found)
                 {
-                    if (HasClearPath(currentPath[i], currentPath[j]))
+                    // Extract nodes from PawnPath into our list
+                    List<IntVec3> nodes = new List<IntVec3>(pawnPath.NodesReversed);
+                    nodes.Reverse();
+
+                    // Skip first node (current position)
+                    if (nodes.Count > 0 && nodes[0] == Position)
                     {
-                        furthest = j;
+                        nodes.RemoveAt(0);
                     }
-                    else
-                    {
-                        break; // Can't skip further
-                    }
-                }
 
-                smoothed.Add(currentPath[furthest]);
-                i = furthest;
-            }
-
-            currentPath = smoothed;
-        }
-
-        /// <summary>
-        /// Checks if there's a clear walkable line between two points
-        /// </summary>
-        private bool HasClearPath(IntVec3 from, IntVec3 to)
-        {
-            // Bresenham's line algorithm to check all cells
-            int dx = Mathf.Abs(to.x - from.x);
-            int dz = Mathf.Abs(to.z - from.z);
-            int sx = from.x < to.x ? 1 : -1;
-            int sz = from.z < to.z ? 1 : -1;
-            int err = dx - dz;
-
-            int x = from.x;
-            int z = from.z;
-
-            while (x != to.x || z != to.z)
-            {
-                IntVec3 cell = new IntVec3(x, 0, z);
-                if (!cell.InBounds(Map) || !cell.Walkable(Map))
-                    return false;
-
-                // Check for impassable buildings
-                Building edifice = cell.GetEdifice(Map);
-                if (edifice != null && !IsPassableBuilding(edifice))
-                    return false;
-
-                int e2 = 2 * err;
-                if (e2 > -dz)
-                {
-                    err -= dz;
-                    x += sx;
-                }
-                if (e2 < dx)
-                {
-                    err += dx;
-                    z += sz;
+                    currentPath = nodes;
                 }
             }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Checks if a building can be passed through by MULEs.
-        /// Doors and certain small furniture are passable, walls and machines are not.
-        /// </summary>
-        private bool IsPassableBuilding(Building building)
-        {
-            if (building == null) return true;
-
-            // Doors are passable (will open for MULEs or MULE can wait)
-            if (building is Building_Door) return true;
-
-            // Check the building's passability from its def
-            if (building.def.passability == Traversability.Impassable) return false;
-            if (building.def.passability == Traversability.PassThroughOnly) return true;
-            if (building.def.passability == Traversability.Standable) return true;
-
-            // Default: check if it blocks movement
-            return !building.def.blockWind && building.def.fillPercent < 0.5f;
-        }
-
-        /// <summary>
-        /// Checks if a cell is passable by MULEs (terrain + buildings).
-        /// </summary>
-        private bool IsCellPassable(IntVec3 cell)
-        {
-            if (!cell.InBounds(Map)) return false;
-            if (!cell.Walkable(Map)) return false;
-
-            Building edifice = cell.GetEdifice(Map);
-            if (edifice != null && !IsPassableBuilding(edifice)) return false;
-
-            return true;
         }
 
         private void MoveAlongPath()
         {
             ticksSincePathCalc++;
-            ticksSinceProgress++;
-
-            // Stuck detection - if we haven't moved in a while, force recalc
-            if (Position != lastProgressPosition)
-            {
-                lastProgressPosition = Position;
-                ticksSinceProgress = 0;
-            }
-
-            bool isStuck = ticksSinceProgress >= STUCK_THRESHOLD_TICKS;
 
             // Get current destination based on state
-            IntVec3 dest = IntVec3.Invalid;
-            if (state == MuleState.ReturningHome || state == MuleState.DeliveringToStable)
-            {
-                dest = homeStable?.InteractionCell ?? Position;
-            }
-            else if (state == MuleState.Hauling && currentTask != null)
-            {
-                dest = currentTask.destinationCell;
-            }
-            else if (currentTask != null)
-            {
-                dest = currentTask.targetCell;
-            }
+            IntVec3 dest = GetCurrentDestination();
 
-            // Recalculate path if: periodic interval, empty path, or stuck
+            // Recalculate path periodically or if path is empty/exhausted
             bool needsRecalc = ticksSincePathCalc >= PATH_RECALC_INTERVAL;
             bool pathEmpty = currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count;
-            bool nextCellBlocked = false;
 
-            // Check if next cell in path is now blocked
-            if (!pathEmpty && pathIndex < currentPath.Count)
+            if ((needsRecalc || pathEmpty) && dest.IsValid)
             {
-                IntVec3 nextCell = currentPath[pathIndex];
-                if (!IsCellPassable(nextCell))
-                {
-                    nextCellBlocked = true;
-                }
-            }
-
-            if ((needsRecalc || pathEmpty || isStuck || nextCellBlocked) && dest.IsValid)
-            {
-                if (isStuck)
-                {
-                    // When stuck, try to find alternate path by clearing old path first
-                    currentPath = null;
-                    pathIndex = 0;
-                }
                 CalculatePathTo(dest);
             }
 
-            // If still no path, try direct movement as fallback
-            if ((currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count) && dest.IsValid)
-            {
-                TryDirectMovement(dest);
-                return;
-            }
-
+            // No path available
             if (currentPath == null || currentPath.Count == 0 || pathIndex >= currentPath.Count)
             {
                 return;
@@ -1160,18 +873,6 @@ namespace Arsenal
 
             // Move along path
             IntVec3 targetCell = currentPath[pathIndex];
-
-            // Skip waypoint if it became blocked
-            if (!IsCellPassable(targetCell))
-            {
-                pathIndex++;
-                if (pathIndex >= currentPath.Count)
-                {
-                    CalculatePathTo(dest);
-                }
-                return;
-            }
-
             Vector3 targetPos = targetCell.ToVector3Shifted();
             Vector3 direction = (targetPos - exactPosition).normalized;
             float distance = Vector3.Distance(exactPosition, targetPos);
@@ -1183,20 +884,7 @@ namespace Arsenal
             }
             else
             {
-                // Check if next position is passable before moving
-                Vector3 nextPos = exactPosition + direction * SPEED;
-                IntVec3 nextIntCell = nextPos.ToIntVec3();
-
-                if (nextIntCell.InBounds(Map) && IsCellPassable(nextIntCell))
-                {
-                    exactPosition = nextPos;
-                }
-                else
-                {
-                    // Can't move forward, recalculate path
-                    CalculatePathTo(dest);
-                    return;
-                }
+                exactPosition += direction * SPEED;
             }
 
             // Update rotation
@@ -1205,7 +893,7 @@ namespace Arsenal
                 currentRotation = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
             }
 
-            // Update position
+            // Update cell position
             IntVec3 newCell = exactPosition.ToIntVec3();
             if (newCell != Position && newCell.InBounds(Map))
             {
@@ -1213,63 +901,21 @@ namespace Arsenal
             }
         }
 
-        /// <summary>
-        /// Direct movement fallback when A* can't find a path
-        /// </summary>
-        private void TryDirectMovement(IntVec3 dest)
+        private IntVec3 GetCurrentDestination()
         {
-            Vector3 targetDir = (dest.ToVector3Shifted() - exactPosition).normalized;
-            Vector3 nextPos = exactPosition + targetDir * SPEED;
-            IntVec3 nextCell = nextPos.ToIntVec3();
-
-            if (IsCellPassable(nextCell))
+            if (state == MuleState.ReturningHome || state == MuleState.DeliveringToStable)
             {
-                exactPosition = nextPos;
-                if (nextCell != Position)
-                {
-                    Position = nextCell;
-                }
-
-                // Update rotation
-                if (targetDir.sqrMagnitude > 0.001f)
-                {
-                    currentRotation = Mathf.Atan2(targetDir.x, targetDir.z) * Mathf.Rad2Deg;
-                }
+                return homeStable?.InteractionCell ?? Position;
             }
-            else
+            else if (state == MuleState.Hauling && currentTask != null)
             {
-                // Try moving around obstacle
-                TryMoveAroundObstacle(dest);
+                return currentTask.destinationCell;
             }
-        }
-
-        /// <summary>
-        /// Attempts to move around an obstacle when direct path is blocked
-        /// </summary>
-        private void TryMoveAroundObstacle(IntVec3 dest)
-        {
-            // Try perpendicular directions
-            Vector3 toDest = (dest.ToVector3Shifted() - exactPosition);
-            Vector3 perp1 = new Vector3(-toDest.z, 0, toDest.x).normalized;
-            Vector3 perp2 = new Vector3(toDest.z, 0, -toDest.x).normalized;
-
-            Vector3[] attempts = { perp1, perp2 };
-
-            foreach (Vector3 dir in attempts)
+            else if (currentTask != null)
             {
-                Vector3 nextPos = exactPosition + dir * SPEED;
-                IntVec3 nextCell = nextPos.ToIntVec3();
-
-                if (IsCellPassable(nextCell))
-                {
-                    exactPosition = nextPos;
-                    if (nextCell != Position)
-                    {
-                        Position = nextCell;
-                    }
-                    break;
-                }
+                return currentTask.targetCell;
             }
+            return IntVec3.Invalid;
         }
 
         private void UpdateTrail()
