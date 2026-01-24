@@ -378,6 +378,31 @@ namespace Arsenal
 
         #endregion
 
+        #region Initialization
+
+        public void SetHomeStable(Building_Stable stable)
+        {
+            homeStable = stable;
+        }
+
+        /// <summary>
+        /// Initializes the MULE for delivery from ARSENAL to target STABLE.
+        /// Called when a newly manufactured MULE is spawned.
+        /// </summary>
+        public void InitializeForDelivery(Building_Stable targetStable)
+        {
+            homeStable = targetStable;
+            state = MuleState.DeliveringToStable;
+
+            // Use job system to go to the stable
+            Job goToStableJob = JobMaker.MakeJob(JobDefOf.Goto, targetStable.InteractionCell);
+            jobs.StartJob(goToStableJob, JobCondition.InterruptForced);
+
+            Log.Message($"[MULE] {Label}: Initialized for delivery to {targetStable.Label}");
+        }
+
+        #endregion
+
         #region Naming
 
         public void SetCustomName(string name)
