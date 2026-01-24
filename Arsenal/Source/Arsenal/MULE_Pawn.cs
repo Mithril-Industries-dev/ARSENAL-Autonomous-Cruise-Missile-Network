@@ -1,0 +1,497 @@
+using System.Collections.Generic;
+using System.Linq;
+using RimWorld;
+using Verse;
+using Verse.AI;
+using UnityEngine;
+
+namespace Arsenal
+{
+    /// <summary>
+    /// MULE (Mobile Utility Logistics Engine) - Autonomous ground drone for mining and hauling.
+    /// Now extends Pawn for proper pathfinding and job system integration.
+    /// </summary>
+    public class MULE_Pawn : Pawn
+    {
+        // Home STABLE
+        public Building_Stable homeStable;
+
+        // State tracking
+        public MuleState state = MuleState.Idle;
+        private MuleTask currentTask;
+
+        // Naming
+        private string customName;
+        private static int muleCounter = 1;
+
+        #region Properties
+
+        public Comp_MuleBattery BatteryComp => GetComp<Comp_MuleBattery>();
+        public float BatteryPercent => BatteryComp?.ChargePercent ?? 0f;
+        public bool IsBatteryFull => BatteryComp?.IsFull ?? false;
+        public bool IsBatteryDepleted => BatteryComp?.IsDepleted ?? true;
+        public MuleTask CurrentTask => currentTask;
+
+        public override string Label => customName ?? base.Label;
+        public string CustomName => customName;
+
+        #endregion
+
+        #region Lifecycle
+
+        public override void SpawnSetup(Map map, bool respawningAfterLoad)
+        {
+            base.SpawnSetup(map, respawningAfterLoad);
+
+            if (!respawningAfterLoad)
+            {
+                customName = "MULE-" + muleCounter.ToString("D2");
+                muleCounter++;
+            }
+
+            // Set faction to player
+            if (Faction == null)
+            {
+                SetFaction(Faction.OfPlayer);
+            }
+
+            ArsenalNetworkManager.RegisterMule(this);
+        }
+
+        public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
+        {
+            // Drop carried thing
+            if (carryTracker?.CarriedThing != null)
+            {
+                carryTracker.TryDropCarriedThing(Position, ThingPlaceMode.Near, out _);
+            }
+
+            ArsenalNetworkManager.DeregisterMule(this);
+            base.DeSpawn(mode);
+        }
+
+        public override void ExposeData()
+        {
+            base.ExposeData();
+
+            Scribe_Values.Look(ref state, "muleState", MuleState.Idle);
+            Scribe_Deep.Look(ref currentTask, "currentTask");
+            Scribe_References.Look(ref homeStable, "homeStable");
+            Scribe_Values.Look(ref customName, "customName");
+        }
+
+        #endregion
+
+        #region Tick
+
+        public override void Tick()
+        {
+            base.Tick();
+
+            // Battery drain while active
+            if (state != MuleState.Charging && state != MuleState.Idle)
+            {
+                BatteryComp?.Drain();
+            }
+
+            // Check for low battery - need to return home
+            if (BatteryComp != null && BatteryComp.NeedsRecharge && state != MuleState.ReturningHome && state != MuleState.Charging)
+            {
+                ReturnToStable();
+            }
+
+            // Check for depleted battery
+            if (IsBatteryDepleted && state != MuleState.Inert)
+            {
+                EnterInertState();
+            }
+
+            // State-specific ticks
+            switch (state)
+            {
+                case MuleState.Idle:
+                    TickIdle();
+                    break;
+                case MuleState.Charging:
+                    TickCharging();
+                    break;
+                case MuleState.Inert:
+                    TickInert();
+                    break;
+            }
+        }
+
+        private void TickIdle()
+        {
+            // Periodically look for tasks on remote tiles (without local LATTICE)
+            if (!this.IsHashIntervalTick(120)) return;
+
+            if (homeStable == null || !homeStable.HasNetworkConnection()) return;
+
+            // On home tile with LATTICE, let LATTICE assign tasks
+            Building_Lattice localLattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (localLattice != null) return;
+
+            // On remote tile - actively scan for tasks
+            TryFindAndStartTask();
+        }
+
+        private void TickCharging()
+        {
+            if (homeStable == null || !homeStable.IsPoweredOn())
+            {
+                return;
+            }
+
+            BatteryComp?.Charge();
+
+            if (IsBatteryFull)
+            {
+                state = MuleState.Idle;
+            }
+        }
+
+        private void TickInert()
+        {
+            // Passive slow recharge
+            BatteryComp?.PassiveCharge();
+
+            // Check if we can recover
+            if (this.IsHashIntervalTick(120))
+            {
+                if (homeStable != null && !homeStable.Destroyed && BatteryComp != null)
+                {
+                    float safetyBuffer = BatteryComp.MaxCharge * 0.10f;
+                    if (BatteryComp.CurrentCharge >= safetyBuffer)
+                    {
+                        state = MuleState.ReturningHome;
+                        GoToStable();
+                    }
+                }
+            }
+        }
+
+        private void EnterInertState()
+        {
+            state = MuleState.Inert;
+
+            // Drop carried thing
+            if (carryTracker?.CarriedThing != null)
+            {
+                carryTracker.TryDropCarriedThing(Position, ThingPlaceMode.Near, out _);
+            }
+
+            // Cancel any jobs
+            jobs?.EndCurrentJob(JobCondition.InterruptForced);
+            currentTask = null;
+
+            Messages.Message($"{Label} battery depleted - entering inert mode.", this, MessageTypeDefOf.NegativeEvent);
+        }
+
+        #endregion
+
+        #region Task Management
+
+        public void AssignTask(MuleTask task)
+        {
+            currentTask = task;
+            state = MuleState.Deploying;
+
+            // Start appropriate job based on task type
+            StartJobForTask(task);
+        }
+
+        private void StartJobForTask(MuleTask task)
+        {
+            Job job = null;
+
+            switch (task.taskType)
+            {
+                case MuleTaskType.Mine:
+                    Building mineable = task.targetCell.GetFirstMineable(Map);
+                    if (mineable != null)
+                    {
+                        job = JobMaker.MakeJob(JobDefOf.Mine, mineable);
+                    }
+                    break;
+
+                case MuleTaskType.Haul:
+                case MuleTaskType.MoriaFeed:
+                    if (task.targetThing != null && task.targetThing.Spawned)
+                    {
+                        job = HaulAIUtility.HaulToStorageJob(this, task.targetThing);
+                        if (job == null && task.destinationCell.IsValid)
+                        {
+                            job = HaulAIUtility.HaulToCellStorageJob(this, task.targetThing, task.destinationCell, false);
+                        }
+                    }
+                    break;
+            }
+
+            if (job != null)
+            {
+                jobs.StartJob(job, JobCondition.InterruptForced);
+            }
+            else
+            {
+                // Couldn't create job, return home
+                ReturnToStable();
+            }
+        }
+
+        public void OnTaskCompleted()
+        {
+            currentTask = null;
+            state = MuleState.Idle;
+
+            // Check if we need to return for charging
+            if (BatteryComp != null && BatteryComp.NeedsRecharge)
+            {
+                ReturnToStable();
+            }
+            else
+            {
+                // Try to find another task
+                TryFindAndStartTask();
+            }
+        }
+
+        public bool CanAcceptTask(MuleTask task)
+        {
+            if (state != MuleState.Idle) return false;
+            if (IsBatteryDepleted) return false;
+            if (BatteryComp == null) return false;
+
+            // Estimate if we have enough battery for round trip
+            float distToTask = Position.DistanceTo(task.targetCell);
+            float distToHome = task.targetCell.DistanceTo(homeStable?.Position ?? Position);
+            float totalDist = distToTask + distToHome;
+            float estimatedCost = totalDist * BatteryComp.DrainPerTick * 2f; // Buffer
+
+            return BatteryComp.CurrentCharge >= estimatedCost + (BatteryComp.MaxCharge * 0.10f);
+        }
+
+        private void TryFindAndStartTask()
+        {
+            if (Map == null || homeStable == null) return;
+            if (!homeStable.HasNetworkConnection()) return;
+
+            // Try local LATTICE first
+            Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (lattice != null)
+            {
+                MuleTask task = lattice.RequestNewTaskForMule(this);
+                if (task != null)
+                {
+                    AssignTask(task);
+                    return;
+                }
+            }
+
+            // Scan for local tasks on remote tiles
+            MuleTask localTask = ScanForLocalTask();
+            if (localTask != null)
+            {
+                AssignTask(localTask);
+            }
+        }
+
+        private MuleTask ScanForLocalTask()
+        {
+            // Mining tasks
+            var miningDes = Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
+                .FirstOrDefault();
+
+            if (miningDes != null)
+            {
+                IntVec3 cell = miningDes.target.Cell;
+                Building mineable = cell.GetFirstMineable(Map);
+                if (mineable != null && CanAcceptTask(new MuleTask { targetCell = cell }))
+                {
+                    return MuleTask.CreateMiningTask(cell, miningDes);
+                }
+            }
+
+            // Hauling tasks
+            var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+            foreach (Thing item in haulables)
+            {
+                if (item == null || item.Destroyed || !item.Spawned) continue;
+                if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+                if (moria != null)
+                {
+                    return MuleTask.CreateMoriaFeedTask(item, moria);
+                }
+
+                IntVec3 stockpile = FindStockpileCell(item);
+                if (stockpile.IsValid)
+                {
+                    return MuleTask.CreateHaulTask(item, null, stockpile);
+                }
+            }
+
+            return null;
+        }
+
+        private IntVec3 FindStockpileCell(Thing item)
+        {
+            if (StoreUtility.TryFindBestBetterStoreCellFor(item, this, Map, StoragePriority.Unstored, Faction.OfPlayer, out IntVec3 result, true))
+            {
+                return result;
+            }
+            return IntVec3.Invalid;
+        }
+
+        #endregion
+
+        #region Movement
+
+        public void GoToStable()
+        {
+            if (homeStable == null) return;
+
+            Job job = JobMaker.MakeJob(JobDefOf.Goto, homeStable.InteractionCell);
+            jobs.StartJob(job, JobCondition.InterruptForced);
+        }
+
+        public void ReturnToStable()
+        {
+            state = MuleState.ReturningHome;
+            currentTask = null;
+            GoToStable();
+        }
+
+        public void DockAtStable()
+        {
+            state = MuleState.Charging;
+            jobs?.EndCurrentJob(JobCondition.Succeeded);
+        }
+
+        public bool IsAdjacentToStable()
+        {
+            if (homeStable == null) return false;
+            return Position.AdjacentTo8WayOrInside(homeStable.Position);
+        }
+
+        #endregion
+
+        #region Naming
+
+        public void SetCustomName(string name)
+        {
+            customName = name;
+        }
+
+        #endregion
+
+        #region Gizmos
+
+        public override IEnumerable<Gizmo> GetGizmos()
+        {
+            foreach (Gizmo g in base.GetGizmos())
+            {
+                yield return g;
+            }
+
+            // Battery status
+            if (BatteryComp != null)
+            {
+                yield return new Command_Action
+                {
+                    defaultLabel = $"Battery: {BatteryComp.ChargePercent:P0}",
+                    defaultDesc = $"Current charge: {BatteryComp.CurrentCharge:F1}/{BatteryComp.MaxCharge:F0}",
+                    icon = ContentFinder<Texture2D>.Get("UI/Commands/PodEject", false),
+                    action = delegate { }
+                };
+            }
+
+            // Return to STABLE
+            yield return new Command_Action
+            {
+                defaultLabel = "Return to STABLE",
+                defaultDesc = "Order this MULE to return to its home STABLE for charging.",
+                icon = ContentFinder<Texture2D>.Get("UI/Commands/PodEject", false),
+                action = delegate { ReturnToStable(); },
+                disabled = homeStable == null,
+                disabledReason = "No home STABLE assigned"
+            };
+
+            // Rename
+            yield return new Command_Action
+            {
+                defaultLabel = "Rename",
+                defaultDesc = "Give this MULE a custom name.",
+                icon = ContentFinder<Texture2D>.Get("UI/Buttons/Rename", false),
+                action = delegate
+                {
+                    Find.WindowStack.Add(new Dialog_RenameMule(this));
+                }
+            };
+
+            // Debug gizmos
+            if (Prefs.DevMode)
+            {
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Fill Battery",
+                    action = delegate { BatteryComp?.FillBattery(); }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Drain Battery",
+                    action = delegate { BatteryComp?.EmptyBattery(); }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = $"DEV: State={state}",
+                    action = delegate { Log.Message($"[MULE] {Label}: State={state}, Task={currentTask?.taskType}"); }
+                };
+            }
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Dialog for renaming a MULE.
+    /// </summary>
+    public class Dialog_RenameMule : Window
+    {
+        private MULE_Pawn mule;
+        private string newName;
+
+        public override Vector2 InitialSize => new Vector2(300, 150);
+
+        public Dialog_RenameMule(MULE_Pawn mule)
+        {
+            this.mule = mule;
+            this.newName = mule.CustomName ?? mule.Label;
+            doCloseButton = false;
+            absorbInputAroundWindow = true;
+        }
+
+        public override void DoWindowContents(Rect inRect)
+        {
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(0, 0, inRect.width, 30), "Rename MULE");
+            Text.Font = GameFont.Small;
+
+            newName = Widgets.TextField(new Rect(0, 40, inRect.width, 30), newName);
+
+            if (Widgets.ButtonText(new Rect(0, 90, 120, 30), "OK"))
+            {
+                mule.SetCustomName(newName);
+                Close();
+            }
+            if (Widgets.ButtonText(new Rect(140, 90, 120, 30), "Cancel"))
+            {
+                Close();
+            }
+        }
+    }
+}

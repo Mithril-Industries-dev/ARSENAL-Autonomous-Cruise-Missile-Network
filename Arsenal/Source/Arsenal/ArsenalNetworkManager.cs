@@ -29,7 +29,7 @@ namespace Arsenal
         private static List<Pawn> hawkeyePawns = new List<Pawn>();
 
         // MULE system components
-        private static List<MULE_Drone> mules = new List<MULE_Drone>();
+        private static List<MULE_Pawn> mules = new List<MULE_Pawn>();
         private static List<Building_Stable> stables = new List<Building_Stable>();
         private static List<Building_Moria> morias = new List<Building_Moria>();
 
@@ -259,13 +259,13 @@ namespace Arsenal
 
         #region MULE System Registration
 
-        public static void RegisterMule(MULE_Drone mule)
+        public static void RegisterMule(MULE_Pawn mule)
         {
             if (!mules.Contains(mule))
                 mules.Add(mule);
         }
 
-        public static void DeregisterMule(MULE_Drone mule)
+        public static void DeregisterMule(MULE_Pawn mule)
         {
             mules.Remove(mule);
         }
@@ -292,7 +292,7 @@ namespace Arsenal
             morias.Remove(moria);
         }
 
-        public static List<MULE_Drone> GetAllMules()
+        public static List<MULE_Pawn> GetAllMules()
         {
             mules.RemoveAll(m => m == null || m.Destroyed);
             return mules.ToList();
@@ -376,13 +376,13 @@ namespace Arsenal
         /// Gets an available MULE from any STABLE that can handle the given task.
         /// Returns the MULE and its STABLE.
         /// </summary>
-        public static (MULE_Drone mule, Building_Stable stable) GetAvailableMuleForTask(MuleTask task, Map map)
+        public static (MULE_Pawn mule, Building_Stable stable) GetAvailableMuleForTask(MuleTask task, Map map)
         {
             if (map == null || task == null) return (null, null);
 
             // Find nearest STABLE with an available MULE
             float nearestDist = float.MaxValue;
-            MULE_Drone bestMule = null;
+            MULE_Pawn bestMule = null;
             Building_Stable bestStable = null;
 
             foreach (var stable in GetStablesOnMap(map))

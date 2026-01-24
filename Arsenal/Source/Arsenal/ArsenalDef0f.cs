@@ -36,7 +36,8 @@ namespace Arsenal
         public static MithrilProductDef MITHRIL_Product_MULE;
 
         // MULE system - Ground utility drones
-        public static ThingDef Arsenal_MULE_Drone;
+        public static ThingDef Arsenal_MULE_Race;
+        public static PawnKindDef Arsenal_MULE_Kind;
         public static ThingDef Arsenal_MULE_Item;
         public static ThingDef Arsenal_Stable;
         public static ThingDef Arsenal_Moria;

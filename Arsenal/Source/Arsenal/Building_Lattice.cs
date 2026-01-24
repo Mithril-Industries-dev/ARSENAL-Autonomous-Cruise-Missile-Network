@@ -758,7 +758,7 @@ namespace Arsenal
         /// Allows a MULE to request a new task directly.
         /// Returns null if no suitable task is available.
         /// </summary>
-        public MuleTask RequestNewTaskForMule(MULE_Drone mule)
+        public MuleTask RequestNewTaskForMule(MULE_Pawn mule)
         {
             if (pendingMuleTasks.Count == 0) return null;
 

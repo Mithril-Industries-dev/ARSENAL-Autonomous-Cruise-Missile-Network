@@ -13,7 +13,7 @@ namespace Arsenal
     public class Building_Stable : Building
     {
         // Docked MULEs
-        private List<MULE_Drone> dockedMules = new List<MULE_Drone>();
+        private List<MULE_Pawn> dockedMules = new List<MULE_Pawn>();
         public const int MAX_MULE_CAPACITY = 10;
 
         // Power
@@ -40,7 +40,7 @@ namespace Arsenal
         public int AvailableMuleCount => dockedMules.Count(m => m.state == MuleState.Idle && m.IsBatteryFull);
         public bool HasSpace => dockedMules.Count < MAX_MULE_CAPACITY;
         public override string Label => customName ?? base.Label;
-        public IReadOnlyList<MULE_Drone> DockedMules => dockedMules;
+        public IReadOnlyList<MULE_Pawn> DockedMules => dockedMules;
 
         #endregion
 
@@ -82,13 +82,13 @@ namespace Arsenal
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
-                dockedMules = dockedMules ?? new List<MULE_Drone>();
+                dockedMules = dockedMules ?? new List<MULE_Pawn>();
                 dockedMules.RemoveAll(m => m == null);
 
                 // Re-assign home stable to docked MULEs
                 foreach (var mule in dockedMules)
                 {
-                    mule.SetHomeStable(this);
+                    mule.homeStable = this;
                 }
             }
         }
@@ -107,28 +107,27 @@ namespace Arsenal
             // Charge docked MULEs if powered
             if (IsPoweredOn())
             {
-                // TickRare is called every 250 ticks - charge proportionally
-                float chargeAmount = MULE_Drone.STABLE_RECHARGE_RATE * 250f;
-
                 foreach (var mule in dockedMules)
                 {
                     if (mule.state == MuleState.Charging || mule.state == MuleState.Idle)
                     {
-                        // Actually charge the battery (MULEs are despawned so they don't tick)
-                        if (!mule.IsBatteryFull)
-                        {
-                            mule.currentBattery = Mathf.Min(MULE_Drone.MAX_BATTERY, mule.currentBattery + chargeAmount);
+                        var battery = mule.BatteryComp;
+                        if (battery == null) continue;
 
-                            if (mule.state != MuleState.Charging)
-                            {
-                                mule.SetState(MuleState.Charging);
-                            }
+                        // Charge for 250 ticks worth (TickRare interval)
+                        for (int i = 0; i < 250; i++)
+                        {
+                            battery.Charge();
                         }
 
-                        // Transition to Idle when fully charged
-                        if (mule.IsBatteryFull && mule.state == MuleState.Charging)
+                        // Update state based on charge level
+                        if (!battery.IsFull && mule.state != MuleState.Charging)
                         {
-                            mule.SetState(MuleState.Idle);
+                            mule.state = MuleState.Charging;
+                        }
+                        else if (battery.IsFull && mule.state == MuleState.Charging)
+                        {
+                            mule.state = MuleState.Idle;
                         }
                     }
                 }
@@ -150,7 +149,7 @@ namespace Arsenal
         /// <summary>
         /// Gets an available MULE that can handle the given task.
         /// </summary>
-        public MULE_Drone GetAvailableMule(MuleTask task)
+        public MULE_Pawn GetAvailableMule(MuleTask task)
         {
             if (!IsPoweredOn()) return null;
 
@@ -168,7 +167,7 @@ namespace Arsenal
         /// <summary>
         /// Gets any available MULE that is idle and fully charged.
         /// </summary>
-        public MULE_Drone GetAvailableMule()
+        public MULE_Pawn GetAvailableMule()
         {
             if (!IsPoweredOn()) return null;
 
@@ -179,13 +178,14 @@ namespace Arsenal
         /// <summary>
         /// Docks a MULE into this STABLE.
         /// </summary>
-        public bool DockMule(MULE_Drone mule)
+        public bool DockMule(MULE_Pawn mule)
         {
             if (!CanAcceptMule()) return false;
             if (dockedMules.Contains(mule)) return true; // Already docked
 
             dockedMules.Add(mule);
-            mule.SetHomeStable(this);
+            mule.homeStable = this;
+            mule.state = MuleState.Charging;
 
             // Despawn the MULE from the map (it's now stored)
             if (mule.Spawned)
@@ -199,7 +199,7 @@ namespace Arsenal
         /// <summary>
         /// Deploys a MULE from this STABLE to perform a task.
         /// </summary>
-        public bool DeployMule(MULE_Drone mule, MuleTask task)
+        public bool DeployMule(MULE_Pawn mule, MuleTask task)
         {
             if (!dockedMules.Contains(mule)) return false;
             if (!mule.CanAcceptTask(task)) return false;
@@ -219,7 +219,7 @@ namespace Arsenal
         /// <summary>
         /// Releases a MULE from storage without a task (spawns it nearby).
         /// </summary>
-        public void ReleaseMule(MULE_Drone mule)
+        public void ReleaseMule(MULE_Pawn mule)
         {
             if (!dockedMules.Contains(mule)) return;
 
@@ -231,22 +231,75 @@ namespace Arsenal
                 if (spawnCell.IsValid)
                 {
                     GenSpawn.Spawn(mule, spawnCell, Map);
-                    mule.SetState(MuleState.Idle);
+                    mule.state = MuleState.Idle;
                 }
             }
         }
 
         /// <summary>
-        /// Creates a new MULE and docks it in this STABLE.
+        /// Creates a new MULE pawn and docks it in this STABLE.
         /// Used when manufacturing MULEs.
         /// </summary>
-        public MULE_Drone CreateAndDockMule()
+        public MULE_Pawn CreateAndDockMule()
         {
             if (!HasSpace) return null;
 
-            MULE_Drone newMule = (MULE_Drone)ThingMaker.MakeThing(ArsenalDefOf.Arsenal_MULE_Drone);
-            newMule.SetHomeStable(this);
-            newMule.SetState(MuleState.Idle);
+            // Generate a new MULE pawn
+            PawnGenerationRequest request = new PawnGenerationRequest(
+                kind: ArsenalDefOf.Arsenal_MULE_Kind,
+                faction: Faction.OfPlayer,
+                context: PawnGenerationContext.NonPlayer,
+                tile: -1,
+                forceGenerateNewPawn: true,
+                allowDead: false,
+                allowDowned: false,
+                canGeneratePawnRelations: false,
+                mustBeCapableOfViolence: false,
+                colonistRelationChanceFactor: 0f,
+                forceAddFreeWarmLayerIfNeeded: false,
+                allowGay: false,
+                allowPregnant: false,
+                allowFood: false,
+                allowAddictions: false,
+                inhabitant: false,
+                certainlyBeenInCryptosleep: false,
+                forceRedressWorldPawnIfFormerColonist: false,
+                worldPawnFactionDoesntMatter: false,
+                biocodeWeaponChance: 0f,
+                biocodeApparelChance: 0f,
+                extraPawnForExtraRelationChance: null,
+                relationWithExtraPawnChanceFactor: 0f,
+                validatorPreGear: null,
+                validatorPostGear: null,
+                forcedTraits: null,
+                prohibitedTraits: null,
+                minChanceToRedressWorldPawn: null,
+                fixedBiologicalAge: null,
+                fixedChronologicalAge: null,
+                fixedGender: null,
+                fixedLastName: null,
+                fixedBirthName: null,
+                fixedTitle: null,
+                fixedIdeo: null,
+                forceNoIdeo: true,
+                forceNoBackstory: true,
+                forbidAnyTitle: true,
+                forceDead: false,
+                forcedXenotype: null,
+                forcedCustomXenotype: null,
+                allowedXenotypes: null,
+                forceBaselinerXenotype: true,
+                developmentalStages: DevelopmentalStage.Adult,
+                pawnKindDefGetter: null,
+                excludeBiologicalAgeRange: null,
+                biologicalAgeRange: null,
+                forceRecruitable: false,
+                dontGiveWeapon: true
+            );
+
+            MULE_Pawn newMule = (MULE_Pawn)PawnGenerator.GeneratePawn(request);
+            newMule.homeStable = this;
+            newMule.state = MuleState.Idle;
 
             dockedMules.Add(newMule);
             return newMule;
@@ -321,7 +374,7 @@ namespace Arsenal
             {
                 defaultLabel = $"MULEs: {DockedMuleCount}",
                 defaultDesc = $"Docked: {DockedMuleCount}/{MAX_MULE_CAPACITY}\nReady: {AvailableMuleCount}\n\nClick to see MULE details.",
-                icon = ContentFinder<Texture2D>.Get("Arsenal/MITHRIL_MULE", false),
+                icon = ContentFinder<Texture2D>.Get("Arsenal/Arsenal_MULE", false),
                 action = delegate
                 {
                     // Show list of MULEs
@@ -405,11 +458,6 @@ namespace Arsenal
                         }
 
                         MuleTask task = MuleTask.CreateMiningTask(cell, des);
-                        Log.Warning($"[STABLE] Deploying {mule.Label} to mine at {cell}");
-                        Log.Warning($"  Mineable: {mineable.Label}, HP={mineable.HitPoints}/{mineable.MaxHitPoints}");
-                        Log.Warning($"  Resource: {mineable.def.building?.mineableThing?.label ?? "none"}");
-                        Log.Warning($"  Yield: {mineable.def.building?.mineableYield ?? 0}");
-
                         if (DeployMule(mule, task))
                         {
                             Messages.Message($"Deployed {mule.Label} to mine at {cell}", MessageTypeDefOf.PositiveEvent);
