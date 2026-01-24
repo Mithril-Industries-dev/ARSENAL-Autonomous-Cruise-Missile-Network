@@ -827,10 +827,18 @@ namespace Arsenal
             // Already at destination
             if (Position.DistanceTo(destination) < 1.5f) return;
 
-            // Use RimWorld's pathfinder - treats MULE like a pawn that can pass through doors
-            TraverseParms traverseParms = TraverseParms.For(TraverseMode.PassDoors, Danger.Deadly, false);
+            // Use RimWorld's pathfinder
+            // Pass null pawn with PassDoors mode - pathfinder handles this gracefully
+            TraverseParms traverseParms = TraverseParms.For(null, Danger.Deadly, TraverseMode.PassDoors, false, false, false);
 
-            using (PawnPath pawnPath = Map.pathFinder.FindPath(Position, destination, traverseParms, PathEndMode.Touch))
+            PawnPath pawnPath = Map.pathFinder.FindPath(
+                Position,
+                destination,
+                traverseParms,
+                PathEndMode.Touch
+            );
+
+            try
             {
                 if (pawnPath != null && pawnPath.Found)
                 {
@@ -846,6 +854,11 @@ namespace Arsenal
 
                     currentPath = nodes;
                 }
+            }
+            finally
+            {
+                // Always release the path back to the pool
+                pawnPath?.ReleaseToPool();
             }
         }
 
