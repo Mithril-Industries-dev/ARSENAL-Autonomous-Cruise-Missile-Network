@@ -653,6 +653,26 @@ namespace Arsenal
             return GetAllLattices().FirstOrDefault(l => l.Map == map);
         }
 
+        /// <summary>
+        /// Gets the network LATTICE for a map if that map has network connectivity.
+        /// Returns local LATTICE if present, otherwise GlobalLattice if tile is connected via SKYLINK/HERALD.
+        /// </summary>
+        public static Building_Lattice GetConnectedLattice(Map map)
+        {
+            if (map == null) return null;
+
+            // First check for local LATTICE
+            var localLattice = GetLatticeOnMap(map);
+            if (localLattice != null && localLattice.IsPoweredOn())
+                return localLattice;
+
+            // Check if tile has network connectivity to GlobalLattice
+            if (IsTileConnected(map.Tile))
+                return GlobalLattice;
+
+            return null;
+        }
+
         // Get all QUIVERs on a specific map
         public static List<Building_Quiver> GetQuiversOnMap(Map map)
         {

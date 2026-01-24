@@ -1239,33 +1239,195 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Tries to get a new task from LATTICE, or returns home if none available.
+        /// Tries to get a new task from LATTICE or local scanning, or returns home if none available.
+        /// Supports remote tile operation via SKYLINK/HERALD network connection.
         /// </summary>
         private void TryGetNewTaskOrGoHome()
         {
             currentTask = null;
             miningProgress = 0;
 
-            // Try to get a new task from LATTICE
-            Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
-            if (lattice != null)
+            // Check if we have network connectivity (required for operation)
+            if (homeStable != null && !homeStable.HasNetworkConnection())
             {
-                MuleTask newTask = lattice.RequestNewTaskForMule(this);
+                Log.Message($"[MULE] {Label}: No network connection, returning home");
+                state = MuleState.ReturningHome;
+                CalculatePathTo(homeStable.InteractionCell);
+                return;
+            }
+
+            // Try to get a task from local LATTICE first (if on home tile)
+            Building_Lattice localLattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+            if (localLattice != null)
+            {
+                MuleTask newTask = localLattice.RequestNewTaskForMule(this);
                 if (newTask != null)
                 {
-                    Log.Message($"[MULE] {Label}: Got new task {newTask.taskType} at {newTask.targetCell}");
+                    Log.Message($"[MULE] {Label}: Got task from LATTICE: {newTask.taskType} at {newTask.targetCell}");
                     AssignTask(newTask);
                     return;
                 }
             }
 
+            // If no local LATTICE but we have network, scan for tasks locally
+            // This allows MULEs to operate on remote tiles connected via HERALD/SKYLINK
+            if (localLattice == null && ArsenalNetworkManager.IsTileConnected(Map.Tile))
+            {
+                MuleTask localTask = ScanForLocalTask();
+                if (localTask != null)
+                {
+                    Log.Message($"[MULE] {Label}: Found local task (remote tile): {localTask.taskType} at {localTask.targetCell}");
+                    AssignTask(localTask);
+                    return;
+                }
+            }
+
             // No task available - return home
-            Log.Message($"[MULE] {Label}: No new task available, returning home");
+            Log.Message($"[MULE] {Label}: No task available, returning home");
             state = MuleState.ReturningHome;
             if (homeStable != null)
             {
                 CalculatePathTo(homeStable.InteractionCell);
             }
+        }
+
+        /// <summary>
+        /// Scans the local map for tasks when operating on a remote tile without LATTICE.
+        /// Returns the first valid task found, or null if none available.
+        /// </summary>
+        private MuleTask ScanForLocalTask()
+        {
+            // First priority: Mining designations
+            MuleTask miningTask = ScanForMiningTask();
+            if (miningTask != null) return miningTask;
+
+            // Second priority: Hauling tasks
+            MuleTask haulTask = ScanForHaulTask();
+            if (haulTask != null) return haulTask;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Scans for mining designations on the local map.
+        /// </summary>
+        private MuleTask ScanForMiningTask()
+        {
+            var designations = Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && d.target.HasThing == false)
+                .ToList();
+
+            foreach (var des in designations)
+            {
+                IntVec3 cell = des.target.Cell;
+
+                // Check if mineable exists
+                Building mineable = cell.GetFirstMineable(Map);
+                if (mineable == null) continue;
+
+                // Check if another MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m != this &&
+                              m.CurrentTask?.taskType == MuleTaskType.Mine &&
+                              m.CurrentTask?.targetCell == cell);
+                if (muleAssigned) continue;
+
+                // Check if we can reach it and afford the trip
+                if (!CanAcceptTaskAtLocation(cell)) continue;
+
+                // Found a valid mining task
+                return MuleTask.CreateMiningTask(cell, des);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Scans for hauling tasks on the local map.
+        /// </summary>
+        private MuleTask ScanForHaulTask()
+        {
+            var haulableItems = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+
+            foreach (Thing item in haulableItems)
+            {
+                if (item == null || item.Destroyed || !item.Spawned) continue;
+                if (item.IsForbidden(Faction.OfPlayer)) continue;
+                if (item.ParentHolder != null && !(item.ParentHolder is Map)) continue;
+
+                // Check if another MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m != this && m.CurrentTask?.targetThing == item);
+                if (muleAssigned) continue;
+
+                // Check if we can reach it
+                if (!CanAcceptTaskAtLocation(item.Position)) continue;
+
+                // First priority: MORIA storage
+                Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+                if (targetMoria != null)
+                {
+                    return MuleTask.CreateMoriaFeedTask(item, targetMoria);
+                }
+
+                // Second priority: Regular stockpile
+                IntVec3 stockpileCell = FindLocalStockpileCell(item);
+                if (stockpileCell.IsValid)
+                {
+                    return MuleTask.CreateHaulTask(item, null, stockpileCell);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Checks if the MULE can accept a task at the given location (battery check).
+        /// </summary>
+        private bool CanAcceptTaskAtLocation(IntVec3 location)
+        {
+            if (homeStable == null) return false;
+
+            float toLocation = EstimatePathCost(Position, location);
+            float toHome = EstimatePathCost(location, homeStable.InteractionCell);
+            float totalCost = toLocation + toHome + 10f; // +10 for work buffer
+
+            return currentBattery >= totalCost;
+        }
+
+        /// <summary>
+        /// Finds a stockpile cell for an item on the local map.
+        /// </summary>
+        private IntVec3 FindLocalStockpileCell(Thing item)
+        {
+            // Try RimWorld's built-in storage finding first
+            if (item.Spawned)
+            {
+                IntVec3 result;
+                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
+                {
+                    return result;
+                }
+            }
+
+            // Manual search fallback
+            foreach (var slotGroup in Map.haulDestinationManager.AllGroupsListForReading)
+            {
+                if (slotGroup?.Settings == null) continue;
+                if (!slotGroup.Settings.AllowedToAccept(item)) continue;
+
+                foreach (IntVec3 cell in slotGroup.CellsList)
+                {
+                    if (!cell.InBounds(Map) || !cell.Walkable(Map)) continue;
+
+                    Thing existing = cell.GetFirstItem(Map);
+                    if (existing == null) return cell;
+                    if (existing.def == item.def && existing.stackCount < existing.def.stackLimit)
+                        return cell;
+                }
+            }
+
+            return IntVec3.Invalid;
         }
 
         private void DeliverCarriedItem()
