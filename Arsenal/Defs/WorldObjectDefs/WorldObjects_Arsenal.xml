@@ -35,4 +35,16 @@
     <drawOffscreen>true</drawOffscreen>
   </WorldObjectDef>
 
+  <!-- SLING Cargo Craft in transit -->
+  <WorldObjectDef>
+    <defName>Arsenal_TravelingSling</defName>
+    <label>SLING in transit</label>
+    <description>A SLING cargo craft transporting resources between PERCH logistics hubs.</description>
+    <worldObjectClass>Arsenal.WorldObject_TravelingSling</worldObjectClass>
+    <texture>World/WorldObjects/Arsenal/TravelingSling</texture>
+    <expandingIcon>true</expandingIcon>
+    <expandingIconPriority>1</expandingIconPriority>
+    <useDynamicDrawer>true</useDynamicDrawer>
+  </WorldObjectDef>
+
 </Defs>

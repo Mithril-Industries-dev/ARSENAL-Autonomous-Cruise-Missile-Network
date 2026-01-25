@@ -33,6 +33,17 @@ namespace Arsenal
         // MithrilProducts for manufacturing
         public static MithrilProductDef MITHRIL_Product_DAGGER;
         public static MithrilProductDef MITHRIL_Product_DART;
+        public static MithrilProductDef MITHRIL_Product_SLING;
+
+        // SLING/PERCH Logistics System
+        public static ThingDef Arsenal_PERCH;
+        public static ThingDef Arsenal_SLING;
+        public static ThingDef Arsenal_SlingLanding;
+        public static ThingDef Arsenal_SlingLaunching;
+        public static WorldObjectDef Arsenal_TravelingSling;
+
+        // Research for SLING system
+        public static ResearchProjectDef Arsenal_SlingLogistics;
 
         static ArsenalDefOf()
         {

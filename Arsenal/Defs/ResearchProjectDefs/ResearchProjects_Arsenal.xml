@@ -30,6 +30,28 @@
     <tab>Main</tab>
   </ResearchProjectDef>
 
+  <!-- SLING Logistics System - autonomous cargo transport -->
+  <ResearchProjectDef>
+    <defName>Arsenal_SlingLogistics</defName>
+    <label>SLING autonomous logistics</label>
+    <description>Develop autonomous cargo craft technology for point-to-point resource transport. The SLING/PERCH system enables efficient logistics between remote outposts and primary bases via sub-orbital flight paths. LATTICE coordinates all routing, dispatch, and fleet management.
+
+Unlocks:
+- PERCH logistics hub (landing/launch pad)
+- SLING cargo craft (manufactured at ARSENAL)
+- Logistics tab in ARSENAL manager
+
+Configure PERCHes as SOURCE (export) or SINK (import) via the LATTICE UI. SLINGs automatically transport resources to maintain threshold targets at SINK locations.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>3500</baseCost>
+    <prerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </prerequisites>
+    <researchViewX>13.50</researchViewX>
+    <researchViewY>3.00</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
   <!-- SKYLINK Orbital Systems - enables global network connectivity -->
   <ResearchProjectDef>
     <defName>Arsenal_SkyLink</defName>

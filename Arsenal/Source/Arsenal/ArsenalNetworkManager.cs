@@ -28,6 +28,9 @@ namespace Arsenal
         // HAWKEYE mobile sensors (pawn-mounted)
         private static List<Pawn> hawkeyePawns = new List<Pawn>();
 
+        // SLING/PERCH logistics system
+        private static List<Building_PERCH> perches = new List<Building_PERCH>();
+
         #region Global LATTICE Access
 
         /// <summary>
@@ -379,6 +382,53 @@ namespace Arsenal
 
         #endregion
 
+        #region PERCH Registration (SLING Logistics)
+
+        public static void RegisterPerch(Building_PERCH perch)
+        {
+            if (!perches.Contains(perch))
+                perches.Add(perch);
+        }
+
+        public static void DeregisterPerch(Building_PERCH perch)
+        {
+            perches.Remove(perch);
+        }
+
+        public static List<Building_PERCH> GetAllPerches()
+        {
+            perches.RemoveAll(p => p == null || p.Destroyed || !p.Spawned);
+            return perches.ToList();
+        }
+
+        public static Building_PERCH GetPerchAtTile(int tile)
+        {
+            return GetAllPerches().FirstOrDefault(p => p.Map != null && p.Map.Tile == tile);
+        }
+
+        public static List<Building_PERCH> GetAllPerchesAtTile(int tile)
+        {
+            return GetAllPerches().Where(p => p.Map != null && p.Map.Tile == tile).ToList();
+        }
+
+        public static List<Building_PERCH> GetPerchesOnMap(Map map)
+        {
+            if (map == null) return new List<Building_PERCH>();
+            return GetAllPerches().Where(p => p.Map == map).ToList();
+        }
+
+        public static List<Building_PERCH> GetSourcePerches()
+        {
+            return GetAllPerches().Where(p => p.role == PerchRole.SOURCE).ToList();
+        }
+
+        public static List<Building_PERCH> GetSinkPerches()
+        {
+            return GetAllPerches().Where(p => p.role == PerchRole.SINK).ToList();
+        }
+
+        #endregion
+
         public static void RegisterArsenal(Building_Arsenal arsenal)
         {
             if (!arsenals.Contains(arsenal))
@@ -524,6 +574,7 @@ namespace Arsenal
             orbitalSatellite = null;
             terminals.Clear();
             hawkeyePawns.Clear();
+            perches.Clear();
         }
 
         /// <summary>

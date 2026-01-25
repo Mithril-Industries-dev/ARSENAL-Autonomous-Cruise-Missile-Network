@@ -39,4 +39,24 @@
         <fuelCost>10</fuelCost>
     </Arsenal.MithrilProductDef>
 
+    <!-- SLING - Autonomous cargo craft -->
+    <Arsenal.MithrilProductDef>
+        <defName>MITHRIL_Product_SLING</defName>
+        <label>SLING</label>
+        <productLabel>SLING</productLabel>
+        <productDescription>Autonomous cargo craft for point-to-point logistics. Transports resources between PERCH pads. Each SLING can carry up to 750 units of cargo.</productDescription>
+        <workAmount>4000</workAmount>
+        <costList>
+            <Steel>150</Steel>
+            <Plasteel>50</Plasteel>
+            <ComponentIndustrial>4</ComponentIndustrial>
+            <Chemfuel>75</Chemfuel>
+        </costList>
+        <outputFlyer>Arsenal_SLING</outputFlyer>
+        <destinationType>Arsenal.Building_PERCH</destinationType>
+        <showRouteInfo>true</showRouteInfo>
+        <networkTabLabel>Logistics</networkTabLabel>
+        <fuelCost>30</fuelCost>
+    </Arsenal.MithrilProductDef>
+
 </Defs>
