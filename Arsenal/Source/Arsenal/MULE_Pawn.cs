@@ -337,38 +337,66 @@ namespace Arsenal
         private void StartJobForTask(MuleTask task)
         {
             Job job = null;
+            LocalTargetInfo targetToReserve = LocalTargetInfo.Invalid;
 
             switch (task.taskType)
             {
                 case MuleTaskType.Mine:
                     Building mineable = task.targetCell.GetFirstMineable(Map);
-                    if (mineable != null)
+                    if (mineable != null && Map.reservationManager.CanReserve(this, mineable))
                     {
                         job = JobMaker.MakeJob(JobDefOf.Mine, mineable);
+                        targetToReserve = mineable;
                     }
                     break;
 
                 case MuleTaskType.Haul:
                 case MuleTaskType.MoriaFeed:
-                    if (task.targetThing != null && task.targetThing.Spawned)
+                    if (task.targetThing != null && task.targetThing.Spawned &&
+                        Map.reservationManager.CanReserve(this, task.targetThing))
                     {
                         job = HaulAIUtility.HaulToStorageJob(this, task.targetThing, false);
                         if (job == null && task.destinationCell.IsValid)
                         {
                             job = HaulAIUtility.HaulToCellStorageJob(this, task.targetThing, task.destinationCell, false);
                         }
+                        if (job != null)
+                        {
+                            targetToReserve = task.targetThing;
+                        }
                     }
                     break;
             }
 
-            if (job != null)
+            if (job != null && targetToReserve.IsValid)
             {
-                jobs.StartJob(job, JobCondition.InterruptForced);
+                // Try to reserve before starting job to prevent conflicts
+                if (Map.reservationManager.CanReserve(this, targetToReserve))
+                {
+                    jobs.StartJob(job, JobCondition.InterruptForced);
+                    // Update state based on task type
+                    if (task.taskType == MuleTaskType.Mine)
+                        state = MuleState.Mining;
+                    else
+                        state = MuleState.Hauling;
+                }
+                else
+                {
+                    // Target was reserved between check and start - find another task
+                    currentTask = null;
+                    state = MuleState.Idle;
+                    TryFindAndStartTask();
+                }
             }
             else
             {
-                // Couldn't create job, return home
-                ReturnToStable();
+                // Couldn't create job or target invalid, try to find another task or return home
+                currentTask = null;
+                state = MuleState.Idle;
+                if (!TryFindAndStartTask())
+                {
+                    ReturnToStable();
+                }
             }
         }
 
@@ -447,27 +475,32 @@ namespace Arsenal
 
         private MuleTask ScanForLocalTask()
         {
-            // Mining tasks
-            var miningDes = Map.designationManager.AllDesignations
-                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
-                .FirstOrDefault();
-
-            if (miningDes != null)
+            // Mining tasks - find unreserved mineables
+            foreach (var miningDes in Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing))
             {
                 IntVec3 cell = miningDes.target.Cell;
                 Building mineable = cell.GetFirstMineable(Map);
-                if (mineable != null && CanAcceptTask(new MuleTask { targetCell = cell }))
+                if (mineable == null) continue;
+
+                // Check if we can reserve this mineable (not already claimed by another pawn)
+                if (!Map.reservationManager.CanReserve(this, mineable)) continue;
+
+                if (CanAcceptTask(new MuleTask { targetCell = cell }))
                 {
                     return MuleTask.CreateMiningTask(cell, miningDes);
                 }
             }
 
-            // Hauling tasks
+            // Hauling tasks - find unreserved haulables
             var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
             foreach (Thing item in haulables)
             {
                 if (item == null || item.Destroyed || !item.Spawned) continue;
                 if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                // Check if we can reserve this item
+                if (!Map.reservationManager.CanReserve(this, item)) continue;
 
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)

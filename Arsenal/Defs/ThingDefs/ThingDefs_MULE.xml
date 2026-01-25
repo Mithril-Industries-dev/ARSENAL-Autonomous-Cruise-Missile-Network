@@ -32,7 +32,7 @@
       <MeatAmount>0</MeatAmount>
       <LeatherAmount>0</LeatherAmount>
       <CarryingCapacity>75</CarryingCapacity>
-      <MiningSpeed>1.5</MiningSpeed>
+      <MiningSpeed>2.5</MiningSpeed>
       <MiningYield>1.0</MiningYield>
       <ComfyTemperatureMin>-100</ComfyTemperatureMin>
       <ComfyTemperatureMax>250</ComfyTemperatureMax>
