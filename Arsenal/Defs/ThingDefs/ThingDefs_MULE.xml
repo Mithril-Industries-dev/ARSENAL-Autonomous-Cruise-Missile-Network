@@ -5,10 +5,16 @@
   <LifeStageDef>
     <defName>Arsenal_MULE_LifeStage</defName>
     <label>active</label>
+    <developmentalStage>Adult</developmentalStage>
+    <bodySizeFactor>1.0</bodySizeFactor>
+    <healthScaleFactor>1.0</healthScaleFactor>
+    <hungerRateFactor>0</hungerRateFactor>
+    <marketValueFactor>1.0</marketValueFactor>
     <visible>false</visible>
     <reproductive>false</reproductive>
     <milkable>false</milkable>
     <shearable>false</shearable>
+    <caravanRideable>false</caravanRideable>
   </LifeStageDef>
 
   <!-- ==================== MULE Race Definition (Pawn) ==================== -->
