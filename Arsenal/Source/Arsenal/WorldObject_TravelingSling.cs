@@ -13,7 +13,7 @@ namespace Arsenal
     /// </summary>
     public class WorldObject_TravelingSling : WorldObject
     {
-        private const float SPEED = 0.015f;  // Slightly slower than missiles
+        private const float SPEED = 0.004f;  // Cargo craft moves slower than missiles
         private const float FUEL_CAPACITY = 150f;  // SLING has larger fuel tank
 
         public int destinationTile = -1;

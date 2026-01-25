@@ -76,7 +76,7 @@
     </graphicData>
     <skyfaller>
       <movementType>Decelerate</movementType>
-      <ticksToImpactRange>180~180</ticksToImpactRange>
+      <ticksToImpactRange>300~300</ticksToImpactRange>
       <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
       <shadowSize>(5, 3.5)</shadowSize>
       <impactSound>DropPod_Land</impactSound>
@@ -97,9 +97,9 @@
       <drawSize>(7,5)</drawSize>
     </graphicData>
     <skyfaller>
-      <movementType>Decelerate</movementType>
+      <movementType>Accelerate</movementType>
       <reversed>true</reversed>
-      <ticksToImpactRange>180~180</ticksToImpactRange>
+      <ticksToImpactRange>300~300</ticksToImpactRange>
       <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
       <shadowSize>(5, 3.5)</shadowSize>
     </skyfaller>

@@ -44,6 +44,41 @@ namespace Arsenal
             }
         }
 
+        protected override void Tick()
+        {
+            base.Tick();
+
+            // Visual effects during landing - retro rockets firing
+            if (Map != null)
+            {
+                // Frequent smoke trail
+                if (this.IsHashIntervalTick(4))
+                {
+                    Vector3 smokePos = DrawPos + new Vector3(Rand.Range(-1.5f, 1.5f), 0, Rand.Range(-1f, 1f));
+                    FleckMaker.ThrowSmoke(smokePos, Map, 2.5f);
+                }
+
+                // Engine fire glow
+                if (this.IsHashIntervalTick(3))
+                {
+                    Vector3 firePos = DrawPos + new Vector3(Rand.Range(-0.8f, 0.8f), 0, -1f);
+                    FleckMaker.ThrowFireGlow(firePos, Map, 1.5f);
+                }
+
+                // Occasional sparks from retro thrusters
+                if (this.IsHashIntervalTick(8))
+                {
+                    FleckMaker.ThrowMicroSparks(DrawPos, Map);
+                }
+
+                // Heat shimmer effect
+                if (this.IsHashIntervalTick(6))
+                {
+                    FleckMaker.ThrowHeatGlow(Position, Map, 2f);
+                }
+            }
+        }
+
         protected override void Impact()
         {
             if (isCrashLanding)
@@ -283,11 +318,54 @@ namespace Arsenal
         {
             base.Tick();
 
-            // Visual effects during takeoff
-            if (Map != null && this.IsHashIntervalTick(15))
+            // Visual effects during takeoff - main engine thrust
+            if (Map != null)
             {
-                FleckMaker.ThrowSmoke(DrawPos, Map, 1.5f);
-                FleckMaker.ThrowFireGlow(DrawPos, Map, 0.5f);
+                // Heavy smoke trail during liftoff
+                if (this.IsHashIntervalTick(3))
+                {
+                    Vector3 smokePos = DrawPos + new Vector3(Rand.Range(-2f, 2f), 0, Rand.Range(-1.5f, 0.5f));
+                    FleckMaker.ThrowSmoke(smokePos, Map, 3f);
+                }
+
+                // Intense engine fire
+                if (this.IsHashIntervalTick(2))
+                {
+                    Vector3 firePos = DrawPos + new Vector3(Rand.Range(-1f, 1f), 0, -0.5f);
+                    FleckMaker.ThrowFireGlow(firePos, Map, 2f);
+                }
+
+                // Additional fire glow spread
+                if (this.IsHashIntervalTick(4))
+                {
+                    Vector3 glowPos = DrawPos + new Vector3(Rand.Range(-1.5f, 1.5f), 0, Rand.Range(-1f, 0f));
+                    FleckMaker.ThrowFireGlow(glowPos, Map, 1f);
+                }
+
+                // Sparks from exhaust
+                if (this.IsHashIntervalTick(5))
+                {
+                    FleckMaker.ThrowMicroSparks(DrawPos + new Vector3(0, 0, -0.5f), Map);
+                }
+
+                // Ground dust kicked up
+                if (this.IsHashIntervalTick(8))
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        IntVec3 dustCell = Position + GenRadial.RadialPattern[Rand.Range(1, 9)];
+                        if (dustCell.InBounds(Map))
+                        {
+                            FleckMaker.ThrowDustPuff(dustCell.ToVector3Shifted(), Map, 1.5f);
+                        }
+                    }
+                }
+
+                // Heat shimmer
+                if (this.IsHashIntervalTick(6))
+                {
+                    FleckMaker.ThrowHeatGlow(Position, Map, 2.5f);
+                }
             }
         }
 

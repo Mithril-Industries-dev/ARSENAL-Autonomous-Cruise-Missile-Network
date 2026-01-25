@@ -705,11 +705,20 @@ namespace Arsenal
                 // Create SLING item and deliver to PERCH
                 Thing sling = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
 
+                // Assign name to the SLING immediately
+                string newSlingName = null;
+                if (sling is SLING_Thing slingThing)
+                {
+                    slingThing.AssignNewName();
+                    newSlingName = slingThing.CustomName;
+                }
+
                 // If PERCH is on the same map, spawn landing skyfaller
                 if (targetPerch.Map == Map)
                 {
                     var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(ArsenalDefOf.Arsenal_SlingLanding);
                     skyfaller.sling = sling;
+                    skyfaller.slingName = newSlingName;
                     skyfaller.destinationPerch = targetPerch;
                     skyfaller.isWaypointStop = false;
                     GenSpawn.Spawn(skyfaller, targetPerch.Position, Map);
@@ -721,13 +730,14 @@ namespace Arsenal
                     traveling.Tile = Map.Tile;
                     traveling.destinationTile = targetPerch.Map.Tile;
                     traveling.sling = sling;
+                    traveling.slingName = newSlingName;
                     traveling.cargo = new System.Collections.Generic.Dictionary<ThingDef, int>();
                     traveling.destinationPerch = targetPerch;
                     traveling.CalculateRoute();
                     Find.WorldObjects.Add(traveling);
                 }
 
-                Messages.Message(Label + " Line " + (line.index + 1) + ": SLING delivered to " + targetPerch.Label,
+                Messages.Message(Label + " Line " + (line.index + 1) + ": " + (newSlingName ?? "SLING") + " delivered to " + targetPerch.Label,
                     this, MessageTypeDefOf.PositiveEvent);
             }
         }

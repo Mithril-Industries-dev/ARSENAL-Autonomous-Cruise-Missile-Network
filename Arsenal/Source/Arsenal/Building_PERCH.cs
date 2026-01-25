@@ -39,7 +39,6 @@ namespace Arsenal
 
         // SLING currently on pad
         private Thing slingOnPad;
-        private string slingName;  // Name for the SLING on this pad
         private bool isUnloading;
         private int unloadTicksRemaining;
         private const int UNLOAD_TICKS = 600; // 10 seconds
@@ -59,16 +58,13 @@ namespace Arsenal
         private int refuelTicksRemaining;
         private const int REFUEL_TICKS = 1800; // 30 seconds
 
-        // SLING naming counter
-        private static int slingCounter = 1;
-
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;
         public bool HasFuel => refuelableComp != null && refuelableComp.Fuel >= 50f;
         public float FuelLevel => refuelableComp?.Fuel ?? 0f;
         public float FuelCapacity => refuelableComp?.Props.fuelCapacity ?? 500f;
         public bool HasSlingOnPad => slingOnPad != null;
         public bool IsBusy => isUnloading || isLoading || isRefueling;
-        public string SlingName => slingName ?? "SLING";
+        public string SlingName => SLING_Thing.GetSlingName(slingOnPad);
         public Thing SlingOnPad => slingOnPad;
 
         public float FuelPercent
@@ -195,33 +191,29 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Gets all available resources near this PERCH for export.
+        /// Gets all available resources on this map for export.
+        /// Checks entire map inventory, not just adjacent cells.
         /// </summary>
         public Dictionary<ThingDef, int> GetAvailableResources()
         {
             var resources = new Dictionary<ThingDef, int>();
             if (Map == null) return resources;
 
-            // Check cells adjacent to PERCH
-            foreach (IntVec3 cell in GenAdj.CellsAdjacent8Way(this))
+            // Check all haulable items on the map
+            foreach (Thing t in Map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableAlways))
             {
-                if (!cell.InBounds(Map)) continue;
+                if (t.def.category != ThingCategory.Item) continue;
+                if (t.IsForbidden(Faction.OfPlayer)) continue;
+                if (!t.def.EverHaulable) continue;
 
-                var things = cell.GetThingList(Map);
-                foreach (Thing t in things)
-                {
-                    if (t.def.category == ThingCategory.Item && t.def.EverHaulable)
-                    {
-                        // Apply source filter if enabled
-                        if (filterEnabled && sourceFilter.Count > 0 && !sourceFilter.Contains(t.def))
-                            continue;
+                // Apply source filter if enabled
+                if (filterEnabled && sourceFilter.Count > 0 && !sourceFilter.Contains(t.def))
+                    continue;
 
-                        if (resources.ContainsKey(t.def))
-                            resources[t.def] += t.stackCount;
-                        else
-                            resources[t.def] = t.stackCount;
-                    }
-                }
+                if (resources.ContainsKey(t.def))
+                    resources[t.def] += t.stackCount;
+                else
+                    resources[t.def] = t.stackCount;
             }
 
             return resources;
@@ -264,16 +256,13 @@ namespace Arsenal
         {
             slingOnPad = sling;
 
-            // Assign or preserve SLING name
-            if (!string.IsNullOrEmpty(incomingSlingName))
+            // Apply incoming name to the SLING_Thing if provided
+            if (!string.IsNullOrEmpty(incomingSlingName) && sling is SLING_Thing slingThing)
             {
-                slingName = incomingSlingName;
+                slingThing.AssignName(incomingSlingName);
             }
-            else if (string.IsNullOrEmpty(slingName))
-            {
-                slingName = "SLING-" + slingCounter.ToString("D2");
-                slingCounter++;
-            }
+
+            string displayName = SlingName;
 
             if (cargo != null && cargo.Count > 0)
             {
@@ -282,13 +271,13 @@ namespace Arsenal
                 unloadTicksRemaining = UNLOAD_TICKS;
                 loadingCargo = new Dictionary<ThingDef, int>(cargo);
                 pendingReturnOrigin = returnOrigin;
-                Messages.Message($"{Label}: {slingName} landed, unloading cargo...", this, MessageTypeDefOf.NeutralEvent);
+                Messages.Message($"{Label}: {displayName} landed, unloading cargo...", this, MessageTypeDefOf.NeutralEvent);
             }
             else
             {
                 // Empty SLING arrived (return flight) - stays here
                 pendingReturnOrigin = null;
-                Messages.Message($"{Label}: {slingName} returned", this, MessageTypeDefOf.NeutralEvent);
+                Messages.Message($"{Label}: {displayName} returned", this, MessageTypeDefOf.NeutralEvent);
             }
         }
 
@@ -408,9 +397,9 @@ namespace Arsenal
                 // Don't return if already at origin
                 if (returnTo != this && returnTo.Map != null && !returnTo.Destroyed)
                 {
-                    SlingLogisticsManager.InitiateReturnFlight(slingOnPad, slingName, this, returnTo);
+                    string returningSlingName = SlingName;
+                    SlingLogisticsManager.InitiateReturnFlight(slingOnPad, returningSlingName, this, returnTo);
                     slingOnPad = null;
-                    slingName = null;
                 }
             }
         }
@@ -451,6 +440,9 @@ namespace Arsenal
                 return;
             }
 
+            // Get SLING name before despawning
+            string departingSlingName = SlingName;
+
             // Consume resources from adjacent storage
             var actualCargo = new Dictionary<ThingDef, int>();
             foreach (var kvp in loadingCargo)
@@ -471,7 +463,7 @@ namespace Arsenal
             var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_SlingLaunching);
             launchingSkyfaller.sling = slingOnPad;
-            launchingSkyfaller.slingName = slingName;
+            launchingSkyfaller.slingName = departingSlingName;
             launchingSkyfaller.cargo = actualCargo;
             launchingSkyfaller.originPerch = this;
             launchingSkyfaller.destinationPerch = loadDestination;
@@ -487,13 +479,11 @@ namespace Arsenal
             // Spawn the launching skyfaller at PERCH position
             GenSpawn.Spawn(launchingSkyfaller, Position, Map);
 
-            string departingSlingName = slingName;
             slingOnPad = null;
-            slingName = null;
             loadDestination = null;
             loadingCargo.Clear();
 
-            Messages.Message($"{Label}: {departingSlingName ?? "SLING"} launching", this, MessageTypeDefOf.PositiveEvent);
+            Messages.Message($"{Label}: {departingSlingName} launching", this, MessageTypeDefOf.PositiveEvent);
         }
 
         private int ConsumeResource(ThingDef resource, int amount)
@@ -656,7 +646,7 @@ namespace Arsenal
             // SLING status
             if (slingOnPad != null)
             {
-                str += $"\n{slingName ?? "SLING"}: On pad";
+                str += $"\n{SlingName}: On pad";
                 if (isUnloading)
                     str += $" (Unloading: {unloadTicksRemaining.ToStringTicksToPeriod()})";
                 else if (isLoading)
@@ -700,7 +690,6 @@ namespace Arsenal
             Scribe_Collections.Look(ref thresholdTargets, "thresholdTargets", LookMode.Def, LookMode.Value);
 
             Scribe_References.Look(ref slingOnPad, "slingOnPad");
-            Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Values.Look(ref isUnloading, "isUnloading", false);
             Scribe_Values.Look(ref unloadTicksRemaining, "unloadTicksRemaining", 0);
             Scribe_Values.Look(ref isLoading, "isLoading", false);
