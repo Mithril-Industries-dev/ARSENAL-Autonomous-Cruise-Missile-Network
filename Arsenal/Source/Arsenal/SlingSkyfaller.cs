@@ -101,9 +101,22 @@ namespace Arsenal
 
             // Explosion effect
             GenExplosion.DoExplosion(
-                Position, Map, 2f,
-                DamageDefOf.Bomb, null,
-                10, -1f, null, null, null, null, null, 0f, 1, null, false, null, 0f, 1, 0f, false, null, null);
+                center: Position,
+                map: Map,
+                radius: 2f,
+                damType: DamageDefOf.Bomb,
+                instigator: null,
+                damAmount: 10,
+                armorPenetration: -1f,
+                explosionSound: null,
+                weapon: null,
+                projectile: null,
+                intendedTarget: null,
+                postExplosionSpawnThingDef: null,
+                postExplosionSpawnChance: 0f,
+                postExplosionSpawnThingCount: 0,
+                postExplosionGasType: null,
+                applyDamageToExplosionCellsNeighbors: false);
         }
 
         private void HandleHopWaypointLanding()

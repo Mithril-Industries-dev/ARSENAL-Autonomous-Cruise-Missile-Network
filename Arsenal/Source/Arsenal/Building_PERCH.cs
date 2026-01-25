@@ -153,22 +153,7 @@ namespace Arsenal
             {
                 if (!cell.InBounds(Map)) continue;
 
-                // Check for storage buildings
-                var building = cell.GetFirstBuilding(Map);
-                if (building != null)
-                {
-                    var storage = building.TryGetComp<CompStorage>();
-                    if (storage != null)
-                    {
-                        foreach (Thing t in storage.StoredThings)
-                        {
-                            if (t.def == resource)
-                                total += t.stackCount;
-                        }
-                    }
-                }
-
-                // Check zone stockpiles
+                // Check all items on this cell (includes stockpile zones and storage buildings)
                 var things = cell.GetThingList(Map);
                 foreach (Thing t in things)
                 {

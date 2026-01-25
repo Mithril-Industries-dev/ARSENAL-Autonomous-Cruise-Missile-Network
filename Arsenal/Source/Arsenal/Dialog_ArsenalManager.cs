@@ -27,7 +27,6 @@ namespace Arsenal
 
         // Selected PERCH for configuration
         private Building_PERCH selectedPerch;
-        private string thresholdInputBuffer = "";
 
         // Window settings
         public override Vector2 InitialSize => new Vector2(750f, 600f);
