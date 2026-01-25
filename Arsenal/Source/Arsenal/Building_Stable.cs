@@ -142,7 +142,7 @@ namespace Arsenal
         /// </summary>
         private void TryDeployForTasks()
         {
-            if (!IsPoweredOn()) return;
+            if (!IsPoweredOn() || !HasNetworkConnection()) return;
 
             // Get a ready MULE
             MULE_Pawn readyMule = dockedMules.FirstOrDefault(m =>
@@ -150,25 +150,22 @@ namespace Arsenal
 
             if (readyMule == null) return;
 
-            // Try to get a task from LATTICE (requires network connection)
-            if (HasNetworkConnection())
+            // Try to get a task from LATTICE
+            Building_Lattice lattice = ArsenalNetworkManager.GetConnectedLattice(Map);
+            if (lattice != null)
             {
-                Building_Lattice lattice = ArsenalNetworkManager.GetConnectedLattice(Map);
-                if (lattice != null)
+                MuleTask task = lattice.RequestNewTaskForMule(readyMule);
+                if (task != null)
                 {
-                    MuleTask task = lattice.RequestNewTaskForMule(readyMule);
-                    if (task != null)
+                    if (DeployMule(readyMule, task))
                     {
-                        if (DeployMule(readyMule, task))
-                        {
-                            Log.Message($"[STABLE] {Label}: Deployed {readyMule.Label} for {task.taskType} at {task.targetCell}");
-                        }
-                        return;
+                        Log.Message($"[STABLE] {Label}: Deployed {readyMule.Label} for {task.taskType} at {task.targetCell}");
                     }
+                    return;
                 }
             }
 
-            // No LATTICE task or no network - try local scanning (works on remote tiles without HERALD)
+            // No LATTICE task - try local scanning (for remote tiles)
             MuleTask localTask = ScanForLocalTask(readyMule);
             if (localTask != null)
             {
@@ -180,8 +177,7 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Scans for local tasks on tiles without LATTICE (remote outposts/asteroids).
-        /// Works independently of network connection for local mining and hauling.
+        /// Scans for local tasks on tiles without LATTICE (remote outposts).
         /// </summary>
         private MuleTask ScanForLocalTask(MULE_Pawn mule)
         {
@@ -190,32 +186,27 @@ namespace Arsenal
             // Check if there's a LATTICE on this map - if so, let it handle tasks
             if (ArsenalNetworkManager.GetLatticeOnMap(Map) != null) return null;
 
-            // Mining tasks - find unreserved mineables
-            foreach (var miningDes in Map.designationManager.AllDesignations
-                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing))
+            // Mining tasks
+            var miningDes = Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
+                .FirstOrDefault();
+
+            if (miningDes != null)
             {
                 IntVec3 cell = miningDes.target.Cell;
                 Building mineable = cell.GetFirstMineable(Map);
-                if (mineable == null) continue;
-
-                // Check if any pawn has reserved this (MULEs are despawned so can't use CanReserve directly)
-                if (Map.reservationManager.IsReservedByAnyoneOf(mineable, Faction.OfPlayer)) continue;
-
-                if (mule.CanAcceptTask(new MuleTask { targetCell = cell }))
+                if (mineable != null)
                 {
                     return MuleTask.CreateMiningTask(cell, miningDes);
                 }
             }
 
-            // Hauling tasks - find unreserved haulables
+            // Hauling tasks
             var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
             foreach (Thing item in haulables)
             {
                 if (item == null || item.Destroyed || !item.Spawned) continue;
                 if (item.IsForbidden(Faction.OfPlayer)) continue;
-
-                // Check reservation
-                if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
 
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)
@@ -401,7 +392,7 @@ namespace Arsenal
 
             if (!HasNetworkConnection())
             {
-                text += "\n<color=#aaaaaa>No network (local tasks only)</color>";
+                text += "\n<color=#ffaa00>No network connection</color>";
             }
 
             return text;
