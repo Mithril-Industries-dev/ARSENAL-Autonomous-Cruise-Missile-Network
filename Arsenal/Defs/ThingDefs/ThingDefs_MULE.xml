@@ -125,6 +125,16 @@
     <corePart>
       <def>MechanicalThorax</def>
       <parts>
+        <!-- Cargo manipulator arms for carrying items -->
+        <li>
+          <def>MechanicalArm</def>
+          <customLabel>left cargo arm</customLabel>
+        </li>
+        <li>
+          <def>MechanicalArm</def>
+          <customLabel>right cargo arm</customLabel>
+        </li>
+        <!-- Wheels for movement -->
         <li>
           <def>MechanicalLeg</def>
           <customLabel>front left wheel</customLabel>
