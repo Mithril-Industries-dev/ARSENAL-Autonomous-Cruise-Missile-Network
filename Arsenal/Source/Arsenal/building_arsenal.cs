@@ -328,6 +328,22 @@ namespace Arsenal
                 if (cachedLattice == null || !cachedLattice.IsPoweredOn())
                     return null;
 
+                // Calculate total STABLE capacity on this map
+                int totalStableCapacity = cachedStables.Count * Building_Stable.MAX_MULE_CAPACITY;
+
+                // Count all MULEs associated with this map (docked + spawned + in-transit)
+                int totalMulesOnMap = 0;
+                foreach (var stable in cachedStables)
+                {
+                    totalMulesOnMap += stable.DockedMuleCount;
+                }
+                // Add spawned MULEs on the map
+                totalMulesOnMap += ArsenalNetworkManager.GetMulesOnMap(Map).Count();
+
+                // Don't allow manufacturing if we're at or over capacity
+                if (totalMulesOnMap >= totalStableCapacity)
+                    return null;
+
                 return cachedStables
                     .Where(s => s.HasSpace && s.IsPoweredOn())
                     .OrderByDescending(s => Building_Stable.MAX_MULE_CAPACITY - s.DockedMuleCount)

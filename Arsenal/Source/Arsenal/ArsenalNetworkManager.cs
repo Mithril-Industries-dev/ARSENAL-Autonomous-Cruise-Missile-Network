@@ -298,6 +298,13 @@ namespace Arsenal
             return mules.ToList();
         }
 
+        public static IEnumerable<MULE_Pawn> GetMulesOnMap(Map map)
+        {
+            if (map == null) return Enumerable.Empty<MULE_Pawn>();
+            mules.RemoveAll(m => m == null || m.Destroyed);
+            return mules.Where(m => m.Spawned && m.Map == map);
+        }
+
         public static List<Building_Stable> GetAllStables()
         {
             stables.RemoveAll(s => s == null || s.Destroyed || !s.Spawned);

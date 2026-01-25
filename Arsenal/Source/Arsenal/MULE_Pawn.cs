@@ -311,18 +311,10 @@ namespace Arsenal
         public void OnTaskCompleted()
         {
             currentTask = null;
-            state = MuleState.Idle;
 
-            // Check if we need to return for charging
-            if (BatteryComp != null && BatteryComp.NeedsRecharge)
-            {
-                ReturnToStable();
-            }
-            else
-            {
-                // Try to find another task
-                TryFindAndStartTask();
-            }
+            // Always return to STABLE after completing a task
+            // The STABLE will decide whether to deploy us again
+            ReturnToStable();
         }
 
         public bool CanAcceptTask(MuleTask task)
