@@ -279,7 +279,7 @@ namespace Arsenal
             }
         }
 
-        public override void Tick()
+        protected override void Tick()
         {
             base.Tick();
 
