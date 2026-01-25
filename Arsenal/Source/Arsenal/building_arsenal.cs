@@ -25,6 +25,7 @@ namespace Arsenal
         private List<Building_Hub> cachedHubs = new List<Building_Hub>();
         private List<Building_Quiver> cachedQuivers = new List<Building_Quiver>();
         private List<Building_Stable> cachedStables = new List<Building_Stable>();
+        private List<Building_PERCH> cachedPerches = new List<Building_PERCH>();
         private List<Building_Hop> cachedHops = new List<Building_Hop>();
         private Building_Lattice cachedLattice;
         private int lastCacheRefresh = -999;
@@ -252,6 +253,9 @@ namespace Arsenal
             cachedStables = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Stable>().ToList();
             cachedLattice = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Lattice>().FirstOrDefault();
 
+            // PERCHes are searched GLOBALLY for SLING logistics
+            cachedPerches = ArsenalNetworkManager.GetAllPerches().ToList();
+
             lastCacheRefresh = Find.TickManager.TicksGame;
         }
 
@@ -349,6 +353,18 @@ namespace Arsenal
                     .OrderByDescending(s => Building_Stable.MAX_MULE_CAPACITY - s.DockedMuleCount)
                     .FirstOrDefault();
             }
+            else if (product.destinationType == typeof(Building_PERCH))
+            {
+                // PERCHes require network connectivity for SLING delivery
+                // Fleet limit: total SLINGs cannot exceed total PERCHes
+                if (!SlingLogisticsManager.CanAddSling())
+                    return null;
+
+                return cachedPerches
+                    .Where(p => p.IsPoweredOn && p.HasNetworkConnection() && !p.HasSlingOnPad)
+                    .OrderBy(p => p.priority)
+                    .FirstOrDefault();
+            }
 
             return null;
         }
@@ -375,6 +391,8 @@ namespace Arsenal
                 return cachedQuivers.Cast<Building>().ToList();
             else if (product.destinationType == typeof(Building_Stable))
                 return cachedStables.Cast<Building>().ToList();
+            else if (product.destinationType == typeof(Building_PERCH))
+                return cachedPerches.Where(p => p.HasNetworkConnection()).Cast<Building>().ToList();
 
             return new List<Building>();
         }
@@ -660,6 +678,56 @@ namespace Arsenal
                 mule.InitializeForDelivery(targetStable);
 
                 Messages.Message(Label + " Line " + (line.index + 1) + ": MULE manufacturing complete. Delivering to " + targetStable.Label,
+                    this, MessageTypeDefOf.PositiveEvent);
+            }
+            else if (product.destinationType == typeof(Building_PERCH))
+            {
+                // SLING - spawn at PERCH pad via skyfaller
+                Building_PERCH targetPerch = destination as Building_PERCH;
+                if (targetPerch == null || !targetPerch.HasNetworkConnection())
+                {
+                    // No valid target - drop SLING item
+                    Thing slingItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
+                    GenPlace.TryPlaceThing(slingItem, Position, Map, ThingPlaceMode.Near);
+                    Messages.Message(Label + ": SLING completed but no valid PERCH available.", this, MessageTypeDefOf.NeutralEvent);
+                    return;
+                }
+
+                // Check fleet capacity
+                if (!SlingLogisticsManager.CanAddSling())
+                {
+                    Thing slingItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
+                    GenPlace.TryPlaceThing(slingItem, Position, Map, ThingPlaceMode.Near);
+                    Messages.Message(Label + ": SLING completed but fleet is at capacity (need more PERCHes).", this, MessageTypeDefOf.NeutralEvent);
+                    return;
+                }
+
+                // Create SLING item and deliver to PERCH
+                Thing sling = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
+
+                // If PERCH is on the same map, spawn landing skyfaller
+                if (targetPerch.Map == Map)
+                {
+                    var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(ArsenalDefOf.Arsenal_SlingLanding);
+                    skyfaller.sling = sling;
+                    skyfaller.destinationPerch = targetPerch;
+                    skyfaller.isWaypointStop = false;
+                    GenSpawn.Spawn(skyfaller, targetPerch.Position, Map);
+                }
+                else
+                {
+                    // Different map - create traveling world object
+                    var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_TravelingSling);
+                    traveling.Tile = Map.Tile;
+                    traveling.destinationTile = targetPerch.Map.Tile;
+                    traveling.sling = sling;
+                    traveling.cargo = new System.Collections.Generic.Dictionary<ThingDef, int>();
+                    traveling.destinationPerch = targetPerch;
+                    traveling.CalculateRoute();
+                    Find.WorldObjects.Add(traveling);
+                }
+
+                Messages.Message(Label + " Line " + (line.index + 1) + ": SLING delivered to " + targetPerch.Label,
                     this, MessageTypeDefOf.PositiveEvent);
             }
         }
