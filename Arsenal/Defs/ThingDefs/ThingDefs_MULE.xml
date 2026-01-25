@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Defs>
 
+  <!-- Custom life stage for MULE drones (no growth, always adult) -->
+  <LifeStageDef>
+    <defName>Arsenal_MULE_LifeStage</defName>
+    <label>active</label>
+    <visible>false</visible>
+    <reproductive>false</reproductive>
+    <milkable>false</milkable>
+    <shearable>false</shearable>
+  </LifeStageDef>
+
   <!-- ==================== MULE Race Definition (Pawn) ==================== -->
-  <ThingDef ParentName="BaseMechanoid">
+  <!-- Uses AnimalThingBase instead of BaseMechanoid to avoid Biotech overseer requirements -->
+  <ThingDef ParentName="AnimalThingBase">
     <defName>Arsenal_MULE_Race</defName>
     <label>MULE drone</label>
     <description>MULE (Mobile Utility Logistics Engine) - An autonomous ground drone for mining and hauling tasks. Features battery-powered operation with automatic return-to-base for recharging. Coordinated by the LATTICE C2 system and stored in STABLE bays when idle.</description>
@@ -13,9 +24,12 @@
       <ArmorRating_Blunt>0.20</ArmorRating_Blunt>
       <ArmorRating_Sharp>0.40</ArmorRating_Sharp>
       <MeatAmount>0</MeatAmount>
+      <LeatherAmount>0</LeatherAmount>
       <CarryingCapacity>75</CarryingCapacity>
       <MiningSpeed>1.5</MiningSpeed>
       <MiningYield>1.0</MiningYield>
+      <ComfyTemperatureMin>-100</ComfyTemperatureMin>
+      <ComfyTemperatureMax>250</ComfyTemperatureMax>
     </statBases>
     <race>
       <thinkTreeMain>Arsenal_MULE_ThinkTree</thinkTreeMain>
@@ -30,16 +44,23 @@
       <baseBodySize>0.5</baseBodySize>
       <baseHealthScale>1.0</baseHealthScale>
       <makesFootprints>false</makesFootprints>
-      <soundMeleeHitPawn>Pawn_Melee_MechanoidBash_HitPawn</soundMeleeHitPawn>
-      <soundMeleeHitBuilding>Pawn_Melee_MechanoidBash_HitBuilding</soundMeleeHitBuilding>
-      <soundMeleeMiss>Pawn_Melee_MechanoidBash_Miss</soundMeleeMiss>
       <trainability>None</trainability>
+      <nameOnTameChance>0</nameOnTameChance>
+      <petness>0</petness>
+      <nuzzleMtbHours>-1</nuzzleMtbHours>
+      <packAnimal>false</packAnimal>
+      <herdAnimal>false</herdAnimal>
+      <predator>false</predator>
+      <wildness>0</wildness>
       <lifeStageAges>
         <li>
-          <def>MechanoidFullyFormed</def>
+          <def>Arsenal_MULE_LifeStage</def>
           <minAge>0</minAge>
         </li>
       </lifeStageAges>
+      <soundMeleeHitPawn>Pawn_Melee_MechanoidBash_HitPawn</soundMeleeHitPawn>
+      <soundMeleeHitBuilding>Pawn_Melee_MechanoidBash_HitBuilding</soundMeleeHitBuilding>
+      <soundMeleeMiss>Pawn_Melee_MechanoidBash_Miss</soundMeleeMiss>
     </race>
     <graphicData>
       <texPath>Arsenal/Arsenal_MULE</texPath>
