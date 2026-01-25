@@ -39,6 +39,7 @@ namespace Arsenal
 
         // SLING currently on pad
         private Thing slingOnPad;
+        private string slingName;  // Name for the SLING on this pad
         private bool isUnloading;
         private int unloadTicksRemaining;
         private const int UNLOAD_TICKS = 600; // 10 seconds
@@ -50,10 +51,16 @@ namespace Arsenal
         private Building_PERCH loadDestination;
         private Dictionary<ThingDef, int> loadingCargo = new Dictionary<ThingDef, int>();
 
+        // Return flight tracking - set when SLING should return after unloading
+        private Building_PERCH pendingReturnOrigin;
+
         // Refueling state for SLINGs
         private bool isRefueling;
         private int refuelTicksRemaining;
         private const int REFUEL_TICKS = 1800; // 30 seconds
+
+        // SLING naming counter
+        private static int slingCounter = 1;
 
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;
         public bool HasFuel => refuelableComp != null && refuelableComp.Fuel >= 50f;
@@ -61,6 +68,8 @@ namespace Arsenal
         public float FuelCapacity => refuelableComp?.Props.fuelCapacity ?? 500f;
         public bool HasSlingOnPad => slingOnPad != null;
         public bool IsBusy => isUnloading || isLoading || isRefueling;
+        public string SlingName => slingName ?? "SLING";
+        public Thing SlingOnPad => slingOnPad;
 
         public float FuelPercent
         {
@@ -140,7 +149,7 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the current stock level for a resource near this PERCH.
-        /// Checks adjacent storage zones and buildings.
+        /// Checks adjacent storage zones and buildings (for loading purposes).
         /// </summary>
         public int GetCurrentStock(ThingDef resource)
         {
@@ -160,6 +169,26 @@ namespace Arsenal
                     if (t.def == resource && t.def.category == ThingCategory.Item)
                         total += t.stackCount;
                 }
+            }
+
+            return total;
+        }
+
+        /// <summary>
+        /// Gets the total stock level for a resource across the entire map.
+        /// Used for SINK threshold demand calculations.
+        /// </summary>
+        public int GetMapStock(ThingDef resource)
+        {
+            if (Map == null) return 0;
+
+            int total = 0;
+
+            // Count all instances of this resource on the map
+            foreach (Thing t in Map.listerThings.ThingsOfDef(resource))
+            {
+                if (t.def.category == ThingCategory.Item && !t.IsForbidden(Faction.OfPlayer))
+                    total += t.stackCount;
             }
 
             return total;
@@ -201,6 +230,7 @@ namespace Arsenal
         /// <summary>
         /// Gets the demand for resources at this SINK.
         /// Returns resource types and amounts needed to reach threshold.
+        /// Uses map-wide stock to determine demand.
         /// </summary>
         public Dictionary<ThingDef, int> GetDemand()
         {
@@ -209,7 +239,7 @@ namespace Arsenal
 
             foreach (var kvp in thresholdTargets)
             {
-                int current = GetCurrentStock(kvp.Key);
+                int current = GetMapStock(kvp.Key);
                 int needed = kvp.Value - current;
                 if (needed > 0)
                     demand[kvp.Key] = needed;
@@ -230,22 +260,35 @@ namespace Arsenal
         /// <summary>
         /// Called when a SLING lands at this PERCH.
         /// </summary>
-        public void ReceiveSling(Thing sling, Dictionary<ThingDef, int> cargo)
+        public void ReceiveSling(Thing sling, Dictionary<ThingDef, int> cargo, Building_PERCH returnOrigin = null, string incomingSlingName = null)
         {
             slingOnPad = sling;
 
+            // Assign or preserve SLING name
+            if (!string.IsNullOrEmpty(incomingSlingName))
+            {
+                slingName = incomingSlingName;
+            }
+            else if (string.IsNullOrEmpty(slingName))
+            {
+                slingName = "SLING-" + slingCounter.ToString("D2");
+                slingCounter++;
+            }
+
             if (cargo != null && cargo.Count > 0)
             {
-                // Start unloading
+                // Start unloading - track return origin for after unloading completes
                 isUnloading = true;
                 unloadTicksRemaining = UNLOAD_TICKS;
                 loadingCargo = new Dictionary<ThingDef, int>(cargo);
-                Messages.Message($"{Label}: SLING landed, unloading cargo...", this, MessageTypeDefOf.NeutralEvent);
+                pendingReturnOrigin = returnOrigin;
+                Messages.Message($"{Label}: {slingName} landed, unloading cargo...", this, MessageTypeDefOf.NeutralEvent);
             }
             else
             {
-                // Empty SLING arrived (return flight)
-                Messages.Message($"{Label}: SLING returned", this, MessageTypeDefOf.NeutralEvent);
+                // Empty SLING arrived (return flight) - stays here
+                pendingReturnOrigin = null;
+                Messages.Message($"{Label}: {slingName} returned", this, MessageTypeDefOf.NeutralEvent);
             }
         }
 
@@ -262,7 +305,7 @@ namespace Arsenal
             loadDestination = destination;
             loadingCargo = new Dictionary<ThingDef, int>(cargoToLoad);
 
-            Messages.Message($"{Label}: Loading SLING for {destination.Label}...", this, MessageTypeDefOf.NeutralEvent);
+            Messages.Message($"{Label}: Loading {slingName ?? "SLING"} for {destination.Label}...", this, MessageTypeDefOf.NeutralEvent);
             return true;
         }
 
@@ -356,7 +399,20 @@ namespace Arsenal
             loadingCargo.Clear();
             Messages.Message($"{Label}: Cargo unloaded", this, MessageTypeDefOf.PositiveEvent);
 
-            // SLING now needs to return or wait for new orders
+            // Trigger return flight if this SLING needs to go back
+            if (pendingReturnOrigin != null && slingOnPad != null)
+            {
+                var returnTo = pendingReturnOrigin;
+                pendingReturnOrigin = null;
+
+                // Don't return if already at origin
+                if (returnTo != this && returnTo.Map != null && !returnTo.Destroyed)
+                {
+                    SlingLogisticsManager.InitiateReturnFlight(slingOnPad, slingName, this, returnTo);
+                    slingOnPad = null;
+                    slingName = null;
+                }
+            }
         }
 
         private IntVec3 FindCargoDropCell()
@@ -415,10 +471,12 @@ namespace Arsenal
             var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_SlingLaunching);
             launchingSkyfaller.sling = slingOnPad;
+            launchingSkyfaller.slingName = slingName;
             launchingSkyfaller.cargo = actualCargo;
             launchingSkyfaller.originPerch = this;
             launchingSkyfaller.destinationPerch = loadDestination;
             launchingSkyfaller.destinationTile = loadDestination.Map.Tile;
+            launchingSkyfaller.isReturnFlight = false;
 
             // Despawn SLING from pad
             if (slingOnPad.Spawned)
@@ -429,11 +487,13 @@ namespace Arsenal
             // Spawn the launching skyfaller at PERCH position
             GenSpawn.Spawn(launchingSkyfaller, Position, Map);
 
+            string departingSlingName = slingName;
             slingOnPad = null;
+            slingName = null;
             loadDestination = null;
             loadingCargo.Clear();
 
-            Messages.Message($"{Label}: SLING launching", this, MessageTypeDefOf.PositiveEvent);
+            Messages.Message($"{Label}: {departingSlingName ?? "SLING"} launching", this, MessageTypeDefOf.PositiveEvent);
         }
 
         private int ConsumeResource(ThingDef resource, int amount)
@@ -596,7 +656,7 @@ namespace Arsenal
             // SLING status
             if (slingOnPad != null)
             {
-                str += "\nSLING: On pad";
+                str += $"\n{slingName ?? "SLING"}: On pad";
                 if (isUnloading)
                     str += $" (Unloading: {unloadTicksRemaining.ToStringTicksToPeriod()})";
                 else if (isLoading)
@@ -640,11 +700,13 @@ namespace Arsenal
             Scribe_Collections.Look(ref thresholdTargets, "thresholdTargets", LookMode.Def, LookMode.Value);
 
             Scribe_References.Look(ref slingOnPad, "slingOnPad");
+            Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Values.Look(ref isUnloading, "isUnloading", false);
             Scribe_Values.Look(ref unloadTicksRemaining, "unloadTicksRemaining", 0);
             Scribe_Values.Look(ref isLoading, "isLoading", false);
             Scribe_Values.Look(ref loadTicksRemaining, "loadTicksRemaining", 0);
             Scribe_References.Look(ref loadDestination, "loadDestination");
+            Scribe_References.Look(ref pendingReturnOrigin, "pendingReturnOrigin");
             Scribe_Values.Look(ref isRefueling, "isRefueling", false);
             Scribe_Values.Look(ref refuelTicksRemaining, "refuelTicksRemaining", 0);
             Scribe_Collections.Look(ref loadingCargo, "loadingCargo", LookMode.Def, LookMode.Value);

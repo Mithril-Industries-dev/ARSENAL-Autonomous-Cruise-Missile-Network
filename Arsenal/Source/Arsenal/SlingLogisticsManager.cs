@@ -392,28 +392,18 @@ namespace Arsenal
         /// </summary>
         public static void InitiateReturnFlight(
             Thing sling,
+            string slingName,
             Building_PERCH currentPerch,
             Building_PERCH originPerch)
         {
             if (sling == null || currentPerch == null || originPerch == null) return;
             if (currentPerch == originPerch) return;  // Already home
 
-            // Despawn SLING
+            // Despawn SLING from pad
             if (sling.Spawned)
             {
                 sling.DeSpawn(DestroyMode.Vanish);
             }
-
-            // Create traveling object for return flight
-            var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(
-                ArsenalDefOf.Arsenal_TravelingSling);
-
-            traveling.Tile = currentPerch.Map.Tile;
-            traveling.destinationTile = originPerch.Map.Tile;
-            traveling.sling = sling;
-            traveling.cargo = new Dictionary<ThingDef, int>();  // Empty return flight
-            traveling.originPerch = currentPerch;  // Swap for return
-            traveling.destinationPerch = originPerch;
 
             // Consume fuel for return trip
             float fuelCost = CalculateFuelCost(currentPerch.Map.Tile, originPerch.Map.Tile);
@@ -423,10 +413,20 @@ namespace Arsenal
                 refuelComp.ConsumeFuel(fuelCost);
             }
 
-            traveling.CalculateRoute();
-            Find.WorldObjects.Add(traveling);
+            // Create launching skyfaller for takeoff animation
+            var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                ArsenalDefOf.Arsenal_SlingLaunching);
+            launchingSkyfaller.sling = sling;
+            launchingSkyfaller.slingName = slingName;
+            launchingSkyfaller.cargo = new Dictionary<ThingDef, int>();  // Empty return flight
+            launchingSkyfaller.originPerch = currentPerch;  // Current location becomes origin
+            launchingSkyfaller.destinationPerch = originPerch;  // Original source is now destination
+            launchingSkyfaller.destinationTile = originPerch.Map.Tile;
+            launchingSkyfaller.isReturnFlight = true;
 
-            Messages.Message($"SLING returning to {originPerch.Label}", currentPerch, MessageTypeDefOf.NeutralEvent);
+            GenSpawn.Spawn(launchingSkyfaller, currentPerch.Position, currentPerch.Map);
+
+            Messages.Message($"{slingName ?? "SLING"} returning to {originPerch.Label}", currentPerch, MessageTypeDefOf.NeutralEvent);
         }
     }
 

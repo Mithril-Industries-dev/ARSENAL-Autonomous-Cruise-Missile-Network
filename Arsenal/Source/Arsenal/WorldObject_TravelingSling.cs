@@ -18,9 +18,11 @@ namespace Arsenal
 
         public int destinationTile = -1;
         public Thing sling;
+        public string slingName;
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
+        public bool isReturnFlight = false;
 
         private int nextWaypointTile = -1;
         private int previousTile = -1;
@@ -29,21 +31,21 @@ namespace Arsenal
         private const int RECALCULATE_INTERVAL = 60;
 
         private float currentFuel = FUEL_CAPACITY;
-        private bool isReturnFlight = false;
 
         public override void ExposeData()
         {
             base.ExposeData();
             Scribe_Values.Look(ref destinationTile, "destinationTile", -1);
             Scribe_Deep.Look(ref sling, "sling");
+            Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
+            Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
             Scribe_Values.Look(ref nextWaypointTile, "nextWaypointTile", -1);
             Scribe_Values.Look(ref previousTile, "previousTile", -1);
             Scribe_Values.Look(ref traveledPct, "traveledPct", 0f);
             Scribe_Values.Look(ref currentFuel, "currentFuel", FUEL_CAPACITY);
-            Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -245,6 +247,7 @@ namespace Arsenal
             var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_SlingLanding);
             skyfaller.sling = sling;
+            skyfaller.slingName = slingName;
             skyfaller.cargo = cargo;
             skyfaller.originPerch = originPerch;
             skyfaller.destinationPerch = destinationPerch;
@@ -260,12 +263,13 @@ namespace Arsenal
         {
             // Use HOP's existing refueling infrastructure
             // SLING will be treated similarly to a missile for refueling purposes
-            Messages.Message($"SLING landing at {hop.Label} for refueling", hop, MessageTypeDefOf.NeutralEvent);
+            Messages.Message($"{slingName ?? "SLING"} landing at {hop.Label} for refueling", hop, MessageTypeDefOf.NeutralEvent);
 
             // Spawn landing skyfaller
             var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_SlingLanding);
             skyfaller.sling = sling;
+            skyfaller.slingName = slingName;
             skyfaller.cargo = cargo;
             skyfaller.originPerch = originPerch;
             skyfaller.destinationPerch = destinationPerch;
@@ -286,6 +290,7 @@ namespace Arsenal
                 var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                     ArsenalDefOf.Arsenal_SlingLanding);
                 skyfaller.sling = sling;
+                skyfaller.slingName = slingName;
                 skyfaller.cargo = cargo;
                 skyfaller.originPerch = originPerch;
                 skyfaller.destinationPerch = destinationPerch;
@@ -303,6 +308,7 @@ namespace Arsenal
                     var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                         ArsenalDefOf.Arsenal_SlingLanding);
                     skyfaller.sling = sling;
+                    skyfaller.slingName = slingName;
                     skyfaller.cargo = cargo;
                     skyfaller.originPerch = originPerch;
                     skyfaller.destinationPerch = alternate;
@@ -324,12 +330,13 @@ namespace Arsenal
                         var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                             ArsenalDefOf.Arsenal_SlingLanding);
                         skyfaller.sling = sling;
+                        skyfaller.slingName = slingName;
                         skyfaller.cargo = cargo;
                         skyfaller.isCrashLanding = true;
 
                         GenSpawn.Spawn(skyfaller, dropSpot, mp.Map);
 
-                        Messages.Message("SLING crash-landing - no PERCH available at destination",
+                        Messages.Message($"{slingName ?? "SLING"} crash-landing - no PERCH available at destination",
                             new TargetInfo(dropSpot, mp.Map), MessageTypeDefOf.NegativeEvent);
                     }
                 }
@@ -348,18 +355,19 @@ namespace Arsenal
                 var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                     ArsenalDefOf.Arsenal_SlingLanding);
                 skyfaller.sling = sling;
+                skyfaller.slingName = slingName;
                 skyfaller.cargo = cargo;
                 skyfaller.isCrashLanding = true;
 
                 GenSpawn.Spawn(skyfaller, dropSpot, mp.Map);
 
-                Messages.Message("SLING ran out of fuel and crash-landed!",
+                Messages.Message($"{slingName ?? "SLING"} ran out of fuel and crash-landed!",
                     new TargetInfo(dropSpot, mp.Map), MessageTypeDefOf.NegativeEvent);
             }
             else
             {
                 // No map at this tile - SLING and cargo lost
-                Messages.Message("SLING ran out of fuel over uninhabited territory. Craft and cargo lost.",
+                Messages.Message($"{slingName ?? "SLING"} ran out of fuel over uninhabited territory. Craft and cargo lost.",
                     MessageTypeDefOf.NegativeEvent);
             }
 
@@ -485,6 +493,9 @@ namespace Arsenal
         public override string GetInspectString()
         {
             string str = base.GetInspectString();
+
+            if (!string.IsNullOrEmpty(slingName))
+                str += $"\n{slingName}";
 
             if (destinationPerch != null)
                 str += $"\nDestination: {destinationPerch.Label}";

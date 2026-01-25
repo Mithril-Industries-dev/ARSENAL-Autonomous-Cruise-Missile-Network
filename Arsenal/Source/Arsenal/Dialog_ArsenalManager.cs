@@ -913,19 +913,19 @@ namespace Arsenal
                     y += 26f;
                 }
 
-                // Current demand
+                // Current demand (map-wide stock)
                 y += 10f;
                 var demand = selectedPerch.GetDemand();
                 if (demand.Count > 0)
                 {
                     GUI.color = new Color(1f, 0.6f, 0f);
-                    Widgets.Label(new Rect(x, y, width, 22f), "Current Demand:");
+                    Widgets.Label(new Rect(x, y, width, 22f), "Current Demand (Map Stock):");
                     y += 22f;
                     GUI.color = Color.white;
 
                     foreach (var d in demand)
                     {
-                        int current = selectedPerch.GetCurrentStock(d.Key);
+                        int current = selectedPerch.GetMapStock(d.Key);
                         int target = selectedPerch.thresholdTargets.TryGetValue(d.Key, out int t) ? t : 0;
                         Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f),
                             $"{d.Key.label}: {current}/{target} (need {d.Value})");
@@ -1016,8 +1016,8 @@ namespace Arsenal
                 selectedPerch.SetThreshold(resource, newTarget);
             }
 
-            // Current amount
-            int current = selectedPerch.GetCurrentStock(resource);
+            // Current amount (map-wide stock)
+            int current = selectedPerch.GetMapStock(resource);
             Color statusColor = current >= target ? Color.green : new Color(1f, 0.6f, 0f);
             GUI.color = statusColor;
             Widgets.Label(new Rect(rect.x + 240f, rect.y, 80f, 20f), $"({current}/{target})");

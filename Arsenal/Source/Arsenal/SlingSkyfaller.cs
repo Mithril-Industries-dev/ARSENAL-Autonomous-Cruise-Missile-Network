@@ -14,6 +14,7 @@ namespace Arsenal
     public class SlingLandingSkyfaller : Skyfaller
     {
         public Thing sling;
+        public string slingName;
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
@@ -27,6 +28,7 @@ namespace Arsenal
         {
             base.ExposeData();
             Scribe_Deep.Look(ref sling, "sling");
+            Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
@@ -187,32 +189,22 @@ namespace Arsenal
                 return;
             }
 
-            // Deliver cargo to destination
-            destinationPerch.ReceiveSling(sling, cargo);
+            // Determine if this SLING needs to return after unloading
+            // Pass origin only for delivery flights (not return flights)
+            Building_PERCH returnOrigin = null;
+            if (!isReturnFlight && originPerch != null && originPerch != destinationPerch)
+            {
+                returnOrigin = originPerch;
+            }
+
+            // Deliver cargo to destination - PERCH will handle return after unloading
+            destinationPerch.ReceiveSling(sling, cargo, returnOrigin, slingName);
 
             // Spawn SLING on pad
             if (sling != null && !sling.Spawned)
             {
                 GenSpawn.Spawn(sling, destinationPerch.Position, Map);
                 sling.SetForbidden(true, false);
-            }
-
-            // If this is a delivery (not return), initiate return flight after unloading
-            if (!isReturnFlight && originPerch != null && originPerch != destinationPerch)
-            {
-                // Queue return flight after unloading delay
-                var origin = originPerch;
-                var dest = destinationPerch;
-                var s = sling;
-
-                LongEventHandler.QueueLongEvent(() =>
-                {
-                    // Wait for unloading to complete then return
-                    if (dest != null && !dest.IsBusy && s != null)
-                    {
-                        SlingLogisticsManager.InitiateReturnFlight(s, dest, origin);
-                    }
-                }, "SlingReturn", false, null);
             }
         }
 
@@ -263,19 +255,23 @@ namespace Arsenal
     public class SlingLaunchingSkyfaller : Skyfaller
     {
         public Thing sling;
+        public string slingName;
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
         public int destinationTile = -1;
+        public bool isReturnFlight = false;
 
         public override void ExposeData()
         {
             base.ExposeData();
             Scribe_Deep.Look(ref sling, "sling");
+            Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
             Scribe_Values.Look(ref destinationTile, "destinationTile", -1);
+            Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -305,9 +301,11 @@ namespace Arsenal
                 traveling.Tile = Map.Tile;
                 traveling.destinationTile = destinationTile;
                 traveling.sling = sling;
+                traveling.slingName = slingName;
                 traveling.cargo = cargo ?? new Dictionary<ThingDef, int>();
                 traveling.originPerch = originPerch;
                 traveling.destinationPerch = destinationPerch;
+                traveling.isReturnFlight = isReturnFlight;
                 traveling.CalculateRoute();
                 Find.WorldObjects.Add(traveling);
             }
