@@ -45,7 +45,9 @@ namespace Arsenal
         {
             base.SpawnSetup(map, respawningAfterLoad);
 
-            if (!respawningAfterLoad)
+            // Only assign a new name if this MULE doesn't have one yet
+            // (prevents name changes when deploying from STABLE)
+            if (string.IsNullOrEmpty(customName))
             {
                 customName = "MULE-" + muleCounter.ToString("D2");
                 muleCounter++;
