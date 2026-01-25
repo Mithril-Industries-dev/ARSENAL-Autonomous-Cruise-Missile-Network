@@ -34,6 +34,7 @@ namespace Arsenal
         public static MithrilProductDef MITHRIL_Product_DAGGER;
         public static MithrilProductDef MITHRIL_Product_DART;
         public static MithrilProductDef MITHRIL_Product_SLING;
+        public static MithrilProductDef MITHRIL_Product_MULE;
 
         // SLING/PERCH Logistics System
         public static ThingDef Arsenal_PERCH;
@@ -44,6 +45,16 @@ namespace Arsenal
 
         // Research for SLING system
         public static ResearchProjectDef Arsenal_SlingLogistics;
+
+        // MULE system - Ground utility drones
+        public static ThingDef Arsenal_MULE_Race;
+        public static PawnKindDef Arsenal_MULE_Kind;
+        public static ThingDef Arsenal_MULE_Item;
+        public static ThingDef Arsenal_Stable;
+        public static ThingDef Arsenal_Moria;
+
+        // Research for MULE system
+        public static ResearchProjectDef Arsenal_MULESystem;
 
         static ArsenalDefOf()
         {

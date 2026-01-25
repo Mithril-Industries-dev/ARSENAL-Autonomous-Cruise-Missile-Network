@@ -31,6 +31,11 @@ namespace Arsenal
         // SLING/PERCH logistics system
         private static List<Building_PERCH> perches = new List<Building_PERCH>();
 
+        // MULE system components
+        private static List<MULE_Pawn> mules = new List<MULE_Pawn>();
+        private static List<Building_Stable> stables = new List<Building_Stable>();
+        private static List<Building_Moria> morias = new List<Building_Moria>();
+
         #region Global LATTICE Access
 
         /// <summary>
@@ -251,6 +256,163 @@ namespace Arsenal
                 return true;
 
             return false;
+        }
+
+        #endregion
+
+        #region MULE System Registration
+
+        public static void RegisterMule(MULE_Pawn mule)
+        {
+            if (!mules.Contains(mule))
+                mules.Add(mule);
+        }
+
+        public static void DeregisterMule(MULE_Pawn mule)
+        {
+            mules.Remove(mule);
+        }
+
+        public static void RegisterStable(Building_Stable stable)
+        {
+            if (!stables.Contains(stable))
+                stables.Add(stable);
+        }
+
+        public static void DeregisterStable(Building_Stable stable)
+        {
+            stables.Remove(stable);
+        }
+
+        public static void RegisterMoria(Building_Moria moria)
+        {
+            if (!morias.Contains(moria))
+                morias.Add(moria);
+        }
+
+        public static void DeregisterMoria(Building_Moria moria)
+        {
+            morias.Remove(moria);
+        }
+
+        public static List<MULE_Pawn> GetAllMules()
+        {
+            mules.RemoveAll(m => m == null || m.Destroyed);
+            return mules.ToList();
+        }
+
+        public static IEnumerable<MULE_Pawn> GetMulesOnMap(Map map)
+        {
+            if (map == null) return Enumerable.Empty<MULE_Pawn>();
+            mules.RemoveAll(m => m == null || m.Destroyed);
+            return mules.Where(m => m.Spawned && m.Map == map);
+        }
+
+        public static List<Building_Stable> GetAllStables()
+        {
+            stables.RemoveAll(s => s == null || s.Destroyed || !s.Spawned);
+            return stables.ToList();
+        }
+
+        public static List<Building_Moria> GetAllMorias()
+        {
+            morias.RemoveAll(m => m == null || m.Destroyed || !m.Spawned);
+            return morias.ToList();
+        }
+
+        public static List<Building_Stable> GetStablesOnMap(Map map)
+        {
+            if (map == null) return new List<Building_Stable>();
+            return GetAllStables().Where(s => s.Map == map).ToList();
+        }
+
+        public static List<Building_Moria> GetMoriasOnMap(Map map)
+        {
+            if (map == null) return new List<Building_Moria>();
+            return GetAllMorias().Where(m => m.Map == map).ToList();
+        }
+
+        /// <summary>
+        /// Gets the nearest STABLE that has space for a MULE.
+        /// </summary>
+        public static Building_Stable GetNearestStableWithSpace(IntVec3 position, Map map)
+        {
+            if (map == null) return null;
+
+            Building_Stable nearest = null;
+            float nearestDist = float.MaxValue;
+
+            foreach (var stable in GetStablesOnMap(map))
+            {
+                if (!stable.HasSpace || !stable.IsPoweredOn()) continue;
+
+                float dist = position.DistanceTo(stable.Position);
+                if (dist < nearestDist)
+                {
+                    nearestDist = dist;
+                    nearest = stable;
+                }
+            }
+
+            return nearest;
+        }
+
+        /// <summary>
+        /// Gets the nearest MORIA that can accept a specific item.
+        /// </summary>
+        public static Building_Moria GetNearestMoriaForItem(Thing item, Map map)
+        {
+            if (map == null || item == null) return null;
+
+            Building_Moria nearest = null;
+            float nearestDist = float.MaxValue;
+
+            foreach (var moria in GetMoriasOnMap(map))
+            {
+                if (!moria.CanAcceptItem(item)) continue;
+
+                float dist = item.Position.DistanceTo(moria.Position);
+                if (dist < nearestDist)
+                {
+                    nearestDist = dist;
+                    nearest = moria;
+                }
+            }
+
+            return nearest;
+        }
+
+        /// <summary>
+        /// Gets an available MULE from any STABLE that can handle the given task.
+        /// Returns the MULE and its STABLE.
+        /// </summary>
+        public static (MULE_Pawn mule, Building_Stable stable) GetAvailableMuleForTask(MuleTask task, Map map)
+        {
+            if (map == null || task == null) return (null, null);
+
+            // Find nearest STABLE with an available MULE
+            float nearestDist = float.MaxValue;
+            MULE_Pawn bestMule = null;
+            Building_Stable bestStable = null;
+
+            foreach (var stable in GetStablesOnMap(map))
+            {
+                if (!stable.IsPoweredOn()) continue;
+
+                var mule = stable.GetAvailableMule(task);
+                if (mule != null)
+                {
+                    float dist = task.targetCell.DistanceTo(stable.Position);
+                    if (dist < nearestDist)
+                    {
+                        nearestDist = dist;
+                        bestMule = mule;
+                        bestStable = stable;
+                    }
+                }
+            }
+
+            return (bestMule, bestStable);
         }
 
         #endregion
@@ -548,6 +710,26 @@ namespace Arsenal
             return GetAllLattices().FirstOrDefault(l => l.Map == map);
         }
 
+        /// <summary>
+        /// Gets the network LATTICE for a map if that map has network connectivity.
+        /// Returns local LATTICE if present, otherwise GlobalLattice if tile is connected via SKYLINK/HERALD.
+        /// </summary>
+        public static Building_Lattice GetConnectedLattice(Map map)
+        {
+            if (map == null) return null;
+
+            // First check for local LATTICE
+            var localLattice = GetLatticeOnMap(map);
+            if (localLattice != null && localLattice.IsPoweredOn())
+                return localLattice;
+
+            // Check if tile has network connectivity to GlobalLattice
+            if (IsTileConnected(map.Tile))
+                return GlobalLattice;
+
+            return null;
+        }
+
         // Get all QUIVERs on a specific map
         public static List<Building_Quiver> GetQuiversOnMap(Map map)
         {
@@ -575,6 +757,9 @@ namespace Arsenal
             terminals.Clear();
             hawkeyePawns.Clear();
             perches.Clear();
+            mules.Clear();
+            stables.Clear();
+            morias.Clear();
         }
 
         /// <summary>

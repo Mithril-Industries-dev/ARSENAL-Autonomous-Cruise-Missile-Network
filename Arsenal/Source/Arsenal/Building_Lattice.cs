@@ -74,9 +74,8 @@ namespace Arsenal
         private Sustainer scanningSustainer;
         private bool hadThreatsLastScan = false;
 
-        // Launch rate limiting - slight delay between DART launches
-        private const int LAUNCH_DELAY_TICKS = 15; // ~0.25 seconds between launches
-        private int lastLaunchTick = -999;
+        // Max DARTs launched per processing cycle (prevents overwhelming all at once)
+        private const int MAX_DARTS_PER_CYCLE = 8;
 
         // Properties
         public FlightPathGrid FlightGrid
@@ -230,6 +229,9 @@ namespace Arsenal
             Scribe_Collections.Look(ref assignedDartsPerTarget, "assignedDartsPerTarget",
                 LookMode.Reference, LookMode.Value, ref tempPawnKeys, ref tempIntValues);
 
+            // MULE system
+            Scribe_Values.Look(ref ticksSinceMuleProcess, "ticksSinceMuleProcess", 0);
+
             // Clean up null references after load
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -238,6 +240,7 @@ namespace Arsenal
                 awaitingReassignment.RemoveAll(d => d == null);
                 aggregatedThreats.Clear(); // Clear on load - ARGUS will repopulate
                 CleanupDeadTargets();
+                pendingMuleTasks = pendingMuleTasks ?? new Queue<MuleTask>();
             }
         }
 
@@ -272,16 +275,16 @@ namespace Arsenal
                 ticksSinceLastProcess = 0;
                 ProcessThreatsAndAssign();
             }
+
+            // Process MULE tasks
+            ProcessMuleTasks();
         }
 
         private void MaintainScanningSound()
         {
-            if (scanningSustainer == null || scanningSustainer.Ended)
-            {
-                SoundInfo info = SoundInfo.InMap(this, MaintenanceType.PerTick);
-                scanningSustainer = SoundDefOf.MechSerumUsed.TrySpawnSustainer(info);
-            }
-            scanningSustainer?.Maintain();
+            // Sound sustainer removed - MechSerumUsed is not a sustainer-compatible sound
+            // and was causing 99+ errors per tick. LATTICE operates silently now.
+            // Visual effects in SpawnScanningEffects() provide feedback instead.
         }
 
         private void StopScanningSound()
@@ -476,9 +479,352 @@ namespace Arsenal
 
         #endregion
 
+        #region MULE Task Processing
+
+        // MULE processing
+        private const int MULE_PROCESS_INTERVAL = 120; // Process MULE tasks every 2 seconds
+        private int ticksSinceMuleProcess;
+        private Queue<MuleTask> pendingMuleTasks = new Queue<MuleTask>();
+
+        /// <summary>
+        /// Processes MULE tasks - mining designations and hauling to MORIA.
+        /// </summary>
+        private void ProcessMuleTasks()
+        {
+            if (Map == null) return;
+
+            ticksSinceMuleProcess++;
+            if (ticksSinceMuleProcess < MULE_PROCESS_INTERVAL)
+                return;
+
+            ticksSinceMuleProcess = 0;
+
+            // Scan for mining designations
+            ScanMiningDesignations();
+
+            // Scan for items to haul to MORIA
+            ScanMoriaHaulTasks();
+
+            // Assign queued tasks to available MULEs
+            AssignPendingMuleTasks();
+        }
+
+        /// <summary>
+        /// Scans for mining designations and creates MULE tasks.
+        /// Note: We don't check colonist reservations here - MULEs will compete with colonists.
+        /// If a colonist mines the rock first, the MULE will detect it and get a new task.
+        /// </summary>
+        private void ScanMiningDesignations()
+        {
+            var designations = Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && d.target.HasThing == false)
+                .ToList();
+
+            foreach (var des in designations)
+            {
+                IntVec3 cell = des.target.Cell;
+
+                // Check if mineable exists
+                Building mineable = cell.GetFirstMineable(Map);
+                if (mineable == null) continue;
+
+                // Check if we already have a task for this cell
+                bool alreadyQueued = pendingMuleTasks.Any(t =>
+                    t.taskType == MuleTaskType.Mine && t.targetCell == cell);
+                if (alreadyQueued) continue;
+
+                // Check if a MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m.CurrentTask?.taskType == MuleTaskType.Mine &&
+                              m.CurrentTask?.targetCell == cell);
+                if (muleAssigned) continue;
+
+                // Create mining task
+                MuleTask task = MuleTask.CreateMiningTask(cell, des);
+                pendingMuleTasks.Enqueue(task);
+            }
+        }
+
+        /// <summary>
+        /// Scans for items that should be hauled to MORIA or stockpiles.
+        /// Note: We don't check colonist reservations here - MULEs will compete with colonists.
+        /// If a colonist picks up the item first, the MULE will detect it and get a new task.
+        /// </summary>
+        private void ScanMoriaHaulTasks()
+        {
+            // Find items on the ground that need hauling
+            var haulableItems = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+
+            foreach (Thing item in haulableItems)
+            {
+                if (item == null || item.Destroyed || !item.Spawned) continue;
+
+                // Skip forbidden items
+                if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                // Skip items currently being carried
+                if (item.ParentHolder != null && !(item.ParentHolder is Map)) continue;
+
+                // Check if we already have a task for this item
+                bool alreadyQueued = pendingMuleTasks.Any(t =>
+                    (t.taskType == MuleTaskType.MoriaFeed || t.taskType == MuleTaskType.Haul) &&
+                    t.targetThing == item);
+                if (alreadyQueued) continue;
+
+                // Check if a MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m.CurrentTask?.targetThing == item);
+                if (muleAssigned) continue;
+
+                // First priority: MORIA storage
+                Building_Moria targetMoria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+                if (targetMoria != null)
+                {
+                    MuleTask task = MuleTask.CreateMoriaFeedTask(item, targetMoria);
+                    pendingMuleTasks.Enqueue(task);
+                    continue;
+                }
+
+                // Second priority: Regular stockpile
+                IntVec3 stockpileCell = FindStockpileCellForItem(item);
+                if (stockpileCell.IsValid)
+                {
+                    MuleTask task = MuleTask.CreateHaulTask(item, null, stockpileCell);
+                    pendingMuleTasks.Enqueue(task);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Finds a stockpile cell that can accept the given item.
+        /// Uses RimWorld's built-in system when possible, falls back to manual search.
+        /// </summary>
+        private IntVec3 FindStockpileCellForItem(Thing item)
+        {
+            // Try RimWorld's built-in storage finding first (works for spawned items)
+            if (item.Spawned)
+            {
+                IntVec3 result;
+                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map, StoragePriority.Unstored, Faction.OfPlayer, out result, true))
+                {
+                    return result;
+                }
+            }
+
+            // Manual search (for unspawned items or when built-in fails)
+            foreach (var slotGroup in Map.haulDestinationManager.AllGroupsListForReading)
+            {
+                if (slotGroup?.Settings == null) continue;
+                if (!slotGroup.Settings.AllowedToAccept(item)) continue;
+
+                foreach (IntVec3 cell in slotGroup.CellsList)
+                {
+                    if (!cell.InBounds(Map) || !cell.Walkable(Map)) continue;
+
+                    Thing existing = cell.GetFirstItem(Map);
+                    if (existing == null)
+                    {
+                        return cell;
+                    }
+                    if (existing.def == item.def && existing.stackCount < existing.def.stackLimit)
+                    {
+                        return cell;
+                    }
+                }
+            }
+
+            return IntVec3.Invalid;
+        }
+
+        /// <summary>
+        /// Assigns pending MULE tasks to available MULEs.
+        /// </summary>
+        private void AssignPendingMuleTasks()
+        {
+            if (pendingMuleTasks.Count == 0) return;
+
+            int maxAssignPerCycle = 5; // Limit assignments per cycle
+            int maxAttemptsPerCycle = 20; // Prevent infinite loops
+            int assigned = 0;
+            int attempts = 0;
+
+            // Temporary list for tasks we couldn't assign this cycle
+            List<MuleTask> deferredTasks = new List<MuleTask>();
+
+            while (pendingMuleTasks.Count > 0 && assigned < maxAssignPerCycle && attempts < maxAttemptsPerCycle)
+            {
+                attempts++;
+                MuleTask task = pendingMuleTasks.Dequeue();
+
+                // Validate task is still valid
+                if (!IsTaskValid(task))
+                {
+                    // Invalid task - discard it entirely
+                    continue;
+                }
+
+                // Find an available MULE for this task
+                var (mule, stable) = ArsenalNetworkManager.GetAvailableMuleForTask(task, Map);
+
+                if (mule != null && stable != null)
+                {
+                    // Deploy the MULE
+                    if (stable.DeployMule(mule, task))
+                    {
+                        assigned++;
+                        // Task successfully assigned - don't re-queue
+                    }
+                    else
+                    {
+                        // Deployment failed (e.g., spawn cell blocked) - defer for later
+                        deferredTasks.Add(task);
+                    }
+                }
+                else
+                {
+                    // No MULE available for this task right now - defer for later
+                    deferredTasks.Add(task);
+                }
+            }
+
+            // Re-add deferred tasks to the back of the queue
+            foreach (var task in deferredTasks)
+            {
+                pendingMuleTasks.Enqueue(task);
+            }
+        }
+
+        /// <summary>
+        /// Validates that a task is still valid.
+        /// Note: We don't check colonist reservations - MULEs compete with colonists.
+        /// The MULE will detect if work is done while traveling and get a new task.
+        /// </summary>
+        private bool IsTaskValid(MuleTask task)
+        {
+            if (task == null) return false;
+
+            switch (task.taskType)
+            {
+                case MuleTaskType.Mine:
+                    // Check if mining designation still exists
+                    if (Map.designationManager.DesignationAt(task.targetCell, DesignationDefOf.Mine) == null)
+                        return false;
+
+                    // Check if mineable still exists
+                    Building mineable = task.targetCell.GetFirstMineable(Map);
+                    if (mineable == null)
+                        return false;
+
+                    return true;
+
+                case MuleTaskType.Haul:
+                    // Check if item still exists
+                    if (task.targetThing == null || task.targetThing.Destroyed || !task.targetThing.Spawned)
+                        return false;
+
+                    // Check if item is being carried (colonist picked it up)
+                    if (task.targetThing.ParentHolder != null && !(task.targetThing.ParentHolder is Map))
+                        return false;
+
+                    // Haul tasks to stockpile don't need destination building check
+                    return task.destinationCell.IsValid;
+
+                case MuleTaskType.MoriaFeed:
+                    // Check if item still exists
+                    if (task.targetThing == null || task.targetThing.Destroyed || !task.targetThing.Spawned)
+                        return false;
+
+                    // Check if destination MORIA still valid
+                    if (task.destination == null || task.destination.Destroyed)
+                        return false;
+
+                    // Check if item is being carried (colonist picked it up)
+                    if (task.targetThing.ParentHolder != null && !(task.targetThing.ParentHolder is Map))
+                        return false;
+
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the count of pending MULE tasks.
+        /// </summary>
+        public int PendingMuleTaskCount => pendingMuleTasks.Count;
+
+        /// <summary>
+        /// Allows a MULE to request a new task directly.
+        /// Returns null if no suitable task is available.
+        /// </summary>
+        public MuleTask RequestNewTaskForMule(MULE_Pawn mule)
+        {
+            if (pendingMuleTasks.Count == 0) return null;
+
+            // Try to find a valid task from the queue
+            int attempts = Mathf.Min(pendingMuleTasks.Count, 10);
+            List<MuleTask> checkedTasks = new List<MuleTask>();
+
+            for (int i = 0; i < attempts; i++)
+            {
+                if (pendingMuleTasks.Count == 0) break;
+
+                MuleTask task = pendingMuleTasks.Dequeue();
+
+                // Validate task
+                if (!IsTaskValid(task))
+                {
+                    // Invalid task - discard
+                    continue;
+                }
+
+                // Check if MULE can handle this task
+                if (mule.CanAcceptTask(task))
+                {
+                    // Re-queue any tasks we checked but didn't take
+                    foreach (var t in checkedTasks)
+                    {
+                        pendingMuleTasks.Enqueue(t);
+                    }
+                    return task;
+                }
+                else
+                {
+                    // Can't take this task (battery too low?), keep it for later
+                    checkedTasks.Add(task);
+                }
+            }
+
+            // Re-queue tasks we couldn't assign
+            foreach (var t in checkedTasks)
+            {
+                pendingMuleTasks.Enqueue(t);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the count of active MULEs on this map.
+        /// </summary>
+        public int ActiveMuleCount
+        {
+            get
+            {
+                return ArsenalNetworkManager.GetAllMules()
+                    .Count(m => m.Map == Map &&
+                               m.state != MuleState.Idle &&
+                               m.state != MuleState.Charging);
+            }
+        }
+
+        #endregion
+
         /// <summary>
         /// Processes aggregated threats and assigns DARTs.
         /// No longer scans directly - relies on ARGUS reports.
+        /// Also considers HAWKEYE-marked priority targets.
         /// </summary>
         private void ProcessThreatsAndAssign()
         {
@@ -493,6 +839,35 @@ namespace Arsenal
 
             // Get threats from ARGUS aggregation (not direct scanning)
             List<Pawn> threats = GetAggregatedThreats();
+
+            // Also check for HAWKEYE priority target - it's valid even outside ARGUS range
+            Pawn hawkeyeTarget = CompHawkeyeSensor.GlobalPriorityTarget;
+            if (hawkeyeTarget != null && !hawkeyeTarget.Dead && hawkeyeTarget.Spawned &&
+                hawkeyeTarget.Map == Map && !threats.Contains(hawkeyeTarget))
+            {
+                threats.Add(hawkeyeTarget);
+            }
+
+            // Also include any threats detected by HAWKEYE sensors via SKYLINK
+            if (ArsenalNetworkManager.IsLatticeConnectedToSkylink())
+            {
+                foreach (var pawn in ArsenalNetworkManager.GetAllHawkeyePawns())
+                {
+                    if (pawn?.Map != Map) continue;
+                    var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                    var comp = hawkeye?.SensorComp;
+                    if (comp != null && comp.IsOperational)
+                    {
+                        foreach (var threat in comp.GetDetectedThreats())
+                        {
+                            if (!threats.Contains(threat))
+                            {
+                                threats.Add(threat);
+                            }
+                        }
+                    }
+                }
+            }
 
             if (threats.Count == 0)
             {
@@ -522,16 +897,34 @@ namespace Arsenal
             // Sort threats by distance to nearest QUIVER (prioritize closer threats)
             threats = threats.OrderBy(t => GetDistanceToNearestQuiver(t.Position)).ToList();
 
-            // Evaluate and assign DARTs to threats
-            foreach (Pawn threat in threats)
-            {
-                int dartsNeeded = CalculateDartsNeeded(threat);
-                int dartsAlreadyAssigned = GetAssignedDarts(threat);
-                int additionalDartsNeeded = dartsNeeded - dartsAlreadyAssigned;
+            // Calculate launch budget for this cycle
+            // Allow multiple DARTs per processing cycle, distributed across threats
+            int launchBudget = Mathf.Min(MAX_DARTS_PER_CYCLE, Mathf.Max(4, threats.Count));
+            int dartsLaunched = 0;
 
-                if (additionalDartsNeeded > 0)
+            // Multiple passes to ensure each threat gets assigned DARTs
+            bool launchedThisPass = true;
+            while (launchedThisPass && dartsLaunched < launchBudget)
+            {
+                launchedThisPass = false;
+
+                foreach (Pawn threat in threats)
                 {
-                    AssignDarts(threat, additionalDartsNeeded);
+                    if (dartsLaunched >= launchBudget)
+                        break;
+
+                    int dartsNeeded = CalculateDartsNeeded(threat);
+                    int dartsAlreadyAssigned = GetAssignedDarts(threat);
+                    int additionalDartsNeeded = dartsNeeded - dartsAlreadyAssigned;
+
+                    if (additionalDartsNeeded > 0)
+                    {
+                        if (AssignDarts(threat, 1))
+                        {
+                            dartsLaunched++;
+                            launchedThisPass = true;
+                        }
+                    }
                 }
             }
         }
@@ -568,6 +961,7 @@ namespace Arsenal
 
         /// <summary>
         /// Evaluates the threat level of a pawn.
+        /// Considers: race type, tech level, health, equipment, armor, and shields.
         /// </summary>
         private float EvaluateThreat(Pawn pawn)
         {
@@ -584,6 +978,30 @@ namespace Arsenal
                     baseThreat *= 1.5f;
                 }
             }
+            // Animals (manhunters, predators, etc.)
+            else if (pawn.RaceProps.Animal)
+            {
+                // Base threat on body size - larger animals are more dangerous
+                float bodySize = pawn.def.race.baseBodySize;
+
+                if (pawn.RaceProps.predator)
+                {
+                    // Predators: scale from 30 (small) to 120+ (thrumbo-sized)
+                    baseThreat = 30f + (bodySize * 30f);
+                }
+                else
+                {
+                    // Non-predators (manhunters, etc): lower base threat
+                    baseThreat = 20f + (bodySize * 15f);
+                }
+
+                // Manhunting animals are more aggressive - allocate more DARTs
+                if (pawn.MentalState?.def == MentalStateDefOf.Manhunter ||
+                    pawn.MentalState?.def == MentalStateDefOf.ManhunterPermanent)
+                {
+                    baseThreat *= 1.3f;
+                }
+            }
             else if (pawn.Faction?.def?.techLevel >= TechLevel.Industrial)
             {
                 baseThreat = BASE_THREAT_PIRATE;
@@ -597,7 +1015,7 @@ namespace Arsenal
             float healthPct = pawn.health.summaryHealth.SummaryHealthPercent;
             baseThreat *= healthPct;
 
-            // Modify by equipment
+            // Modify by equipment (weapons)
             if (pawn.equipment?.Primary != null)
             {
                 var weapon = pawn.equipment.Primary;
@@ -611,7 +1029,73 @@ namespace Arsenal
                 }
             }
 
+            // Modify by armor - more armor = need more DARTs to kill
+            float armorFactor = CalculateArmorFactor(pawn);
+            baseThreat *= armorFactor;
+
+            // Check for shield belt - need to overwhelm the shield
+            if (HasShieldBelt(pawn))
+            {
+                baseThreat *= 2.0f; // Double the DARTs needed for shielded targets
+            }
+
             return baseThreat;
+        }
+
+        /// <summary>
+        /// Calculates armor factor based on pawn's equipped armor.
+        /// Returns multiplier: 1.0 (no armor) to ~2.0 (heavy armor)
+        /// </summary>
+        private float CalculateArmorFactor(Pawn pawn)
+        {
+            if (pawn.apparel == null || pawn.apparel.WornApparelCount == 0)
+                return 1.0f;
+
+            float totalArmorSharp = 0f;
+            float totalArmorBlunt = 0f;
+            int armorPieces = 0;
+
+            foreach (Apparel apparel in pawn.apparel.WornApparel)
+            {
+                float sharp = apparel.GetStatValue(StatDefOf.ArmorRating_Sharp);
+                float blunt = apparel.GetStatValue(StatDefOf.ArmorRating_Blunt);
+
+                if (sharp > 0 || blunt > 0)
+                {
+                    totalArmorSharp += sharp;
+                    totalArmorBlunt += blunt;
+                    armorPieces++;
+                }
+            }
+
+            if (armorPieces == 0)
+                return 1.0f;
+
+            // Average armor rating (sharp matters more for DART explosives)
+            float avgArmor = (totalArmorSharp * 0.7f + totalArmorBlunt * 0.3f) / armorPieces;
+
+            // Convert to multiplier: 0% armor = 1.0x, 100% armor = 2.0x
+            // Heavily armored targets get more DARTs assigned
+            return 1.0f + Mathf.Clamp(avgArmor, 0f, 1f);
+        }
+
+        /// <summary>
+        /// Checks if pawn has an active shield belt equipped.
+        /// </summary>
+        private bool HasShieldBelt(Pawn pawn)
+        {
+            if (pawn.apparel == null)
+                return false;
+
+            foreach (Apparel apparel in pawn.apparel.WornApparel)
+            {
+                // Check for shield belt comp (vanilla and most mods)
+                var shieldComp = apparel.TryGetComp<CompShield>();
+                if (shieldComp != null)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -629,17 +1113,12 @@ namespace Arsenal
         /// <summary>
         /// Assigns DARTs from QUIVERs to a threat.
         /// Pulls from nearest QUIVER first.
-        /// Rate-limited to prevent launching all DARTs at once.
+        /// Returns true if a DART was launched, false otherwise.
         /// </summary>
-        public void AssignDarts(Pawn target, int count)
+        public bool AssignDarts(Pawn target, int count)
         {
             if (count <= 0 || target == null)
-                return;
-
-            // Check launch cooldown - only launch one DART per cooldown period
-            int currentTick = Find.TickManager.TicksGame;
-            if (currentTick - lastLaunchTick < LAUNCH_DELAY_TICKS)
-                return; // Still on cooldown, will try again next scan
+                return false;
 
             // Sort QUIVERs by distance to target
             var sortedQuivers = registeredQuivers
@@ -647,7 +1126,7 @@ namespace Arsenal
                 .OrderBy(q => q.Position.DistanceTo(target.Position))
                 .ToList();
 
-            // Only launch ONE dart per call (rate limiting)
+            // Launch one DART for this target
             foreach (var quiver in sortedQuivers)
             {
                 if (quiver.DartCount > 0)
@@ -662,14 +1141,11 @@ namespace Arsenal
                         }
                         assignedDartsPerTarget[target]++;
 
-                        // Update launch cooldown
-                        lastLaunchTick = currentTick;
-
-                        // Only launch one DART per call - system will call again next scan
-                        return;
+                        return true;
                     }
                 }
             }
+            return false;
         }
 
         /// <summary>
@@ -705,13 +1181,85 @@ namespace Arsenal
 
         /// <summary>
         /// Called when a DART requests reassignment (target died mid-flight).
+        /// Attempts immediate reassignment before queuing.
         /// </summary>
-        public void RequestReassignment(DART_Flyer dart)
+        public void RequestReassignment(DART_Flyer dart, Pawn oldTarget = null)
         {
-            if (dart != null && !awaitingReassignment.Contains(dart))
+            if (dart == null || dart.Destroyed || !dart.Spawned)
+                return;
+
+            // Decrement assignment count from old target
+            if (oldTarget != null && assignedDartsPerTarget.ContainsKey(oldTarget))
+            {
+                assignedDartsPerTarget[oldTarget]--;
+                if (assignedDartsPerTarget[oldTarget] <= 0)
+                {
+                    assignedDartsPerTarget.Remove(oldTarget);
+                }
+            }
+
+            // Try immediate reassignment first
+            List<Pawn> threats = GetAllValidThreats();
+            Pawn newTarget = FindBestTargetForReassignment(dart, threats);
+
+            if (newTarget != null)
+            {
+                // Immediate reassignment - no queue needed
+                dart.AssignNewTarget(newTarget);
+
+                // Track the assignment
+                if (!assignedDartsPerTarget.ContainsKey(newTarget))
+                {
+                    assignedDartsPerTarget[newTarget] = 0;
+                }
+                assignedDartsPerTarget[newTarget]++;
+                return;
+            }
+
+            // No immediate target available - queue for later
+            if (!awaitingReassignment.Contains(dart))
             {
                 awaitingReassignment.Add(dart);
             }
+        }
+
+        /// <summary>
+        /// Gets all valid threats including ARGUS and HAWKEYE-detected targets.
+        /// </summary>
+        private List<Pawn> GetAllValidThreats()
+        {
+            List<Pawn> threats = GetAggregatedThreats();
+
+            // Include HAWKEYE priority target
+            Pawn hawkeyeTarget = CompHawkeyeSensor.GlobalPriorityTarget;
+            if (hawkeyeTarget != null && !hawkeyeTarget.Dead && hawkeyeTarget.Spawned &&
+                hawkeyeTarget.Map == Map && !threats.Contains(hawkeyeTarget))
+            {
+                threats.Add(hawkeyeTarget);
+            }
+
+            // Include HAWKEYE-detected threats via SKYLINK
+            if (ArsenalNetworkManager.IsLatticeConnectedToSkylink())
+            {
+                foreach (var pawn in ArsenalNetworkManager.GetAllHawkeyePawns())
+                {
+                    if (pawn?.Map != Map) continue;
+                    var hawkeye = pawn.apparel?.WornApparel?.FirstOrDefault(a => a is Apparel_HawkEye) as Apparel_HawkEye;
+                    var comp = hawkeye?.SensorComp;
+                    if (comp != null && comp.IsOperational)
+                    {
+                        foreach (var threat in comp.GetDetectedThreats())
+                        {
+                            if (!threats.Contains(threat))
+                            {
+                                threats.Add(threat);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return threats;
         }
 
         /// <summary>
@@ -722,7 +1270,7 @@ namespace Arsenal
             if (awaitingReassignment.Count == 0)
                 return;
 
-            List<Pawn> threats = GetHostileThreats();
+            List<Pawn> threats = GetAllValidThreats();
 
             for (int i = awaitingReassignment.Count - 1; i >= 0; i--)
             {
@@ -872,6 +1420,22 @@ namespace Arsenal
                     sb.AppendLine($"Active threats (via ARGUS): {GetAggregatedThreats().Count}");
                     sb.AppendLine($"DARTs in flight: {assignedDartsPerTarget.Values.Sum()}");
                     sb.AppendLine($"DARTs awaiting reassignment: {awaitingReassignment.Count}");
+                    sb.AppendLine();
+
+                    // MULE system status
+                    var stablesOnMap = ArsenalNetworkManager.GetStablesOnMap(Map);
+                    var moriasOnMap = ArsenalNetworkManager.GetMoriasOnMap(Map);
+                    sb.AppendLine($"MULE System:");
+                    sb.AppendLine($"  STABLEs: {stablesOnMap.Count}");
+                    sb.AppendLine($"  MORIAs: {moriasOnMap.Count}");
+                    if (stablesOnMap.Count > 0)
+                    {
+                        int totalMules = stablesOnMap.Sum(s => s.DockedMuleCount);
+                        int availableMules = stablesOnMap.Sum(s => s.AvailableMuleCount);
+                        sb.AppendLine($"  MULEs: {availableMules}/{totalMules} ready");
+                        sb.AppendLine($"  Active MULEs: {ActiveMuleCount}");
+                        sb.AppendLine($"  Pending tasks: {PendingMuleTaskCount}");
+                    }
 
                     Messages.Message(sb.ToString(), MessageTypeDefOf.NeutralEvent, false);
                 }
@@ -940,6 +1504,24 @@ namespace Arsenal
             if (inFlightCount > 0)
             {
                 text += $"\nDARTs in flight: {inFlightCount}";
+            }
+
+            // MULE system status
+            var stablesOnMap = ArsenalNetworkManager.GetStablesOnMap(Map);
+            if (stablesOnMap.Count > 0)
+            {
+                int totalMules = stablesOnMap.Sum(s => s.DockedMuleCount);
+                int availableMules = stablesOnMap.Sum(s => s.AvailableMuleCount);
+                text += $"\nSTABLEs: {stablesOnMap.Count} | MULEs: {availableMules}/{totalMules} ready";
+
+                if (PendingMuleTaskCount > 0)
+                {
+                    text += $"\nPending MULE tasks: {PendingMuleTaskCount}";
+                }
+                if (ActiveMuleCount > 0)
+                {
+                    text += $"\nActive MULEs: {ActiveMuleCount}";
+                }
             }
 
             return text;

@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- Custom life stage for MULE drones (no growth, always adult) -->
+  <LifeStageDef>
+    <defName>Arsenal_MULE_LifeStage</defName>
+    <label>active</label>
+    <developmentalStage>Adult</developmentalStage>
+    <bodySizeFactor>1.0</bodySizeFactor>
+    <healthScaleFactor>1.0</healthScaleFactor>
+    <hungerRateFactor>0</hungerRateFactor>
+    <marketValueFactor>1.0</marketValueFactor>
+    <visible>false</visible>
+    <reproductive>false</reproductive>
+    <milkable>false</milkable>
+    <shearable>false</shearable>
+    <caravanRideable>false</caravanRideable>
+  </LifeStageDef>
+
+  <!-- ==================== MULE Race Definition (Pawn) ==================== -->
+  <!-- Uses AnimalThingBase instead of BaseMechanoid to avoid Biotech overseer requirements -->
+  <ThingDef ParentName="AnimalThingBase">
+    <defName>Arsenal_MULE_Race</defName>
+    <label>MULE drone</label>
+    <description>MULE (Mobile Utility Logistics Engine) - An autonomous ground drone for mining and hauling tasks. Features battery-powered operation with automatic return-to-base for recharging. Coordinated by the LATTICE C2 system and stored in STABLE bays when idle.</description>
+    <thingClass>Arsenal.MULE_Pawn</thingClass>
+    <statBases>
+      <MaxHitPoints>150</MaxHitPoints>
+      <MoveSpeed>3.5</MoveSpeed>
+      <ArmorRating_Blunt>0.20</ArmorRating_Blunt>
+      <ArmorRating_Sharp>0.40</ArmorRating_Sharp>
+      <MeatAmount>0</MeatAmount>
+      <LeatherAmount>0</LeatherAmount>
+      <CarryingCapacity>75</CarryingCapacity>
+      <MiningSpeed>2.5</MiningSpeed>
+      <MiningYield>1.0</MiningYield>
+      <ComfyTemperatureMin>-100</ComfyTemperatureMin>
+      <ComfyTemperatureMax>250</ComfyTemperatureMax>
+    </statBases>
+    <race>
+      <thinkTreeMain>Arsenal_MULE_ThinkTree</thinkTreeMain>
+      <intelligence>Animal</intelligence>
+      <fleshType>Mechanoid</fleshType>
+      <bloodDef>Filth_MachineBits</bloodDef>
+      <needsRest>false</needsRest>
+      <hasGenders>false</hasGenders>
+      <foodType>None</foodType>
+      <lifeExpectancy>9999</lifeExpectancy>
+      <body>MULE_Body</body>
+      <baseBodySize>0.5</baseBodySize>
+      <baseHealthScale>1.0</baseHealthScale>
+      <makesFootprints>false</makesFootprints>
+      <trainability>None</trainability>
+      <nameOnTameChance>0</nameOnTameChance>
+      <petness>0</petness>
+      <nuzzleMtbHours>-1</nuzzleMtbHours>
+      <packAnimal>false</packAnimal>
+      <herdAnimal>false</herdAnimal>
+      <predator>false</predator>
+      <wildness>0</wildness>
+      <lifeStageAges>
+        <li>
+          <def>Arsenal_MULE_LifeStage</def>
+          <minAge>0</minAge>
+        </li>
+      </lifeStageAges>
+      <soundMeleeHitPawn>Pawn_Melee_MechanoidBash_HitPawn</soundMeleeHitPawn>
+      <soundMeleeHitBuilding>Pawn_Melee_MechanoidBash_HitBuilding</soundMeleeHitBuilding>
+      <soundMeleeMiss>Pawn_Melee_MechanoidBash_Miss</soundMeleeMiss>
+    </race>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_MULE</texPath>
+      <graphicClass>Graphic_Multi</graphicClass>
+      <drawSize>(1,1)</drawSize>
+      <shaderType>CutoutComplex</shaderType>
+    </graphicData>
+    <tools>
+      <li>
+        <label>mining drill</label>
+        <capacities>
+          <li>Blunt</li>
+        </capacities>
+        <power>8</power>
+        <cooldownTime>2</cooldownTime>
+      </li>
+    </tools>
+    <butcherProducts>
+      <Steel>30</Steel>
+      <Plasteel>10</Plasteel>
+      <ComponentIndustrial>2</ComponentIndustrial>
+    </butcherProducts>
+    <comps>
+      <li Class="Arsenal.CompProperties_MuleBattery">
+        <maxCharge>100</maxCharge>
+        <drainPerTick>0.005</drainPerTick>
+        <chargePerTick>0.05</chargePerTick>
+      </li>
+    </comps>
+  </ThingDef>
+
+  <!-- ==================== MULE PawnKindDef ==================== -->
+  <PawnKindDef>
+    <defName>Arsenal_MULE_Kind</defName>
+    <label>MULE drone</label>
+    <race>Arsenal_MULE_Race</race>
+    <combatPower>30</combatPower>
+    <defaultFactionType>PlayerColony</defaultFactionType>
+    <isFighter>false</isFighter>
+    <lifeStages>
+      <li>
+        <bodyGraphicData>
+          <texPath>Arsenal/Arsenal_MULE</texPath>
+          <graphicClass>Graphic_Multi</graphicClass>
+          <drawSize>(1,1)</drawSize>
+          <shaderType>CutoutComplex</shaderType>
+        </bodyGraphicData>
+      </li>
+    </lifeStages>
+  </PawnKindDef>
+
+  <!-- ==================== MULE Body Definition ==================== -->
+  <BodyDef>
+    <defName>MULE_Body</defName>
+    <label>MULE chassis</label>
+    <corePart>
+      <def>MechanicalThorax</def>
+      <parts>
+        <!-- Cargo manipulator arms for carrying items -->
+        <li>
+          <def>MechanicalArm</def>
+          <customLabel>left cargo arm</customLabel>
+        </li>
+        <li>
+          <def>MechanicalArm</def>
+          <customLabel>right cargo arm</customLabel>
+        </li>
+        <!-- Wheels for movement -->
+        <li>
+          <def>MechanicalLeg</def>
+          <customLabel>front left wheel</customLabel>
+        </li>
+        <li>
+          <def>MechanicalLeg</def>
+          <customLabel>front right wheel</customLabel>
+        </li>
+        <li>
+          <def>MechanicalLeg</def>
+          <customLabel>rear left wheel</customLabel>
+        </li>
+        <li>
+          <def>MechanicalLeg</def>
+          <customLabel>rear right wheel</customLabel>
+        </li>
+      </parts>
+    </corePart>
+  </BodyDef>
+
+  <!-- ==================== MULE Think Tree ==================== -->
+  <ThinkTreeDef>
+    <defName>Arsenal_MULE_ThinkTree</defName>
+    <thinkRoot Class="ThinkNode_Priority">
+      <subNodes>
+        <!-- Do queued jobs -->
+        <li Class="ThinkNode_QueuedJob" />
+        <!-- Wait (idle) - MULE's actual behavior is controlled by C# code -->
+        <li Class="JobGiver_Idle" />
+      </subNodes>
+    </thinkRoot>
+  </ThinkTreeDef>
+
+  <!-- ==================== MULE Item (storable, for manufacturing/hauling) ==================== -->
+  <ThingDef ParentName="ResourceBase">
+    <defName>Arsenal_MULE_Item</defName>
+    <label>MULE drone (packaged)</label>
+    <description>A packaged MULE utility drone ready for deployment. Can be loaded into STABLEs where it will become active and available for mining and hauling tasks.</description>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_MULE</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(1.2,1.2)</drawSize>
+    </graphicData>
+    <soundInteract>Metal_Drop</soundInteract>
+    <soundDrop>Metal_Drop</soundDrop>
+    <stackLimit>5</stackLimit>
+    <statBases>
+      <MaxHitPoints>100</MaxHitPoints>
+      <Mass>25</Mass>
+      <MarketValue>1200</MarketValue>
+      <Flammability>0.3</Flammability>
+    </statBases>
+    <thingCategories>
+      <li>Arsenal_UtilityDrones</li>
+    </thingCategories>
+    <tradeTags>
+      <li>ExoticMisc</li>
+    </tradeTags>
+  </ThingDef>
+
+  <!-- Thing Category for Utility Drones -->
+  <ThingCategoryDef>
+    <defName>Arsenal_UtilityDrones</defName>
+    <label>utility drones</label>
+    <parent>Manufactured</parent>
+    <iconPath>Arsenal/Arsenal_MULE</iconPath>
+  </ThingCategoryDef>
+
+</Defs>
