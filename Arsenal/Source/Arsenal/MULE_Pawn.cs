@@ -88,6 +88,9 @@ namespace Arsenal
         {
             base.Tick();
 
+            // Safety check - don't process if not spawned
+            if (!Spawned || Map == null) return;
+
             // Battery drain while active
             if (state != MuleState.Charging && state != MuleState.Idle)
             {
@@ -351,7 +354,7 @@ namespace Arsenal
 
         public void GoToStable()
         {
-            if (homeStable == null) return;
+            if (homeStable == null || jobs == null) return;
 
             Job job = JobMaker.MakeJob(JobDefOf.Goto, homeStable.InteractionCell);
             jobs.StartJob(job, JobCondition.InterruptForced);
@@ -361,7 +364,10 @@ namespace Arsenal
         {
             state = MuleState.ReturningHome;
             currentTask = null;
-            GoToStable();
+            if (Spawned && jobs != null)
+            {
+                GoToStable();
+            }
         }
 
         public void DockAtStable()
@@ -395,10 +401,12 @@ namespace Arsenal
             state = MuleState.DeliveringToStable;
 
             // Use job system to go to the stable
-            Job goToStableJob = JobMaker.MakeJob(JobDefOf.Goto, targetStable.InteractionCell);
-            jobs.StartJob(goToStableJob, JobCondition.InterruptForced);
-
-            Log.Message($"[MULE] {Label}: Initialized for delivery to {targetStable.Label}");
+            if (Spawned && jobs != null && targetStable != null)
+            {
+                Job goToStableJob = JobMaker.MakeJob(JobDefOf.Goto, targetStable.InteractionCell);
+                jobs.StartJob(goToStableJob, JobCondition.InterruptForced);
+                Log.Message($"[MULE] {Label}: Initialized for delivery to {targetStable.Label}");
+            }
         }
 
         #endregion

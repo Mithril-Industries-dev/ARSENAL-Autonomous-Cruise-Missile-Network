@@ -123,18 +123,6 @@
     <defName>Arsenal_MULE_ThinkTree</defName>
     <thinkRoot Class="ThinkNode_Priority">
       <subNodes>
-        <!-- Flee if critically damaged -->
-        <li Class="ThinkNode_ConditionalHealthPercentageBelow">
-          <subNodes>
-            <li Class="ThinkNode_Tagger">
-              <tagToGive>Flee</tagToGive>
-              <subNodes>
-                <li Class="JobGiver_ExitMapPanic" />
-              </subNodes>
-            </li>
-          </subNodes>
-          <healthPct>0.15</healthPct>
-        </li>
         <!-- Do queued jobs -->
         <li Class="ThinkNode_QueuedJob" />
         <!-- Wait (idle) - MULE's actual behavior is controlled by C# code -->
