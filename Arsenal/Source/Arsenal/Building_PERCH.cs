@@ -411,27 +411,29 @@ namespace Arsenal
                 refuelableComp.ConsumeFuel(fuelCost);
             }
 
-            // Despawn SLING and launch
+            // Create launching skyfaller for takeoff animation
+            var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                ArsenalDefOf.Arsenal_SlingLaunching);
+            launchingSkyfaller.sling = slingOnPad;
+            launchingSkyfaller.cargo = actualCargo;
+            launchingSkyfaller.originPerch = this;
+            launchingSkyfaller.destinationPerch = loadDestination;
+            launchingSkyfaller.destinationTile = loadDestination.Map.Tile;
+
+            // Despawn SLING from pad
             if (slingOnPad.Spawned)
             {
                 slingOnPad.DeSpawn(DestroyMode.Vanish);
             }
 
-            // Create traveling world object
-            var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_TravelingSling);
-            traveling.Tile = Map.Tile;
-            traveling.destinationTile = loadDestination.Map.Tile;
-            traveling.sling = slingOnPad;
-            traveling.cargo = actualCargo;
-            traveling.originPerch = this;
-            traveling.destinationPerch = loadDestination;
-            Find.WorldObjects.Add(traveling);
+            // Spawn the launching skyfaller at PERCH position
+            GenSpawn.Spawn(launchingSkyfaller, Position, Map);
 
             slingOnPad = null;
             loadDestination = null;
             loadingCargo.Clear();
 
-            Messages.Message($"{Label}: SLING dispatched", this, MessageTypeDefOf.PositiveEvent);
+            Messages.Message($"{Label}: SLING launching", this, MessageTypeDefOf.PositiveEvent);
         }
 
         private int ConsumeResource(ThingDef resource, int amount)

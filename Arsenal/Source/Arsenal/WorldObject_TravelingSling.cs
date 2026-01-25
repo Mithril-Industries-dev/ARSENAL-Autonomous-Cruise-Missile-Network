@@ -23,6 +23,7 @@ namespace Arsenal
         public Building_PERCH destinationPerch;
 
         private int nextWaypointTile = -1;
+        private int previousTile = -1;
         private float traveledPct = 0f;
         private int recalculateCounter = 0;
         private const int RECALCULATE_INTERVAL = 60;
@@ -39,6 +40,7 @@ namespace Arsenal
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
             Scribe_Values.Look(ref nextWaypointTile, "nextWaypointTile", -1);
+            Scribe_Values.Look(ref previousTile, "previousTile", -1);
             Scribe_Values.Look(ref traveledPct, "traveledPct", 0f);
             Scribe_Values.Look(ref currentFuel, "currentFuel", FUEL_CAPACITY);
             Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
@@ -51,7 +53,55 @@ namespace Arsenal
 
         public void CalculateRoute()
         {
+            // Initialize previousTile when starting travel
+            if (previousTile < 0)
+            {
+                previousTile = Tile;
+            }
             RecalculateNextWaypoint();
+        }
+
+        /// <summary>
+        /// Override DrawPos to smoothly interpolate position between tiles
+        /// </summary>
+        public override Vector3 DrawPos
+        {
+            get
+            {
+                Vector3 currentPos = Find.WorldGrid.GetTileCenter(Tile);
+
+                // If no valid waypoint or no travel progress, just use current position
+                if (nextWaypointTile < 0 || traveledPct <= 0f)
+                {
+                    return currentPos;
+                }
+
+                // Find the next neighbor we'd move to (same logic as Tick)
+                int targetNeighbor = Tile;
+                int closestDist = Find.WorldGrid.TraversalDistanceBetween(Tile, nextWaypointTile);
+
+                List<int> neighbors = new List<int>();
+                Find.WorldGrid.GetTileNeighbors(Tile, neighbors);
+
+                foreach (int neighbor in neighbors)
+                {
+                    int d = Find.WorldGrid.TraversalDistanceBetween(neighbor, nextWaypointTile);
+                    if (d < closestDist)
+                    {
+                        closestDist = d;
+                        targetNeighbor = neighbor;
+                    }
+                }
+
+                if (targetNeighbor == Tile)
+                {
+                    return currentPos;
+                }
+
+                // Interpolate from current tile toward the neighbor we'll move to
+                Vector3 targetPos = Find.WorldGrid.GetTileCenter(targetNeighbor);
+                return Vector3.Lerp(currentPos, targetPos, traveledPct);
+            }
         }
 
         private void RecalculateNextWaypoint()
@@ -121,6 +171,7 @@ namespace Arsenal
                 int legDistance = Find.WorldGrid.TraversalDistanceBetween(Tile, nextWaypointTile);
                 currentFuel -= legDistance;
 
+                previousTile = Tile;
                 Tile = nextWaypointTile;
 
                 // Check if we've reached final destination
@@ -176,6 +227,7 @@ namespace Arsenal
 
                     // Consume fuel for movement
                     currentFuel -= 1f;
+                    previousTile = Tile;
                     Tile = closest;
 
                     // Check if out of fuel

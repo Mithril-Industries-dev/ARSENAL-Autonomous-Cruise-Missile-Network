@@ -65,29 +65,37 @@ The total number of SLINGs in the network cannot exceed the number of PERCHes.</
     </researchPrerequisites>
   </ThingDef>
 
-  <!-- SLING Autonomous Cargo Craft (as item when not in flight) -->
-  <ThingDef ParentName="ResourceBase">
+  <!-- SLING Autonomous Cargo Craft (when docked at PERCH) -->
+  <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_SLING</defName>
     <label>SLING cargo craft</label>
     <description>An autonomous cargo craft designed for point-to-point logistics. SLINGs transport resources between PERCH pads, following routes calculated by LATTICE. Each SLING can carry up to 750 units of mixed cargo.
 
 SLINGs are manufactured at ARSENAL facilities and automatically join the logistics pool. The fleet is limited by the number of available PERCHes.</description>
+    <thingClass>Building</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_SLING</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(2,2)</drawSize>
+      <drawSize>(7,5)</drawSize>
     </graphicData>
-    <altitudeLayer>Item</altitudeLayer>
-    <stackLimit>1</stackLimit>
+    <altitudeLayer>BuildingOnTop</altitudeLayer>
+    <size>(7,5)</size>
+    <passability>PassThroughOnly</passability>
+    <pathCost>50</pathCost>
+    <blockWind>false</blockWind>
+    <fillPercent>0.5</fillPercent>
+    <tickerType>Never</tickerType>
     <statBases>
-      <MaxHitPoints>200</MaxHitPoints>
-      <Mass>50</Mass>
+      <MaxHitPoints>300</MaxHitPoints>
+      <Mass>500</Mass>
       <MarketValue>2500</MarketValue>
       <Flammability>0.3</Flammability>
     </statBases>
-    <thingCategories>
-      <li>Manufactured</li>
-    </thingCategories>
+    <building>
+      <isEdifice>false</isEdifice>
+    </building>
+    <drawerType>MapMeshAndRealTime</drawerType>
+    <canOverlapZones>true</canOverlapZones>
   </ThingDef>
 
 </Defs>

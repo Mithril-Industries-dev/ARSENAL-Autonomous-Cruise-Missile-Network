@@ -72,15 +72,16 @@
     <graphicData>
       <texPath>Arsenal/Arsenal_SLING</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(4,4)</drawSize>
+      <drawSize>(7,5)</drawSize>
     </graphicData>
     <skyfaller>
       <movementType>Decelerate</movementType>
-      <ticksToImpactRange>150~150</ticksToImpactRange>
+      <ticksToImpactRange>180~180</ticksToImpactRange>
       <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
-      <shadowSize>(2.5, 2.5)</shadowSize>
+      <shadowSize>(5, 3.5)</shadowSize>
       <impactSound>DropPod_Land</impactSound>
     </skyfaller>
+    <size>(7,5)</size>
     <drawerType>RealtimeOnly</drawerType>
     <rotatable>false</rotatable>
   </ThingDef>
@@ -93,15 +94,16 @@
     <graphicData>
       <texPath>Arsenal/Arsenal_SLING</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(4,4)</drawSize>
+      <drawSize>(7,5)</drawSize>
     </graphicData>
     <skyfaller>
       <movementType>Decelerate</movementType>
       <reversed>true</reversed>
-      <ticksToImpactRange>150~150</ticksToImpactRange>
+      <ticksToImpactRange>180~180</ticksToImpactRange>
       <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
-      <shadowSize>(2.5, 2.5)</shadowSize>
+      <shadowSize>(5, 3.5)</shadowSize>
     </skyfaller>
+    <size>(7,5)</size>
     <drawerType>RealtimeOnly</drawerType>
     <rotatable>false</rotatable>
   </ThingDef>

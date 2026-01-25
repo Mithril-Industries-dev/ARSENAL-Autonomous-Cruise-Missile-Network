@@ -258,23 +258,67 @@ namespace Arsenal
 
     /// <summary>
     /// Skyfaller for SLING launching from a PERCH.
+    /// Creates the traveling world object when leaving the map.
     /// </summary>
     public class SlingLaunchingSkyfaller : Skyfaller
     {
-        public WorldObject_TravelingSling travelingSling;
+        public Thing sling;
+        public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
+        public Building_PERCH originPerch;
+        public Building_PERCH destinationPerch;
+        public int destinationTile = -1;
 
         public override void ExposeData()
         {
             base.ExposeData();
-            Scribe_References.Look(ref travelingSling, "travelingSling");
+            Scribe_Deep.Look(ref sling, "sling");
+            Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
+            Scribe_References.Look(ref originPerch, "originPerch");
+            Scribe_References.Look(ref destinationPerch, "destinationPerch");
+            Scribe_Values.Look(ref destinationTile, "destinationTile", -1);
+
+            if (Scribe.mode == LoadSaveMode.PostLoadInit)
+            {
+                if (cargo == null) cargo = new Dictionary<ThingDef, int>();
+            }
+        }
+
+        public override void Tick()
+        {
+            base.Tick();
+
+            // Visual effects during takeoff
+            if (Map != null && this.IsHashIntervalTick(15))
+            {
+                FleckMaker.ThrowSmoke(DrawPos, Map, 1.5f);
+                FleckMaker.ThrowFireGlow(DrawPos, Map, 0.5f);
+            }
         }
 
         protected override void LeaveMap()
         {
-            if (travelingSling != null)
+            // Create the traveling world object
+            if (destinationPerch != null && destinationTile >= 0)
             {
-                Find.WorldObjects.Add(travelingSling);
+                var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(
+                    ArsenalDefOf.Arsenal_TravelingSling);
+                traveling.Tile = Map.Tile;
+                traveling.destinationTile = destinationTile;
+                traveling.sling = sling;
+                traveling.cargo = cargo ?? new Dictionary<ThingDef, int>();
+                traveling.originPerch = originPerch;
+                traveling.destinationPerch = destinationPerch;
+                traveling.CalculateRoute();
+                Find.WorldObjects.Add(traveling);
             }
+            else if (sling != null)
+            {
+                // Fallback: drop SLING if no valid destination
+                GenSpawn.Spawn(sling, Position, Map);
+                Messages.Message("SLING launch aborted - no valid destination",
+                    new TargetInfo(Position, Map), MessageTypeDefOf.NegativeEvent);
+            }
+
             base.LeaveMap();
         }
     }
