@@ -229,12 +229,17 @@ namespace Arsenal
 
                 case MuleTaskType.Haul:
                 case MuleTaskType.MoriaFeed:
-                    // Check if thing still exists and needs hauling
+                    // Check if thing still exists
                     if (currentTask.targetThing == null) return false;
-                    if (currentTask.targetThing.Destroyed || !currentTask.targetThing.Spawned) return false;
-                    // If we're carrying it, task is still valid
+                    if (currentTask.targetThing.Destroyed) return false;
+
+                    // If we're carrying it, task is still valid (hauling to destination)
                     if (carryTracker?.CarriedThing == currentTask.targetThing) return true;
-                    // Otherwise check if it's still haulable
+
+                    // If item is not spawned and we're not carrying it, something went wrong
+                    if (!currentTask.targetThing.Spawned) return false;
+
+                    // Check if it's still haulable (not forbidden)
                     return !currentTask.targetThing.IsForbidden(Faction.OfPlayer);
 
                 default:
