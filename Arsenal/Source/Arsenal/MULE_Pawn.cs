@@ -311,9 +311,22 @@ namespace Arsenal
         public void OnTaskCompleted()
         {
             currentTask = null;
+            state = MuleState.Idle;
 
-            // Always return to STABLE after completing a task
-            // The STABLE will decide whether to deploy us again
+            // Check if we need to return for charging
+            if (BatteryComp != null && BatteryComp.NeedsRecharge)
+            {
+                ReturnToStable();
+                return;
+            }
+
+            // Try to find another task nearby before returning to STABLE
+            if (TryFindAndStartTask())
+            {
+                return; // Found and started a new task
+            }
+
+            // No tasks available - return to STABLE
             ReturnToStable();
         }
 
@@ -321,7 +334,12 @@ namespace Arsenal
         {
             if (state != MuleState.Idle) return false;
             if (BatteryComp == null) return false;
-            if (!BatteryComp.IsFull) return false; // Only deploy fully charged MULEs
+
+            // Docked MULEs must be fully charged before deployment
+            if (!Spawned && !BatteryComp.IsFull) return false;
+
+            // Spawned MULEs just need enough battery for the task + return trip
+            if (BatteryComp.NeedsRecharge) return false;
 
             // For docked MULEs, use stable position; for spawned, use current position
             IntVec3 startPos = Spawned ? Position : (homeStable?.Position ?? IntVec3.Zero);
@@ -336,10 +354,9 @@ namespace Arsenal
             return BatteryComp.CurrentCharge >= estimatedCost + (BatteryComp.MaxCharge * 0.10f);
         }
 
-        private void TryFindAndStartTask()
+        private bool TryFindAndStartTask()
         {
-            if (Map == null || homeStable == null) return;
-            if (!homeStable.HasNetworkConnection()) return;
+            if (Map == null) return false;
 
             // Try local LATTICE first
             Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
@@ -349,16 +366,19 @@ namespace Arsenal
                 if (task != null)
                 {
                     AssignTask(task);
-                    return;
+                    return true;
                 }
             }
 
-            // Scan for local tasks on remote tiles
+            // Scan for local tasks (mining, hauling)
             MuleTask localTask = ScanForLocalTask();
             if (localTask != null)
             {
                 AssignTask(localTask);
+                return true;
             }
+
+            return false;
         }
 
         private MuleTask ScanForLocalTask()
