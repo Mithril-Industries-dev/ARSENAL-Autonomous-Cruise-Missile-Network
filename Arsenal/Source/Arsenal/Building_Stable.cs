@@ -177,7 +177,8 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Scans for local tasks on tiles without LATTICE (remote outposts).
+        /// Scans for local tasks on tiles without LATTICE (remote outposts/asteroids).
+        /// This is the fallback when the connected LATTICE has no pending tasks for this map.
         /// </summary>
         private MuleTask ScanForLocalTask(MULE_Pawn mule)
         {
@@ -186,18 +187,22 @@ namespace Arsenal
             // Check if there's a LATTICE on this map - if so, let it handle tasks
             if (ArsenalNetworkManager.GetLatticeOnMap(Map) != null) return null;
 
-            // Mining tasks
-            var miningDes = Map.designationManager.AllDesignations
-                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
-                .FirstOrDefault();
-
-            if (miningDes != null)
+            // Mining tasks - iterate all mining designations, not just first
+            foreach (var miningDes in Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing))
             {
                 IntVec3 cell = miningDes.target.Cell;
                 Building mineable = cell.GetFirstMineable(Map);
-                if (mineable != null)
+                if (mineable == null) continue;
+
+                // Skip if reserved by another pawn
+                if (Map.reservationManager.IsReservedByAnyoneOf(mineable, Faction.OfPlayer)) continue;
+
+                // Create task and check if MULE can accept it
+                MuleTask task = MuleTask.CreateMiningTask(cell, miningDes);
+                if (mule.CanAcceptTask(task))
                 {
-                    return MuleTask.CreateMiningTask(cell, miningDes);
+                    return task;
                 }
             }
 
@@ -207,6 +212,9 @@ namespace Arsenal
             {
                 if (item == null || item.Destroyed || !item.Spawned) continue;
                 if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                // Skip if reserved by another pawn
+                if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
 
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)
@@ -530,6 +538,56 @@ namespace Arsenal
                             }
                         }
                         Log.Warning($"=== END ===");
+                    }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Diagnose Tasks",
+                    action = delegate
+                    {
+                        Log.Warning($"=== STABLE TASK DIAGNOSIS ({Label}) ===");
+                        Log.Warning($"Map: {Map?.uniqueID}, Tile: {Map?.Tile}");
+                        Log.Warning($"Powered: {IsPoweredOn()}, Network: {HasNetworkConnection()}");
+                        Log.Warning($"Ready MULEs: {AvailableMuleCount}");
+
+                        // Check LATTICE connection
+                        var localLattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
+                        var connectedLattice = ArsenalNetworkManager.GetConnectedLattice(Map);
+                        Log.Warning($"Local LATTICE: {localLattice?.Label ?? "NONE"}");
+                        Log.Warning($"Connected LATTICE: {connectedLattice?.Label ?? "NONE"}");
+
+                        if (connectedLattice != null)
+                        {
+                            Log.Warning($"LATTICE pending tasks: {connectedLattice.PendingMuleTaskCount}");
+                        }
+
+                        // Check mining designations
+                        int miningCount = Map.designationManager.AllDesignations
+                            .Count(d => d.def == DesignationDefOf.Mine && !d.target.HasThing);
+                        Log.Warning($"Mining designations on this map: {miningCount}");
+
+                        // Check haulables
+                        var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+                        Log.Warning($"Haulable items on this map: {haulables.Count}");
+
+                        // Check stockpile zones
+                        var zones = Map.zoneManager.AllZones.Where(z => z is Zone_Stockpile).Count();
+                        Log.Warning($"Stockpile zones: {zones}");
+
+                        // Try local scan
+                        var readyMule = dockedMules.FirstOrDefault(m => m.state == MuleState.Idle && m.IsBatteryFull);
+                        if (readyMule != null)
+                        {
+                            var localTask = ScanForLocalTask(readyMule);
+                            Log.Warning($"Local scan result: {localTask?.taskType.ToString() ?? "NULL"}");
+                        }
+                        else
+                        {
+                            Log.Warning("No ready MULE available for local scan test");
+                        }
+
+                        Log.Warning($"=== END DIAGNOSIS ===");
                     }
                 };
             }
