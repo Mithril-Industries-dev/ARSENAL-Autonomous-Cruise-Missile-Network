@@ -19,6 +19,8 @@ namespace Arsenal
         // State tracking
         public MuleState state = MuleState.Idle;
         private MuleTask currentTask;
+        private int idleTicks = 0;
+        private const int MAX_IDLE_TICKS = 300; // 5 seconds of idle = go home
 
         // Naming
         private string customName;
@@ -78,6 +80,7 @@ namespace Arsenal
             Scribe_Deep.Look(ref currentTask, "currentTask");
             Scribe_References.Look(ref homeStable, "homeStable");
             Scribe_Values.Look(ref customName, "customName");
+            Scribe_Values.Look(ref idleTicks, "idleTicks", 0);
         }
 
         #endregion
@@ -183,26 +186,86 @@ namespace Arsenal
 
         private void TickWorking()
         {
-            // Check if we've finished our job
+            // Check if we've finished our task job
+            // The think tree assigns idle/wait jobs when no work is queued,
+            // so we detect task completion by checking for these idle jobs
             if (jobs?.curJob == null)
+            {
+                OnTaskCompleted();
+                return;
+            }
+
+            // Check if think tree has assigned an idle job (meaning our task job completed)
+            JobDef curJobDef = jobs.curJob.def;
+            if (curJobDef == JobDefOf.Wait ||
+                curJobDef == JobDefOf.Wait_MaintainPosture ||
+                curJobDef == JobDefOf.Wait_Wander ||
+                curJobDef == JobDefOf.Wait_Combat ||
+                curJobDef == JobDefOf.GotoWander ||
+                curJobDef == JobDefOf.Goto && jobs.curJob.targetA.Cell == Position) // Goto self = idle
+            {
+                OnTaskCompleted();
+                return;
+            }
+
+            // Validate our task is still valid (target not destroyed, etc.)
+            if (currentTask != null && !IsTaskStillValid())
             {
                 OnTaskCompleted();
             }
         }
 
+        private bool IsTaskStillValid()
+        {
+            if (currentTask == null) return false;
+
+            switch (currentTask.taskType)
+            {
+                case MuleTaskType.Mine:
+                    // Check if mineable still exists
+                    if (!currentTask.targetCell.IsValid) return false;
+                    Building mineable = currentTask.targetCell.GetFirstMineable(Map);
+                    return mineable != null && !mineable.Destroyed;
+
+                case MuleTaskType.Haul:
+                case MuleTaskType.MoriaFeed:
+                    // Check if thing still exists and needs hauling
+                    if (currentTask.targetThing == null) return false;
+                    if (currentTask.targetThing.Destroyed || !currentTask.targetThing.Spawned) return false;
+                    // If we're carrying it, task is still valid
+                    if (carryTracker?.CarriedThing == currentTask.targetThing) return true;
+                    // Otherwise check if it's still haulable
+                    return !currentTask.targetThing.IsForbidden(Faction.OfPlayer);
+
+                default:
+                    return true;
+            }
+        }
+
         private void TickIdle()
         {
-            // Periodically look for tasks on remote tiles (without local LATTICE)
-            if (!this.IsHashIntervalTick(120)) return;
+            idleTicks++;
 
-            if (homeStable == null || !homeStable.HasNetworkConnection()) return;
+            // Check frequently for available work (every 60 ticks = 1 second)
+            if (this.IsHashIntervalTick(60))
+            {
+                // Try to find and start a task
+                if (TryFindAndStartTask())
+                {
+                    idleTicks = 0;
+                    return;
+                }
+            }
 
-            // On home tile with LATTICE, let LATTICE assign tasks
-            Building_Lattice localLattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
-            if (localLattice != null) return;
-
-            // On remote tile - actively scan for tasks
-            TryFindAndStartTask();
+            // If idle too long, return to STABLE to conserve battery and free up space
+            if (idleTicks >= MAX_IDLE_TICKS)
+            {
+                if (homeStable != null && !homeStable.Destroyed)
+                {
+                    ReturnToStable();
+                    idleTicks = 0;
+                }
+            }
         }
 
         private void TickCharging()
@@ -265,6 +328,7 @@ namespace Arsenal
         {
             currentTask = task;
             state = MuleState.Deploying;
+            idleTicks = 0; // Reset idle counter
 
             // Start appropriate job based on task type
             StartJobForTask(task);
