@@ -91,22 +91,26 @@ namespace Arsenal
             // Safety check - don't process if not spawned
             if (!Spawned || Map == null) return;
 
-            // Battery drain while active
-            if (state != MuleState.Charging && state != MuleState.Idle)
+            // Battery drain while active (not when idle or charging)
+            if (state != MuleState.Charging && state != MuleState.Idle && state != MuleState.Inert)
             {
                 BatteryComp?.Drain();
-            }
-
-            // Check for low battery - need to return home
-            if (BatteryComp != null && BatteryComp.NeedsRecharge && state != MuleState.ReturningHome && state != MuleState.Charging)
-            {
-                ReturnToStable();
             }
 
             // Check for depleted battery
             if (IsBatteryDepleted && state != MuleState.Inert)
             {
                 EnterInertState();
+                return;
+            }
+
+            // Check for low battery - need to return home (but not if already returning or delivering)
+            if (BatteryComp != null && BatteryComp.NeedsRecharge &&
+                state != MuleState.ReturningHome && state != MuleState.Charging &&
+                state != MuleState.DeliveringToStable && state != MuleState.Inert)
+            {
+                ReturnToStable();
+                return;
             }
 
             // State-specific ticks
@@ -121,6 +125,68 @@ namespace Arsenal
                 case MuleState.Inert:
                     TickInert();
                     break;
+                case MuleState.DeliveringToStable:
+                case MuleState.ReturningHome:
+                    TickMovingToStable();
+                    break;
+                case MuleState.Deploying:
+                case MuleState.Mining:
+                case MuleState.Hauling:
+                    TickWorking();
+                    break;
+            }
+        }
+
+        private void TickMovingToStable()
+        {
+            if (homeStable == null || homeStable.Destroyed)
+            {
+                // Find a new stable
+                homeStable = ArsenalNetworkManager.GetNearestStableWithSpace(Position, Map);
+                if (homeStable == null)
+                {
+                    state = MuleState.Idle;
+                    return;
+                }
+                GoToStable();
+                return;
+            }
+
+            // Check if we've arrived at the stable (adjacent or at interaction cell)
+            if (Position.InHorDistOf(homeStable.Position, 2f) || Position == homeStable.InteractionCell)
+            {
+                // Check if our Goto job is done or we're close enough
+                if (jobs?.curJob == null || jobs.curJob.def != JobDefOf.Goto)
+                {
+                    // We've arrived - dock at the stable
+                    if (homeStable.DockMule(this))
+                    {
+                        Log.Message($"[MULE] {Label}: Docked at {homeStable.Label}");
+                    }
+                    else
+                    {
+                        // Stable is full, wait as idle
+                        state = MuleState.Idle;
+                        Log.Warning($"[MULE] {Label}: Could not dock at {homeStable.Label} - stable full?");
+                    }
+                }
+            }
+            else
+            {
+                // Not at stable yet - make sure we have a job to get there
+                if (jobs?.curJob == null || jobs.curJob.def != JobDefOf.Goto)
+                {
+                    GoToStable();
+                }
+            }
+        }
+
+        private void TickWorking()
+        {
+            // Check if we've finished our job
+            if (jobs?.curJob == null)
+            {
+                OnTaskCompleted();
             }
         }
 
@@ -262,12 +328,16 @@ namespace Arsenal
         public bool CanAcceptTask(MuleTask task)
         {
             if (state != MuleState.Idle) return false;
-            if (IsBatteryDepleted) return false;
             if (BatteryComp == null) return false;
+            if (!BatteryComp.IsFull) return false; // Only deploy fully charged MULEs
+
+            // For docked MULEs, use stable position; for spawned, use current position
+            IntVec3 startPos = Spawned ? Position : (homeStable?.Position ?? IntVec3.Zero);
+            IntVec3 homePos = homeStable?.Position ?? startPos;
 
             // Estimate if we have enough battery for round trip
-            float distToTask = Position.DistanceTo(task.targetCell);
-            float distToHome = task.targetCell.DistanceTo(homeStable?.Position ?? Position);
+            float distToTask = startPos.DistanceTo(task.targetCell);
+            float distToHome = task.targetCell.DistanceTo(homePos);
             float totalDist = distToTask + distToHome;
             float estimatedCost = totalDist * BatteryComp.DrainPerTick * 2f; // Buffer
 

@@ -132,6 +132,97 @@ namespace Arsenal
                     }
                 }
             }
+
+            // Try to deploy available MULEs for tasks
+            TryDeployForTasks();
+        }
+
+        /// <summary>
+        /// Checks for available tasks and deploys ready MULEs to handle them.
+        /// </summary>
+        private void TryDeployForTasks()
+        {
+            if (!IsPoweredOn() || !HasNetworkConnection()) return;
+
+            // Get a ready MULE
+            MULE_Pawn readyMule = dockedMules.FirstOrDefault(m =>
+                m.state == MuleState.Idle && m.IsBatteryFull);
+
+            if (readyMule == null) return;
+
+            // Try to get a task from LATTICE
+            Building_Lattice lattice = ArsenalNetworkManager.GetConnectedLattice(Map);
+            if (lattice != null)
+            {
+                MuleTask task = lattice.RequestNewTaskForMule(readyMule);
+                if (task != null)
+                {
+                    if (DeployMule(readyMule, task))
+                    {
+                        Log.Message($"[STABLE] {Label}: Deployed {readyMule.Label} for {task.taskType} at {task.targetCell}");
+                    }
+                    return;
+                }
+            }
+
+            // No LATTICE task - try local scanning (for remote tiles)
+            MuleTask localTask = ScanForLocalTask(readyMule);
+            if (localTask != null)
+            {
+                if (DeployMule(readyMule, localTask))
+                {
+                    Log.Message($"[STABLE] {Label}: Deployed {readyMule.Label} for local {localTask.taskType} at {localTask.targetCell}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Scans for local tasks on tiles without LATTICE (remote outposts).
+        /// </summary>
+        private MuleTask ScanForLocalTask(MULE_Pawn mule)
+        {
+            if (Map == null) return null;
+
+            // Check if there's a LATTICE on this map - if so, let it handle tasks
+            if (ArsenalNetworkManager.GetLatticeOnMap(Map) != null) return null;
+
+            // Mining tasks
+            var miningDes = Map.designationManager.AllDesignations
+                .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing)
+                .FirstOrDefault();
+
+            if (miningDes != null)
+            {
+                IntVec3 cell = miningDes.target.Cell;
+                Building mineable = cell.GetFirstMineable(Map);
+                if (mineable != null)
+                {
+                    return MuleTask.CreateMiningTask(cell, miningDes);
+                }
+            }
+
+            // Hauling tasks
+            var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+            foreach (Thing item in haulables)
+            {
+                if (item == null || item.Destroyed || !item.Spawned) continue;
+                if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
+                if (moria != null)
+                {
+                    return MuleTask.CreateMoriaFeedTask(item, moria);
+                }
+
+                // Try to find a stockpile
+                if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map,
+                    StoragePriority.Unstored, Faction.OfPlayer, out IntVec3 stockpile, true))
+                {
+                    return MuleTask.CreateHaulTask(item, null, stockpile);
+                }
+            }
+
+            return null;
         }
 
         #endregion
