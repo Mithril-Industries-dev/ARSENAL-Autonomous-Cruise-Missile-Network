@@ -220,12 +220,15 @@ namespace Arsenal
         /// </summary>
         public void RequestReassignment()
         {
+            // Capture old target before changing state
+            Pawn oldTarget = target.Pawn;
+
             state = DartState.Reassigning;
             ticksInReassigning = 0;
 
             if (lattice != null && !lattice.Destroyed)
             {
-                lattice.RequestReassignment(this);
+                lattice.RequestReassignment(this, oldTarget);
             }
             else
             {
@@ -370,13 +373,55 @@ namespace Arsenal
         {
             ticksInReassigning++;
 
-            // Loiter in place while waiting
-            // Could add circling behavior here
+            // Circle/loiter while waiting for reassignment
+            PerformLoiterPattern();
 
             if (ticksInReassigning >= REASSIGN_TIMEOUT)
             {
                 // Timeout - return home
                 ReturnHome();
+            }
+        }
+
+        /// <summary>
+        /// Performs a circling/loiter pattern while awaiting reassignment.
+        /// </summary>
+        private void PerformLoiterPattern()
+        {
+            // Circle around current position
+            float loiterRadius = 2f;
+            float angularSpeed = 0.05f; // radians per tick
+
+            // Calculate circle position based on time
+            float angle = ticksInReassigning * angularSpeed;
+            Vector3 loiterCenter = lastKnownTargetPos.IsValid ? lastKnownTargetPos.ToVector3Shifted() : exactPosition;
+
+            Vector3 targetPos = loiterCenter + new Vector3(
+                Mathf.Cos(angle) * loiterRadius,
+                0f,
+                Mathf.Sin(angle) * loiterRadius
+            );
+
+            // Move toward the loiter position
+            Vector3 direction = (targetPos - exactPosition).normalized;
+            float distToTarget = Vector3.Distance(exactPosition, targetPos);
+
+            if (distToTarget > SPEED)
+            {
+                exactPosition += direction * SPEED * 0.5f; // Half speed while loitering
+            }
+
+            // Update rotation to face movement direction
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                currentRotation = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+            }
+
+            // Update grid position
+            IntVec3 newCell = exactPosition.ToIntVec3();
+            if (newCell != Position && newCell.InBounds(Map))
+            {
+                Position = newCell;
             }
         }
 

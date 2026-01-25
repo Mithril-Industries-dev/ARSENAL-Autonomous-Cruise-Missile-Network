@@ -36,16 +36,12 @@
       <ComponentIndustrial>4</ComponentIndustrial>
       <ComponentSpacer>2</ComponentSpacer>
     </costList>
-    <apparel>
+    <apparel Inherit="False">
       <bodyPartGroups>
         <li>FullHead</li>
       </bodyPartGroups>
-      <wornGraphicPath>Arsenal/MITHRIL_HAWKEYE</wornGraphicPath>
-      <wornGraphicData>
-        <renderSkipFlags>
-          <li>None</li>
-        </renderSkipFlags>
-      </wornGraphicData>
+      <!-- No wornGraphicPath - rendering handled by custom DrawWornExtras() in C# -->
+      <!-- This ensures correct directional textures and 50% size reduction -->
       <layers>
         <li>Overhead</li>
       </layers>
@@ -56,24 +52,6 @@
       <defaultOutfitTags>
         <li>Soldier</li>
       </defaultOutfitTags>
-      <drawData>
-        <dataNorth>
-          <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
-        </dataNorth>
-        <dataSouth>
-          <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
-        </dataSouth>
-        <dataEast>
-          <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
-        </dataEast>
-        <dataWest>
-          <offset>(0, 0, 0)</offset>
-          <scale>0.5</scale>
-        </dataWest>
-      </drawData>
     </apparel>
     <comps>
       <li Class="Arsenal.CompProperties_HawkeyeSensor">
