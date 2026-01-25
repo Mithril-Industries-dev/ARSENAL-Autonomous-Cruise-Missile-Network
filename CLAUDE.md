@@ -8,9 +8,10 @@
 **Namespace:** `Arsenal`
 **Output:** `Arsenal.dll`
 
-This is a sophisticated RimWorld mod implementing two integrated defense/logistics systems:
+This is a sophisticated RimWorld mod implementing three integrated defense/logistics systems:
 1. **DAGGER Network** - Global autonomous cruise missile logistics
 2. **DART System** - Local autonomous drone swarm defense
+3. **MULE System** - Autonomous ground drones for mining and hauling
 
 ---
 
@@ -293,6 +294,193 @@ HAWKEYE threats are included in LATTICE processing via `GetAllValidThreats()`:
 
 ---
 
+## System 5: MULE System (Ground Utility Drones)
+
+### Overview
+
+MULE (Mobile Utility Logistics Engine) - Autonomous ground drones for mining and hauling tasks. MULEs are Pawn-based entities that leverage RimWorld's native pathfinding and job systems.
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **MULE_Pawn** | `MULE_Pawn.cs` | Pawn subclass - autonomous drone with battery |
+| **STABLE** | `Building_Stable.cs` | Storage/charging hub (10 MULE capacity) |
+| **MORIA** | `Building_Moria.cs` | Resource sink for MULE deliveries |
+| **Comp_MuleBattery** | `Comp_MuleBattery.cs` | Battery component for power management |
+| **MuleTask** | `MuleTask.cs` | Task definition (mining, hauling) |
+| **MuleState** | `MuleState.cs` | State enumeration |
+
+### MULE States (`MuleState.cs`)
+
+```csharp
+public enum MuleState
+{
+    Idle,              // Docked in STABLE, fully charged, awaiting task
+    Charging,          // Docked in STABLE, recharging battery
+    Inert,             // Battery depleted, immobile
+    DeliveringToStable,// Newly manufactured, traveling to STABLE
+    ReturningHome,     // Returning to STABLE (low battery or no tasks)
+    Deploying,         // Leaving STABLE for a task
+    Mining,            // Actively mining
+    Hauling            // Actively hauling
+}
+```
+
+### Lifecycle Flow
+
+```
+ARSENAL manufactures MULE → Spawns near ARSENAL → Walks to nearest STABLE
+    → Docks (despawns) → Charges to 100%
+
+STABLE detects task via LATTICE → Deploys MULE (spawns) → MULE works
+    → Task complete → Find next task OR return to STABLE
+
+Low battery → Return to STABLE → Dock → Recharge → Deploy again
+```
+
+### Key Design Decisions
+
+**Pawn-Based Architecture:**
+- Extends `Pawn` class for native RimWorld pathfinding (avoids custom A* lag)
+- Uses `AnimalThingBase` parent in XML (avoids Biotech mechanoid overseer requirements)
+- Custom `ThinkTreeDef` with `JobGiver_Idle` fallback
+- Jobs started via `jobs.StartJob()` with RimWorld's job system
+
+**Dock/Deploy Pattern:**
+- MULEs are **despawned** when docked in STABLE (stored in `dockedMules` list)
+- MULEs are **spawned** when deployed for tasks
+- Prevents idle MULEs from cluttering the map
+- STABLE handles charging while docked via `TickRare()`
+
+**Battery System:**
+- `Comp_MuleBattery` ThingComp attached to MULE pawn
+- Drains while working, charges while docked
+- Returns to STABLE at 25% battery (`NeedsRecharge` threshold)
+- Enters `Inert` state if fully depleted
+
+### Task Management
+
+**Task Sources:**
+1. LATTICE task queue (`pendingMuleTasks`)
+2. Local scanning (`ScanForLocalTask()`) for tiles without LATTICE
+
+**Task Assignment Flow:**
+```csharp
+// STABLE.TryDeployForTasks() - runs in TickRare()
+1. Find ready MULE (Idle + full battery)
+2. Request task from LATTICE or scan locally
+3. Deploy MULE (spawn + assign task)
+
+// MULE_Pawn.OnTaskCompleted()
+1. Clear current task
+2. Check if needs recharge → ReturnToStable()
+3. Try to find another task → TryFindAndStartTask()
+4. No tasks → ReturnToStable()
+```
+
+**Reservation System:**
+- Checks `Map.reservationManager.CanReserve()` before creating tasks
+- Prevents multiple MULEs targeting same mineable/haulable
+- Double-checks reservation in `StartJobForTask()` before starting job
+
+### Task Validation (`IsTaskStillValid()`)
+
+```csharp
+// Mining: target mineable must still exist
+Building mineable = targetCell.GetFirstMineable(Map);
+return mineable != null && !mineable.Destroyed;
+
+// Hauling: check carrying status FIRST, then spawn status
+if (carryTracker?.CarriedThing == targetThing) return true;  // Carrying = valid
+if (!targetThing.Spawned) return false;  // Not spawned, not carrying = invalid
+return !targetThing.IsForbidden(Faction.OfPlayer);
+```
+
+**Important:** Check if carrying the item BEFORE checking spawn status. Carried items are not "spawned" on the ground.
+
+### Body Definition
+
+```xml
+<BodyDef>
+  <defName>MULE_Body</defName>
+  <corePart>
+    <def>MechanicalThorax</def>
+    <parts>
+      <!-- Required for manipulation/carrying -->
+      <li><def>MechanicalArm</def><customLabel>left cargo arm</customLabel></li>
+      <li><def>MechanicalArm</def><customLabel>right cargo arm</customLabel></li>
+      <!-- Wheels for movement -->
+      <li><def>MechanicalLeg</def><customLabel>front left wheel</customLabel></li>
+      <li><def>MechanicalLeg</def><customLabel>front right wheel</customLabel></li>
+      <li><def>MechanicalLeg</def><customLabel>rear left wheel</customLabel></li>
+      <li><def>MechanicalLeg</def><customLabel>rear right wheel</customLabel></li>
+    </parts>
+  </corePart>
+</BodyDef>
+```
+
+**Important:** MechanicalArm parts are required for manipulation capacity. Without them, carrying is limited to 1 item regardless of CarryingCapacity stat.
+
+### Naming Pattern
+
+```csharp
+// Only assign name if not already set (persists through dock/deploy cycles)
+if (string.IsNullOrEmpty(customName))
+{
+    customName = "MULE-" + muleCounter.ToString("D2");
+    muleCounter++;
+}
+```
+
+### MULE Parameters
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| CarryingCapacity | 75 | Requires MechanicalArm body parts |
+| MiningSpeed | 2.5 | Equivalent to ~skill 12 pawn |
+| MiningYield | 1.0 | 100% yield |
+| MoveSpeed | 3.5 | Cells per second |
+| MaxHitPoints | 150 | |
+| Battery Max | 100 | Comp_MuleBattery |
+| Battery Drain | 0.005/tick | While working |
+| Battery Charge | 0.05/tick | While docked |
+| Recharge Threshold | 25% | Returns to STABLE |
+| Idle Timeout | 300 ticks | Returns to STABLE if idle (5 sec) |
+
+### Manufacturing Limits
+
+MULE manufacturing is limited by STABLE capacity on the map:
+```csharp
+int totalStableCapacity = stables.Count * Building_Stable.MAX_MULE_CAPACITY;  // 10 per STABLE
+int totalMulesOnMap = dockedMules + spawnedMules;
+if (totalMulesOnMap >= totalStableCapacity) return null;  // Block manufacturing
+```
+
+### Common Issues
+
+**MULEs not picking up full stacks:**
+- Ensure body has `MechanicalArm` parts for manipulation
+- CarryingCapacity stat alone is not enough
+
+**MULEs stuck in loop between resources:**
+- Check `IsTaskStillValid()` - must check carrying before spawn status
+- Carried items are NOT spawned, so spawn check fails if done first
+
+**Reservation conflicts (multiple MULEs same target):**
+- `ScanForLocalTask()` must check `CanReserve()` for each target
+- `StartJobForTask()` must verify reservation before starting job
+
+**Names changing on deploy:**
+- Check naming logic uses `string.IsNullOrEmpty(customName)` not `!respawningAfterLoad`
+- `respawningAfterLoad` is false when deploying from STABLE
+
+**Map generation errors:**
+- Ensure `LifeStageDef` has all required properties:
+  - `developmentalStage`, `bodySizeFactor`, `healthScaleFactor`, etc.
+
+---
+
 ## Coding Patterns & Conventions
 
 ### 1. Building Lifecycle
@@ -446,6 +634,8 @@ Messages.Message("Text", this, MessageTypeDefOf.RejectInput);
 | ARGUS detection radius | 45 tiles | `Building_ARGUS.cs` |
 | HAWKEYE detection radius | 30 tiles | `Apparel_HawkEye.cs` |
 | Terminal-LATTICE max distance | 15 tiles | `Building_SkyLinkTerminal.cs` |
+| STABLE MULE capacity | 10 | `Building_Stable.cs` |
+| MULE carrying capacity | 75 | `ThingDefs_MULE.xml` |
 
 ### Timing (in ticks, 60 ticks = 1 second)
 
@@ -459,6 +649,8 @@ Messages.Message("Text", this, MessageTypeDefOf.RejectInput);
 | REASSIGN_TIMEOUT | 180 | DART waits for new target before returning |
 | PATH_UPDATE_INTERVAL | 30 | DART path recalculation |
 | REFUEL_TICKS | 3600 | HOP refueling time |
+| MULE_IDLE_TIMEOUT | 300 | MULE returns to STABLE if idle (5 sec) |
+| MULE_TASK_SCAN_INTERVAL | 60 | MULE scans for tasks while idle |
 
 ### DART Parameters
 
@@ -497,6 +689,15 @@ Arsenal_MissileStrike      // Strike traveling to target
 // Products
 MITHRIL_Product_DAGGER     // DAGGER manufacturing definition
 MITHRIL_Product_DART       // DART manufacturing definition
+MITHRIL_Product_MULE       // MULE manufacturing definition
+
+// MULE System
+Arsenal_MULE_Race          // MULE pawn ThingDef
+Arsenal_MULE_Kind          // MULE PawnKindDef
+Arsenal_MULE_Item          // Packaged MULE item
+Arsenal_Stable             // STABLE building
+Arsenal_Moria              // MORIA resource sink
+Arsenal_MULESystem         // Research project
 ```
 
 ---
