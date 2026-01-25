@@ -82,16 +82,17 @@ namespace Arsenal
                 int targetNeighbor = Tile;
                 int closestDist = Find.WorldGrid.TraversalDistanceBetween(Tile, nextWaypointTile);
 
-                List<int> neighbors = new List<int>();
-                Find.WorldGrid.GetTileNeighbors(Tile, neighbors);
-
-                foreach (int neighbor in neighbors)
+                // Find neighbor tile closest to target (same approach as Tick method)
+                for (int i = 0; i < Find.WorldGrid.TilesCount; i++)
                 {
-                    int d = Find.WorldGrid.TraversalDistanceBetween(neighbor, nextWaypointTile);
-                    if (d < closestDist)
+                    if (Find.WorldGrid.IsNeighbor(Tile, i))
                     {
-                        closestDist = d;
-                        targetNeighbor = neighbor;
+                        int d = Find.WorldGrid.TraversalDistanceBetween(i, nextWaypointTile);
+                        if (d < closestDist)
+                        {
+                            closestDist = d;
+                            targetNeighbor = i;
+                        }
                     }
                 }
 
