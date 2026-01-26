@@ -502,6 +502,9 @@ namespace Arsenal
             // Scan for mining designations
             ScanMiningDesignations();
 
+            // Scan for SLING loading tasks (highest priority hauling)
+            ScanSlingLoadTasks();
+
             // Scan for items to haul to MORIA
             ScanMoriaHaulTasks();
 
@@ -542,6 +545,51 @@ namespace Arsenal
                 // Create mining task
                 MuleTask task = MuleTask.CreateMiningTask(cell, des);
                 pendingMuleTasks.Enqueue(task);
+            }
+        }
+
+        /// <summary>
+        /// Scans for items that should be loaded into SLINGs waiting at PERCHes.
+        /// This is highest priority hauling since SLINGs are waiting for cargo.
+        /// </summary>
+        private void ScanSlingLoadTasks()
+        {
+            // Find all loading SLINGs on this map
+            var loadingPerches = ArsenalNetworkManager.GetPerchesOnMap(Map)
+                .Where(p => p.HasSlingOnPad && (p.SlingOnPad as SLING_Thing)?.IsLoading == true)
+                .ToList();
+
+            if (loadingPerches.Count == 0) return;
+
+            // Find items that can be loaded into SLINGs
+            var haulableItems = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+
+            foreach (Thing item in haulableItems)
+            {
+                if (item == null || item.Destroyed || !item.Spawned) continue;
+                if (item.IsForbidden(Faction.OfPlayer)) continue;
+
+                // Check if we already have a task for this item
+                bool alreadyQueued = pendingMuleTasks.Any(t =>
+                    t.taskType == MuleTaskType.SlingLoad && t.targetThing == item);
+                if (alreadyQueued) continue;
+
+                // Check if a MULE is already working on this
+                bool muleAssigned = ArsenalNetworkManager.GetAllMules()
+                    .Any(m => m.CurrentTask?.targetThing == item);
+                if (muleAssigned) continue;
+
+                // Find a SLING that wants this item
+                foreach (var perch in loadingPerches)
+                {
+                    var sling = perch.SlingOnPad as SLING_Thing;
+                    if (sling != null && sling.WantsItem(item.def))
+                    {
+                        MuleTask task = MuleTask.CreateSlingLoadTask(item, sling);
+                        pendingMuleTasks.Enqueue(task);
+                        break; // Only create one task per item
+                    }
+                }
             }
         }
 
