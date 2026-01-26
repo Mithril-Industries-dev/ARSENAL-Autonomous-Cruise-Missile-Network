@@ -42,6 +42,7 @@ namespace Arsenal
         public static ThingDef Arsenal_SlingLanding;
         public static ThingDef Arsenal_SlingLaunching;
         public static WorldObjectDef Arsenal_TravelingSling;
+        public static JobDef Arsenal_HaulToSling;
 
         // Research for SLING system
         public static ResearchProjectDef Arsenal_SlingLogistics;

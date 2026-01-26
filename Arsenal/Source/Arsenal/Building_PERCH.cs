@@ -283,18 +283,26 @@ namespace Arsenal
 
         /// <summary>
         /// Begins loading a SLING for departure to destination.
+        /// MULEs and colonists will haul cargo to the SLING.
         /// </summary>
         public bool StartLoading(Building_PERCH destination, Dictionary<ThingDef, int> cargoToLoad)
         {
             if (slingOnPad == null || IsBusy) return false;
             if (!HasNetworkConnection()) return false;
 
+            // Tell the SLING to start accepting cargo
+            var sling = slingOnPad as SLING_Thing;
+            if (sling != null)
+            {
+                sling.StartLoading(cargoToLoad);
+            }
+
             isLoading = true;
-            loadTicksRemaining = LOAD_TICKS;
+            loadTicksRemaining = LOAD_TICKS * 5;  // Max wait time for hauling (50 seconds)
             loadDestination = destination;
             loadingCargo = new Dictionary<ThingDef, int>(cargoToLoad);
 
-            Messages.Message($"{Label}: Loading {slingName ?? "SLING"} for {destination.Label}...", this, MessageTypeDefOf.NeutralEvent);
+            Messages.Message($"{Label}: {SlingName} awaiting cargo for {destination.Label}. Colonists/MULEs will load cargo.", this, MessageTypeDefOf.NeutralEvent);
             return true;
         }
 
@@ -361,27 +369,38 @@ namespace Arsenal
         {
             isUnloading = false;
 
-            // Spawn cargo on pad or adjacent cells
-            foreach (var kvp in loadingCargo)
+            // Unload cargo from SLING's container or from manifest
+            var sling = slingOnPad as SLING_Thing;
+            if (sling != null && sling.CurrentCargoCount > 0)
             {
-                int remaining = kvp.Value;
-                while (remaining > 0)
+                // Drop cargo from SLING's physical container
+                IntVec3 dropCell = FindCargoDropCell();
+                if (!dropCell.IsValid) dropCell = Position;
+                sling.UnloadAllCargo(dropCell, Map);
+            }
+            else
+            {
+                // Fallback: spawn from manifest (legacy/transit cargo)
+                foreach (var kvp in loadingCargo)
                 {
-                    int spawnCount = Mathf.Min(remaining, kvp.Key.stackLimit);
-                    Thing cargo = ThingMaker.MakeThing(kvp.Key);
-                    cargo.stackCount = spawnCount;
+                    int remaining = kvp.Value;
+                    while (remaining > 0)
+                    {
+                        int spawnCount = Mathf.Min(remaining, kvp.Key.stackLimit);
+                        Thing cargo = ThingMaker.MakeThing(kvp.Key);
+                        cargo.stackCount = spawnCount;
 
-                    IntVec3 spawnCell = FindCargoDropCell();
-                    if (spawnCell.IsValid)
-                    {
-                        GenSpawn.Spawn(cargo, spawnCell, Map);
+                        IntVec3 spawnCell = FindCargoDropCell();
+                        if (spawnCell.IsValid)
+                        {
+                            GenSpawn.Spawn(cargo, spawnCell, Map);
+                        }
+                        else
+                        {
+                            GenSpawn.Spawn(cargo, Position, Map);
+                        }
+                        remaining -= spawnCount;
                     }
-                    else
-                    {
-                        // Fallback: spawn on pad position
-                        GenSpawn.Spawn(cargo, Position, Map);
-                    }
-                    remaining -= spawnCount;
                 }
             }
 
@@ -424,10 +443,42 @@ namespace Arsenal
                 FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
             }
 
-            if (loadTicksRemaining <= 0)
+            // Check if SLING has finished loading (cargo has been hauled in)
+            var sling = slingOnPad as SLING_Thing;
+            if (sling != null && sling.IsLoadingComplete())
             {
                 CompleteLoading();
+                return;
             }
+
+            // Timeout - take off with whatever cargo we have
+            if (loadTicksRemaining <= 0)
+            {
+                if (sling != null && sling.CurrentCargoCount > 0)
+                {
+                    // Some cargo loaded - take off
+                    CompleteLoading();
+                }
+                else
+                {
+                    // No cargo loaded - cancel the loading
+                    CancelLoading();
+                }
+            }
+        }
+
+        private void CancelLoading()
+        {
+            isLoading = false;
+            loadingCargo.Clear();
+
+            var sling = slingOnPad as SLING_Thing;
+            if (sling != null)
+            {
+                sling.CancelLoading();
+            }
+
+            Messages.Message($"{Label}: {SlingName} loading cancelled - no cargo available.", this, MessageTypeDefOf.NeutralEvent);
         }
 
         private void CompleteLoading()
@@ -443,13 +494,13 @@ namespace Arsenal
             // Get SLING name before despawning
             string departingSlingName = SlingName;
 
-            // Consume resources from adjacent storage
+            // Complete the SLING's loading process and get cargo manifest
+            var sling = slingOnPad as SLING_Thing;
             var actualCargo = new Dictionary<ThingDef, int>();
-            foreach (var kvp in loadingCargo)
+            if (sling != null)
             {
-                int toLoad = ConsumeResource(kvp.Key, kvp.Value);
-                if (toLoad > 0)
-                    actualCargo[kvp.Key] = toLoad;
+                sling.CompleteLoading();
+                actualCargo = sling.GetCargoManifest();
             }
 
             // Consume fuel for the trip
@@ -483,7 +534,7 @@ namespace Arsenal
             loadDestination = null;
             loadingCargo.Clear();
 
-            Messages.Message($"{Label}: {departingSlingName} launching", this, MessageTypeDefOf.PositiveEvent);
+            Messages.Message($"{Label}: {departingSlingName} launching with {actualCargo.Values.Sum()} items", this, MessageTypeDefOf.PositiveEvent);
         }
 
         private int ConsumeResource(ThingDef resource, int amount)

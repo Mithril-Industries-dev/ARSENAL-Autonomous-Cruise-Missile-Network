@@ -224,6 +224,16 @@ namespace Arsenal
                 return;
             }
 
+            // Load cargo manifest into SLING's container (for physical unloading)
+            if (sling is SLING_Thing slingThing && cargo != null && cargo.Count > 0)
+            {
+                // Only load if container is empty (cargo came from transit manifest)
+                if (slingThing.CurrentCargoCount == 0)
+                {
+                    slingThing.LoadCargoFromManifest(cargo);
+                }
+            }
+
             // Determine if this SLING needs to return after unloading
             // Pass origin only for delivery flights (not return flights)
             Building_PERCH returnOrigin = null;
