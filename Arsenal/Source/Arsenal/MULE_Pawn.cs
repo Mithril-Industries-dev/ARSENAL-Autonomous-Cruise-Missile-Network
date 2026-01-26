@@ -26,6 +26,15 @@ namespace Arsenal
         private string customName;
         private static int muleCounter = 1;
 
+        /// <summary>
+        /// Sets the mule counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            muleCounter = System.Math.Max(1, value);
+        }
+
         #region Properties
 
         public Comp_MuleBattery BatteryComp => GetComp<Comp_MuleBattery>();

@@ -16,6 +16,15 @@ namespace Arsenal
         private string customName;
         private static int slingCounter = 1;
 
+        /// <summary>
+        /// Sets the sling counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            slingCounter = System.Math.Max(1, value);
+        }
+
         // Cargo container - holds items being transported
         private ThingOwner<Thing> cargoContainer;
 

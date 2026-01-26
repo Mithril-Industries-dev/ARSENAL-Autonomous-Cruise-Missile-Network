@@ -15,6 +15,15 @@ namespace Arsenal
         private string customName;
         private static int moriaCounter = 1;
 
+        /// <summary>
+        /// Sets the moria counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            moriaCounter = System.Math.Max(1, value);
+        }
+
         public override string Label => customName ?? base.Label;
 
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;

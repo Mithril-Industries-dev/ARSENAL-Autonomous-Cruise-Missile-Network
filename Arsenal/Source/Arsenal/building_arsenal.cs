@@ -38,6 +38,15 @@ namespace Arsenal
         private string customName;
         private static int factoryCounter = 1;
 
+        /// <summary>
+        /// Sets the factory counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            factoryCounter = System.Math.Max(1, value);
+        }
+
         // === COMPONENTS ===
         private CompRefuelable refuelableComp;
         private CompPowerTrader powerComp;
@@ -461,9 +470,12 @@ namespace Arsenal
                     line.arsenal = this;
             }
 
+            // ALWAYS register with network manager
+            ArsenalNetworkManager.RegisterArsenal(this);
+
+            // Only assign name if new building
             if (!respawningAfterLoad)
             {
-                ArsenalNetworkManager.RegisterArsenal(this);
                 customName = "ARSENAL-" + factoryCounter.ToString("D2");
                 factoryCounter++;
             }

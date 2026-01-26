@@ -15,6 +15,15 @@ namespace Arsenal
         private string customName;
         private static int hopCounter = 1;
 
+        /// <summary>
+        /// Sets the hop counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            hopCounter = System.Math.Max(1, value);
+        }
+
         // Refueling system
         private Thing missileBeingRefueled;
         private int destinationTile = -1;
@@ -69,9 +78,13 @@ namespace Arsenal
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
             powerComp = GetComp<CompPowerTrader>();
+
+            // ALWAYS register with network manager
+            ArsenalNetworkManager.RegisterHop(this);
+
+            // Only assign name if new building
             if (!respawningAfterLoad)
             {
-                ArsenalNetworkManager.RegisterHop(this);
                 customName = "HOP-" + hopCounter.ToString("D2");
                 hopCounter++;
             }

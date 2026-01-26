@@ -23,6 +23,15 @@ namespace Arsenal
         private string customName;
         private static int stableCounter = 1;
 
+        /// <summary>
+        /// Sets the stable counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            stableCounter = System.Math.Max(1, value);
+        }
+
         #region Properties
 
         public bool IsPoweredOn()

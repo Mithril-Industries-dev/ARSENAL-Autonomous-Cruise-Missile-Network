@@ -763,6 +763,228 @@ namespace Arsenal
         }
 
         /// <summary>
+        /// Rescans all maps to find and register all ARSENAL network buildings.
+        /// Called after Reset() during game load to restore registrations that were
+        /// cleared after buildings already registered in SpawnSetup().
+        /// </summary>
+        public static void RescanAllBuildings()
+        {
+            if (Current.Game?.Maps == null) return;
+
+            int foundCount = 0;
+
+            foreach (Map map in Current.Game.Maps)
+            {
+                if (map == null) continue;
+
+                foreach (Building building in map.listerBuildings.allBuildingsColonist)
+                {
+                    if (building == null || building.Destroyed) continue;
+
+                    // Register each building type
+                    if (building is Building_Arsenal arsenal)
+                    {
+                        if (!arsenals.Contains(arsenal))
+                        {
+                            arsenals.Add(arsenal);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_Hub hub)
+                    {
+                        if (!hubs.Contains(hub))
+                        {
+                            hubs.Add(hub);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_Hop hop)
+                    {
+                        if (!hops.Contains(hop))
+                        {
+                            hops.Add(hop);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_Lattice lattice)
+                    {
+                        if (!lattices.Contains(lattice))
+                        {
+                            lattices.Add(lattice);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_Quiver quiver)
+                    {
+                        if (!quivers.Contains(quiver))
+                        {
+                            quivers.Add(quiver);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_ARGUS argus)
+                    {
+                        if (!argusUnits.Contains(argus))
+                        {
+                            argusUnits.Add(argus);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_HERALD herald)
+                    {
+                        int tile = map.Tile;
+                        heraldsPerTile[tile] = herald;
+                        foundCount++;
+                    }
+                    else if (building is Building_SkyLinkTerminal terminal)
+                    {
+                        if (!terminals.Contains(terminal))
+                        {
+                            terminals.Add(terminal);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_PERCH perch)
+                    {
+                        if (!perches.Contains(perch))
+                        {
+                            perches.Add(perch);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_Stable stable)
+                    {
+                        if (!stables.Contains(stable))
+                        {
+                            stables.Add(stable);
+                            foundCount++;
+                        }
+                    }
+                    else if (building is Building_Moria moria)
+                    {
+                        if (!morias.Contains(moria))
+                        {
+                            morias.Add(moria);
+                            foundCount++;
+                        }
+                    }
+                }
+
+                // Also check for spawned MULEs on map
+                foreach (Pawn pawn in map.mapPawns.AllPawnsSpawned)
+                {
+                    if (pawn is MULE_Pawn mule && !mules.Contains(mule))
+                    {
+                        mules.Add(mule);
+                        foundCount++;
+                    }
+                }
+
+                // Check for HAWKEYE-wearing pawns
+                foreach (Pawn pawn in map.mapPawns.AllPawnsSpawned)
+                {
+                    if (pawn.apparel?.WornApparel?.Any(a => a is Apparel_HawkEye) == true)
+                    {
+                        if (!hawkeyePawns.Contains(pawn))
+                        {
+                            hawkeyePawns.Add(pawn);
+                            foundCount++;
+                        }
+                    }
+                }
+            }
+
+            if (foundCount > 0)
+            {
+                Log.Message($"[ARSENAL] RescanAllBuildings: Registered {foundCount} network components after game load.");
+            }
+
+            // Recalculate static counters based on existing building names
+            RecalculateAllCounters();
+        }
+
+        /// <summary>
+        /// Parses a building name to extract the numeric ID.
+        /// Expected format: "PREFIX-XX" where XX is the ID.
+        /// Returns 0 if parsing fails.
+        /// </summary>
+        private static int ExtractIdFromName(string name, string prefix)
+        {
+            if (string.IsNullOrEmpty(name) || !name.StartsWith(prefix + "-"))
+                return 0;
+
+            string numPart = name.Substring(prefix.Length + 1);
+            if (int.TryParse(numPart, out int id))
+                return id;
+            return 0;
+        }
+
+        /// <summary>
+        /// Recalculates all building counters based on existing building names.
+        /// This prevents duplicate names when creating new buildings after loading a game.
+        /// </summary>
+        public static void RecalculateAllCounters()
+        {
+            // Calculate max IDs for each building type
+            int maxHub = 0, maxHop = 0, maxArsenal = 0;
+            int maxQuiver = 0, maxArgus = 0, maxHerald = 0;
+            int maxPerch = 0, maxStable = 0, maxMoria = 0, maxMule = 0;
+            int maxSling = 0;
+
+            foreach (var hub in hubs)
+                maxHub = System.Math.Max(maxHub, ExtractIdFromName(hub.Label, "HUB"));
+            foreach (var hop in hops)
+                maxHop = System.Math.Max(maxHop, ExtractIdFromName(hop.Label, "HOP"));
+            foreach (var arsenal in arsenals)
+                maxArsenal = System.Math.Max(maxArsenal, ExtractIdFromName(arsenal.Label, "ARSENAL"));
+            foreach (var quiver in quivers)
+                maxQuiver = System.Math.Max(maxQuiver, ExtractIdFromName(quiver.Label, "QUIVER"));
+            foreach (var argus in argusUnits)
+                maxArgus = System.Math.Max(maxArgus, ExtractIdFromName(argus.Label, "ARGUS"));
+            foreach (var kvp in heraldsPerTile)
+                maxHerald = System.Math.Max(maxHerald, ExtractIdFromName(kvp.Value.Label, "HERALD"));
+            foreach (var perch in perches)
+                maxPerch = System.Math.Max(maxPerch, ExtractIdFromName(perch.Label, "PERCH"));
+            foreach (var stable in stables)
+                maxStable = System.Math.Max(maxStable, ExtractIdFromName(stable.Label, "STABLE"));
+            foreach (var moria in morias)
+                maxMoria = System.Math.Max(maxMoria, ExtractIdFromName(moria.Label, "MORIA"));
+            foreach (var mule in mules)
+                maxMule = System.Math.Max(maxMule, ExtractIdFromName(mule.Label, "MULE"));
+
+            // Also check docked mules in stables
+            foreach (var stable in stables)
+            {
+                foreach (var mule in stable.DockedMules)
+                    maxMule = System.Math.Max(maxMule, ExtractIdFromName(mule.Label, "MULE"));
+            }
+
+            // Check SLINGs on perches and in flight
+            foreach (var perch in perches)
+            {
+                var slot1Sling = perch.Slot1Sling;
+                var slot2Sling = perch.Slot2Sling;
+                if (slot1Sling != null)
+                    maxSling = System.Math.Max(maxSling, ExtractIdFromName(slot1Sling.Label, "SLING"));
+                if (slot2Sling != null)
+                    maxSling = System.Math.Max(maxSling, ExtractIdFromName(slot2Sling.Label, "SLING"));
+            }
+
+            // Set counters to max + 1 (minimum 1)
+            Building_Hub.SetCounter(maxHub + 1);
+            Building_Hop.SetCounter(maxHop + 1);
+            Building_Arsenal.SetCounter(maxArsenal + 1);
+            Building_Quiver.SetCounter(maxQuiver + 1);
+            Building_ARGUS.SetCounter(maxArgus + 1);
+            Building_HERALD.SetCounter(maxHerald + 1);
+            Building_PERCH.SetCounter(maxPerch + 1);
+            Building_Stable.SetCounter(maxStable + 1);
+            Building_Moria.SetCounter(maxMoria + 1);
+            MULE_Pawn.SetCounter(maxMule + 1);
+            SLING_Thing.SetCounter(maxSling + 1);
+        }
+
+        /// <summary>
         /// Scans all world objects for SKYLINK satellites and registers them.
         /// Called after game load to ensure satellites are properly tracked.
         /// </summary>
@@ -799,8 +1021,12 @@ namespace Arsenal
             base.LoadedGame();
             // CRITICAL: Reset static state when loading a game to prevent
             // state from previous sessions carrying over.
-            // Buildings and WorldObjects will re-register themselves in SpawnSetup().
             ArsenalNetworkManager.Reset();
+
+            // IMPORTANT: Buildings already called SpawnSetup() BEFORE LoadedGame(),
+            // so their registrations were just cleared by Reset().
+            // We must rescan to re-register all buildings on all maps.
+            ArsenalNetworkManager.RescanAllBuildings();
         }
 
         public override void FinalizeInit()
@@ -809,6 +1035,10 @@ namespace Arsenal
             // After game fully loads, scan for any satellites that may have been
             // loaded from save but not yet registered (edge case handling)
             ArsenalNetworkManager.ScanForOrbitingSatellites();
+
+            // Safety net: rescan all buildings in case any were missed
+            // This handles edge cases like late-loading maps
+            ArsenalNetworkManager.RescanAllBuildings();
         }
     }
 }

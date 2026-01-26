@@ -25,6 +25,15 @@ namespace Arsenal
         private string customName;
         private static int argusCounter = 1;
 
+        /// <summary>
+        /// Sets the argus counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            argusCounter = System.Math.Max(1, value);
+        }
+
         // Tracking for inspect panel
         private int lastScanThreatCount = 0;
         private bool threatDetectedThisScan = false;

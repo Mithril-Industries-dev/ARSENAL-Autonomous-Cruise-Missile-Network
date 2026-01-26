@@ -28,6 +28,15 @@ namespace Arsenal
         private string customName;
         private static int perchCounter = 1;
 
+        /// <summary>
+        /// Sets the perch counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            perchCounter = System.Math.Max(1, value);
+        }
+
         // Role configuration
         public PerchRole role = PerchRole.SOURCE;
         public int priority = 5;  // 1-10, lower = higher priority (for SINKs)
