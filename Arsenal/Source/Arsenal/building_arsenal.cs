@@ -737,8 +737,8 @@ namespace Arsenal
                     Find.WorldObjects.Add(traveling);
                 }
 
-                Messages.Message(Label + " Line " + (line.index + 1) + ": " + (newSlingName ?? "SLING") + " delivered to " + targetPerch.Label,
-                    this, MessageTypeDefOf.PositiveEvent);
+                Messages.Message(Label + " Line " + (line.index + 1) + ": " + (newSlingName ?? "SLING") + " en route to " + targetPerch.Label,
+                    this, MessageTypeDefOf.NeutralEvent);
             }
         }
 

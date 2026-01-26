@@ -97,6 +97,23 @@ namespace Arsenal
 
         #region Tick
 
+        public override void Tick()
+        {
+            base.Tick();
+
+            // On remote tiles (no local LATTICE), check for deployment opportunities more frequently
+            // This reduces the delay when MULEs return and new tasks are waiting
+            bool isRemoteTile = ArsenalNetworkManager.GetLatticeOnMap(Map) == null;
+            if (isRemoteTile && this.IsHashIntervalTick(60)) // Every second on remote tiles
+            {
+                // Only do the quick deploy check if we have ready MULEs
+                if (AvailableMuleCount > 0)
+                {
+                    TryDeployForTasks();
+                }
+            }
+        }
+
         public override void TickRare()
         {
             base.TickRare();

@@ -56,7 +56,7 @@ Requires LATTICE for task coordination.</description>
         <glowColor>(80,255,120,0)</glowColor>
       </li>
     </comps>
-    <tickerType>Rare</tickerType>
+    <tickerType>Normal</tickerType>
     <designationCategory>Production</designationCategory>
     <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
     <researchPrerequisites>

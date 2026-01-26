@@ -253,8 +253,11 @@ namespace Arsenal
         {
             idleTicks++;
 
-            // Check frequently for available work (every 60 ticks = 1 second)
-            if (this.IsHashIntervalTick(60))
+            // Check more frequently in first 60 ticks (for chunks from just-completed mining)
+            // Then check every 60 ticks normally
+            int checkInterval = idleTicks < 60 ? 15 : 60;
+
+            if (this.IsHashIntervalTick(checkInterval))
             {
                 // Try to find and start a task
                 if (TryFindAndStartTask())
@@ -264,8 +267,13 @@ namespace Arsenal
                 }
             }
 
+            // On tiles without a local LATTICE (asteroids/outposts), wait longer before returning
+            // This allows more time for items to spawn and be detected
+            bool isRemoteTile = ArsenalNetworkManager.GetLatticeOnMap(Map) == null;
+            int returnThreshold = isRemoteTile ? MAX_IDLE_TICKS * 2 : MAX_IDLE_TICKS;
+
             // If idle too long, return to STABLE to conserve battery and free up space
-            if (idleTicks >= MAX_IDLE_TICKS)
+            if (idleTicks >= returnThreshold)
             {
                 if (homeStable != null && !homeStable.Destroyed)
                 {
@@ -411,6 +419,7 @@ namespace Arsenal
         {
             currentTask = null;
             state = MuleState.Idle;
+            idleTicks = 0; // Reset idle counter for fresh retry window
 
             // Check if we need to return for charging
             if (BatteryComp != null && BatteryComp.NeedsRecharge)
@@ -419,14 +428,15 @@ namespace Arsenal
                 return;
             }
 
-            // Try to find another task nearby before returning to STABLE
+            // Try to find another task nearby before going idle
             if (TryFindAndStartTask())
             {
                 return; // Found and started a new task
             }
 
-            // No tasks available - return to STABLE
-            ReturnToStable();
+            // No task found immediately - stay idle and let TickIdle handle retries
+            // This gives time for chunks to spawn, haulables list to update, etc.
+            // TickIdle will check every 60 ticks and return to STABLE after MAX_IDLE_TICKS
         }
 
         public bool CanAcceptTask(MuleTask task)

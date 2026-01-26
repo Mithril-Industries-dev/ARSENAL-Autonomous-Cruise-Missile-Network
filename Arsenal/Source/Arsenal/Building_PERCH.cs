@@ -97,9 +97,13 @@ namespace Arsenal
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
             powerComp = GetComp<CompPowerTrader>();
+
+            // Always register with network manager (buildings re-register after load)
+            ArsenalNetworkManager.RegisterPerch(this);
+
+            // Only assign name on initial spawn, not when loading
             if (!respawningAfterLoad)
             {
-                ArsenalNetworkManager.RegisterPerch(this);
                 customName = "PERCH-" + perchCounter.ToString("D2");
                 perchCounter++;
             }
@@ -667,6 +671,52 @@ namespace Arsenal
                         }
                     };
                 }
+
+                // Diagnostic for loading issues
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Diagnose Loading",
+                    defaultDesc = "Show debug info about cargo loading status.",
+                    action = delegate
+                    {
+                        string msg = $"=== {Label} Loading Diagnostics ===\n";
+                        msg += $"Registered PERCHes: {ArsenalNetworkManager.GetAllPerches().Count}\n";
+                        msg += $"This PERCH HasSlingOnPad: {HasSlingOnPad}\n";
+                        msg += $"IsBusy: {IsBusy} (Loading: {isLoading}, Unloading: {isUnloading}, Refueling: {isRefueling})\n";
+
+                        if (slingOnPad != null)
+                        {
+                            msg += $"SlingOnPad Type: {slingOnPad.GetType().Name}\n";
+                            var sling = slingOnPad as SLING_Thing;
+                            if (sling != null)
+                            {
+                                msg += $"SLING IsLoading: {sling.IsLoading}\n";
+                                msg += $"SLING CurrentCargo: {sling.CurrentCargoCount}\n";
+                                msg += $"SLING RemainingCapacity: {sling.RemainingCapacity}\n";
+
+                                // Check target cargo
+                                var available = GetAvailableResources();
+                                msg += $"\nAvailable resources on map: {available.Count}\n";
+                                foreach (var r in available.Take(5))
+                                {
+                                    bool wants = sling.WantsItem(r.Key);
+                                    int needed = sling.GetRemainingNeeded(r.Key);
+                                    msg += $"  {r.Key.label}: {r.Value} avail, wants={wants}, need={needed}\n";
+                                }
+                            }
+                            else
+                            {
+                                msg += "ERROR: SlingOnPad is not SLING_Thing!\n";
+                            }
+                        }
+                        else
+                        {
+                            msg += "No SLING on pad.\n";
+                        }
+
+                        Log.Message(msg);
+                    }
+                };
             }
         }
 
