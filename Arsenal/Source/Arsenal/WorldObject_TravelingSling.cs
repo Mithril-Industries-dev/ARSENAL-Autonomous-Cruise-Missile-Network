@@ -244,7 +244,10 @@ namespace Arsenal
 
         private void LandForRefueling(Building_PERCH perch)
         {
-            // Spawn landing skyfaller
+            // Spawn landing skyfaller at an available slot position
+            // Waypoint stops prefer slot 2 (incoming)
+            IntVec3 landingPos = perch.Slot2Available ? perch.GetSlot2Position() : perch.GetSlot1Position();
+
             var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_SlingLanding);
             skyfaller.sling = sling;
@@ -256,7 +259,7 @@ namespace Arsenal
             skyfaller.isWaypointStop = true;
             skyfaller.isReturnFlight = isReturnFlight;
 
-            GenSpawn.Spawn(skyfaller, perch.Position, perch.Map);
+            GenSpawn.Spawn(skyfaller, landingPos, perch.Map);
             Destroy();
         }
 
@@ -315,7 +318,19 @@ namespace Arsenal
 
             if (landingPerch != null)
             {
-                // Land at the available PERCH
+                // Land at the available PERCH - get the appropriate slot position
+                // Incoming with cargo goes to slot 2, return flights go to slot 1
+                bool hasCargoToUnload = cargo != null && cargo.Count > 0;
+                IntVec3 landingPos = landingPerch.GetAvailableSlotPosition();
+                if (hasCargoToUnload && landingPerch.Slot2Available)
+                {
+                    landingPos = landingPerch.GetSlot2Position();
+                }
+                else if (!hasCargoToUnload && landingPerch.Slot1Available)
+                {
+                    landingPos = landingPerch.GetSlot1Position();
+                }
+
                 var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                     ArsenalDefOf.Arsenal_SlingLanding);
                 skyfaller.sling = sling;
@@ -326,7 +341,7 @@ namespace Arsenal
                 skyfaller.isWaypointStop = false;
                 skyfaller.isReturnFlight = isReturnFlight;
 
-                GenSpawn.Spawn(skyfaller, landingPerch.Position, landingPerch.Map);
+                GenSpawn.Spawn(skyfaller, landingPos, landingPerch.Map);
             }
             else if (originPerch != null && !originPerch.Destroyed && originPerch.Map != null && originPerch.HasAvailableSlot)
             {

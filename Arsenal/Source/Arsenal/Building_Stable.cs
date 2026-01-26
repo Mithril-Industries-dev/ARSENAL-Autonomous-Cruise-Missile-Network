@@ -156,10 +156,11 @@ namespace Arsenal
 
         /// <summary>
         /// Checks for available tasks and deploys ready MULEs to handle them.
+        /// Works on both home tile (with LATTICE) and remote tiles (local scanning).
         /// </summary>
         private void TryDeployForTasks()
         {
-            if (!IsPoweredOn() || !HasNetworkConnection()) return;
+            if (!IsPoweredOn()) return;
 
             // Get a ready MULE
             MULE_Pawn readyMule = dockedMules.FirstOrDefault(m =>
@@ -167,22 +168,26 @@ namespace Arsenal
 
             if (readyMule == null) return;
 
-            // Try to get a task from LATTICE
-            Building_Lattice lattice = ArsenalNetworkManager.GetConnectedLattice(Map);
-            if (lattice != null)
+            // Try to get a task from LATTICE (only if connected to network)
+            if (HasNetworkConnection())
             {
-                MuleTask task = lattice.RequestNewTaskForMule(readyMule);
-                if (task != null)
+                Building_Lattice lattice = ArsenalNetworkManager.GetConnectedLattice(Map);
+                if (lattice != null)
                 {
-                    if (DeployMule(readyMule, task))
+                    MuleTask task = lattice.RequestNewTaskForMule(readyMule);
+                    if (task != null)
                     {
-                        Log.Message($"[STABLE] {Label}: Deployed {readyMule.Label} for {task.taskType} at {task.targetCell}");
+                        if (DeployMule(readyMule, task))
+                        {
+                            Log.Message($"[STABLE] {Label}: Deployed {readyMule.Label} for {task.taskType} at {task.targetCell}");
+                        }
+                        return;
                     }
-                    return;
                 }
             }
 
-            // No LATTICE task - try local scanning (for remote tiles)
+            // Always try local scanning - works on remote tiles even without network connection
+            // This allows MULEs to work autonomously on asteroids, outposts, etc.
             MuleTask localTask = ScanForLocalTask(readyMule);
             if (localTask != null)
             {

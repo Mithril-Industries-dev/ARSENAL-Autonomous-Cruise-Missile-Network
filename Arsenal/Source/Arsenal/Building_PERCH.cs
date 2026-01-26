@@ -621,26 +621,32 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the center position for Slot 1 (primary/staging slot at front of pad).
-        /// For a 5x14 PERCH, Slot 1 is at the bottom (y offset ~2).
+        /// For a 5x14 PERCH with two 5x7 zones:
+        /// - Bottom zone (Slot 1): Z+0 to Z+6, center at Z+3
+        /// - SLING lands centered in this zone
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
-            // PERCH is 5x14, SLING is 7x5
-            // Slot 1 is near the bottom of the pad
-            // Position offset from PERCH lower-left corner
-            return Position + new IntVec3(0, 0, 2);
+            // PERCH is 5 wide x 14 tall, two 5x7 landing zones
+            // Slot 1 is the bottom 5x7 zone
+            // Center X: PERCH center = Position.x + 2 (for 5-wide)
+            // Center Z: Bottom zone center = Position.z + 3 (for 7-tall zone)
+            return Position + new IntVec3(2, 0, 3);
         }
 
         /// <summary>
         /// Gets the center position for Slot 2 (secondary/incoming slot at back of pad).
-        /// For a 5x14 PERCH, Slot 2 is at the top (y offset ~9).
+        /// For a 5x14 PERCH with two 5x7 zones:
+        /// - Top zone (Slot 2): Z+7 to Z+13, center at Z+10
+        /// - SLING lands centered in this zone
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
-            // PERCH is 5x14, SLING is 7x5
-            // Slot 2 is near the top of the pad
-            // Position offset from PERCH lower-left corner
-            return Position + new IntVec3(0, 0, 8);
+            // PERCH is 5 wide x 14 tall, two 5x7 landing zones
+            // Slot 2 is the top 5x7 zone
+            // Center X: PERCH center = Position.x + 2 (for 5-wide)
+            // Center Z: Top zone center = Position.z + 10 (7 + 3 for center of second zone)
+            return Position + new IntVec3(2, 0, 10);
         }
 
         /// <summary>
