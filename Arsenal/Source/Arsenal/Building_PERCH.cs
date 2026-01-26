@@ -288,6 +288,7 @@ namespace Arsenal
         /// <summary>
         /// Begins loading a SLING for departure to destination.
         /// MULEs and colonists will haul cargo to the SLING.
+        /// Loading continues until complete - no timeout.
         /// </summary>
         public bool StartLoading(Building_PERCH destination, Dictionary<ThingDef, int> cargoToLoad)
         {
@@ -302,12 +303,29 @@ namespace Arsenal
             }
 
             isLoading = true;
-            loadTicksRemaining = LOAD_TICKS * 5;  // Max wait time for hauling (50 seconds)
             loadDestination = destination;
             loadingCargo = new Dictionary<ThingDef, int>(cargoToLoad);
 
             Messages.Message($"{Label}: {SlingName} awaiting cargo for {destination.Label}. Colonists/MULEs will load cargo.", this, MessageTypeDefOf.NeutralEvent);
             return true;
+        }
+
+        /// <summary>
+        /// Manually dispatches the SLING with whatever cargo is currently loaded.
+        /// </summary>
+        public void DispatchNow()
+        {
+            if (!isLoading || slingOnPad == null) return;
+
+            var sling = slingOnPad as SLING_Thing;
+            if (sling != null && sling.CurrentCargoCount > 0)
+            {
+                CompleteLoading();
+            }
+            else
+            {
+                Messages.Message($"{Label}: Cannot dispatch - no cargo loaded.", this, MessageTypeDefOf.RejectInput);
+            }
         }
 
         /// <summary>
@@ -440,14 +458,13 @@ namespace Arsenal
 
         private void TickLoading()
         {
-            loadTicksRemaining--;
-
-            if (loadTicksRemaining % 30 == 0 && Map != null)
+            // Visual effects occasionally
+            if (this.IsHashIntervalTick(30) && Map != null)
             {
                 FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
             }
 
-            // Check if SLING has finished loading (cargo has been hauled in)
+            // Check if SLING has finished loading (all cargo has been hauled in)
             var sling = slingOnPad as SLING_Thing;
             if (sling != null && sling.IsLoadingComplete())
             {
@@ -455,20 +472,55 @@ namespace Arsenal
                 return;
             }
 
-            // Timeout - take off with whatever cargo we have
-            if (loadTicksRemaining <= 0)
+            // Periodically check if cargo is still available on the map
+            // If none of the requested cargo exists, cancel loading
+            if (this.IsHashIntervalTick(250)) // Check every ~4 seconds
             {
-                if (sling != null && sling.CurrentCargoCount > 0)
+                if (!IsCargoAvailable())
                 {
-                    // Some cargo loaded - take off
-                    CompleteLoading();
-                }
-                else
-                {
-                    // No cargo loaded - cancel the loading
-                    CancelLoading();
+                    if (sling != null && sling.CurrentCargoCount > 0)
+                    {
+                        // Have some cargo, dispatch with what we have
+                        CompleteLoading();
+                    }
+                    else
+                    {
+                        // No cargo loaded and none available - cancel
+                        CancelLoading();
+                    }
                 }
             }
+        }
+
+        /// <summary>
+        /// Checks if any of the requested cargo exists on the map.
+        /// </summary>
+        private bool IsCargoAvailable()
+        {
+            if (loadingCargo == null || loadingCargo.Count == 0) return false;
+
+            var sling = slingOnPad as SLING_Thing;
+            var available = GetAvailableResources();
+
+            foreach (var requested in loadingCargo)
+            {
+                // Check if we still need this resource
+                int needed = requested.Value;
+                if (sling != null)
+                {
+                    needed = sling.GetRemainingNeeded(requested.Key);
+                }
+
+                if (needed <= 0) continue; // Already loaded enough
+
+                // Check if this resource exists on the map
+                if (available.TryGetValue(requested.Key, out int mapAmount) && mapAmount > 0)
+                {
+                    return true; // At least some cargo is available
+                }
+            }
+
+            return false; // None of the needed cargo is available
         }
 
         private void CancelLoading()
@@ -658,6 +710,37 @@ namespace Arsenal
                 };
             }
 
+            // Show Dispatch Now button when SLING is loading
+            if (isLoading && slingOnPad != null)
+            {
+                var sling = slingOnPad as SLING_Thing;
+                int cargoCount = sling?.CurrentCargoCount ?? 0;
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "Dispatch Now",
+                    defaultDesc = $"Launch {SlingName} immediately with current cargo ({cargoCount} items).\nUse this to dispatch with partial loads.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Commands/LaunchShip", false),
+                    disabled = cargoCount == 0,
+                    disabledReason = "No cargo loaded yet.",
+                    action = delegate
+                    {
+                        DispatchNow();
+                    }
+                };
+
+                yield return new Command_Action
+                {
+                    defaultLabel = "Cancel Loading",
+                    defaultDesc = "Cancel loading and keep SLING on pad.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Designators/Cancel", false),
+                    action = delegate
+                    {
+                        CancelLoading();
+                    }
+                };
+            }
+
             if (Prefs.DevMode)
             {
                 if (slingOnPad != null && !IsBusy)
@@ -751,7 +834,19 @@ namespace Arsenal
                 if (isUnloading)
                     str += $" (Unloading: {unloadTicksRemaining.ToStringTicksToPeriod()})";
                 else if (isLoading)
-                    str += $" (Loading: {loadTicksRemaining.ToStringTicksToPeriod()})";
+                {
+                    var sling = slingOnPad as SLING_Thing;
+                    if (sling != null)
+                    {
+                        int loaded = sling.CurrentCargoCount;
+                        int target = loadingCargo?.Values.Sum() ?? 0;
+                        str += $" (Loading: {loaded}/{target})";
+                    }
+                    else
+                    {
+                        str += " (Loading)";
+                    }
+                }
                 else if (isRefueling)
                     str += $" (Refueling: {refuelTicksRemaining.ToStringTicksToPeriod()})";
                 else
