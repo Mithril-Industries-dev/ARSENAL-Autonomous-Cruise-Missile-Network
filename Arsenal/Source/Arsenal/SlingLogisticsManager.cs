@@ -33,6 +33,7 @@ namespace Arsenal
 
         /// <summary>
         /// Main logistics processing loop.
+        /// Dispatches multiple SLINGs if demand is high.
         /// </summary>
         private static void ProcessLogistics()
         {
@@ -63,28 +64,51 @@ namespace Arsenal
             {
                 if (availableSources.Count == 0) break;
 
-                var demand = sink.GetDemand();
-                if (demand.Count == 0) continue;
+                // Get current unfulfilled demand for this sink
+                var remainingDemand = new Dictionary<ThingDef, int>(sink.GetDemand());
+                if (remainingDemand.Count == 0) continue;
 
-                // Find a SOURCE that can fulfill this demand
-                foreach (var resource in demand.Keys.OrderByDescending(r => demand[r]))
+                // Keep dispatching SLINGs until demand is met or no more sources
+                bool dispatchedAny = true;
+                while (dispatchedAny && availableSources.Count > 0 && remainingDemand.Values.Sum() > 0)
                 {
-                    // Find nearest SOURCE with this resource
-                    var source = FindNearestSourceWithResource(sink, resource, availableSources);
-                    if (source == null) continue;
+                    dispatchedAny = false;
 
-                    // Check if route is viable
-                    if (!IsRouteViable(source, sink)) continue;
-
-                    // Calculate cargo to load
-                    var cargoToLoad = CalculateCargo(source, sink, demand);
-                    if (cargoToLoad.Count == 0) continue;
-
-                    // Dispatch SLING
-                    if (source.StartLoading(sink, cargoToLoad))
+                    // Find a SOURCE that can fulfill remaining demand
+                    foreach (var resource in remainingDemand.Keys.ToList().OrderByDescending(r => remainingDemand[r]))
                     {
-                        availableSources.Remove(source);
-                        break;  // Move to next SINK
+                        if (remainingDemand[resource] <= 0) continue;
+
+                        // Find nearest SOURCE with this resource
+                        var source = FindNearestSourceWithResource(sink, resource, availableSources);
+                        if (source == null) continue;
+
+                        // Check if route is viable
+                        if (!IsRouteViable(source, sink)) continue;
+
+                        // Calculate cargo to load based on remaining demand
+                        var cargoToLoad = CalculateCargo(source, sink, remainingDemand);
+                        if (cargoToLoad.Count == 0) continue;
+
+                        // Dispatch SLING
+                        if (source.StartLoading(sink, cargoToLoad))
+                        {
+                            availableSources.Remove(source);
+                            dispatchedAny = true;
+
+                            // Reduce remaining demand by what was dispatched
+                            foreach (var kvp in cargoToLoad)
+                            {
+                                if (remainingDemand.ContainsKey(kvp.Key))
+                                {
+                                    remainingDemand[kvp.Key] -= kvp.Value;
+                                    if (remainingDemand[kvp.Key] <= 0)
+                                        remainingDemand.Remove(kvp.Key);
+                                }
+                            }
+
+                            break; // Check for more sources for remaining demand
+                        }
                     }
                 }
             }

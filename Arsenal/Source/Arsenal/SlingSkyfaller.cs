@@ -198,6 +198,12 @@ namespace Arsenal
                 return;
             }
 
+            // Assign name before spawning
+            if (sling is SLING_Thing slingThing && !string.IsNullOrEmpty(slingName))
+            {
+                slingThing.AssignName(slingName);
+            }
+
             // Spawn SLING on PERCH pad
             if (sling != null && !sling.Spawned)
             {
@@ -205,7 +211,7 @@ namespace Arsenal
                 sling.SetForbidden(true, false);
             }
 
-            Messages.Message($"SLING landed at {localPerch.Label} for refueling",
+            Messages.Message($"{slingName ?? "SLING"} landed at {localPerch.Label} for refueling",
                 localPerch, MessageTypeDefOf.NeutralEvent);
 
             // Start refueling process
@@ -224,18 +230,29 @@ namespace Arsenal
                 return;
             }
 
-            // Load cargo manifest into SLING's container (for physical unloading)
-            if (sling is SLING_Thing slingThing && cargo != null && cargo.Count > 0)
+            // IMPORTANT: Assign name BEFORE spawning to prevent SpawnSetup from assigning a new one
+            if (sling is SLING_Thing slingThing)
             {
-                // Only load if container is empty (cargo came from transit manifest)
-                if (slingThing.CurrentCargoCount == 0)
+                if (!string.IsNullOrEmpty(slingName))
+                {
+                    slingThing.AssignName(slingName);
+                }
+
+                // Load cargo manifest into container (for physical unloading)
+                if (cargo != null && cargo.Count > 0 && slingThing.CurrentCargoCount == 0)
                 {
                     slingThing.LoadCargoFromManifest(cargo);
                 }
             }
 
+            // Spawn SLING on pad BEFORE calling ReceiveSling
+            if (sling != null && !sling.Spawned)
+            {
+                GenSpawn.Spawn(sling, destinationPerch.Position, Map);
+                sling.SetForbidden(true, false);
+            }
+
             // Determine if this SLING needs to return after unloading
-            // Pass origin only for delivery flights (not return flights)
             Building_PERCH returnOrigin = null;
             if (!isReturnFlight && originPerch != null && originPerch != destinationPerch)
             {
@@ -244,17 +261,16 @@ namespace Arsenal
 
             // Deliver cargo to destination - PERCH will handle return after unloading
             destinationPerch.ReceiveSling(sling, cargo, returnOrigin, slingName);
-
-            // Spawn SLING on pad
-            if (sling != null && !sling.Spawned)
-            {
-                GenSpawn.Spawn(sling, destinationPerch.Position, Map);
-                sling.SetForbidden(true, false);
-            }
         }
 
         private void HandleEmergencyLanding()
         {
+            // Assign name before spawning
+            if (sling is SLING_Thing slingThing && !string.IsNullOrEmpty(slingName))
+            {
+                slingThing.AssignName(slingName);
+            }
+
             // Emergency landing - drop everything at current position
             if (sling != null && !sling.Spawned)
             {

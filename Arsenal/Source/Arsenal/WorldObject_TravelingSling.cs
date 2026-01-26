@@ -285,61 +285,82 @@ namespace Arsenal
 
         private void ArriveAtDestination()
         {
+            // Check if destination PERCH is valid and available
+            Building_PERCH landingPerch = null;
+
             if (destinationPerch != null && destinationPerch.Map != null && !destinationPerch.Destroyed)
             {
-                // Spawn landing skyfaller at destination PERCH
+                if (!destinationPerch.HasSlingOnPad)
+                {
+                    // Destination available
+                    landingPerch = destinationPerch;
+                }
+                else
+                {
+                    // Destination occupied - find alternate on same tile
+                    landingPerch = FindAvailablePerchOnTile(destinationTile);
+                    if (landingPerch != null && landingPerch != destinationPerch)
+                    {
+                        Messages.Message($"{slingName ?? "SLING"} rerouted to {landingPerch.Label} (original pad occupied)",
+                            landingPerch, MessageTypeDefOf.NeutralEvent);
+                    }
+                }
+            }
+
+            // If no landing perch found on destination tile, search elsewhere
+            if (landingPerch == null)
+            {
+                landingPerch = FindAvailablePerchOnTile(destinationTile);
+            }
+
+            if (landingPerch != null)
+            {
+                // Land at the available PERCH
                 var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                     ArsenalDefOf.Arsenal_SlingLanding);
                 skyfaller.sling = sling;
                 skyfaller.slingName = slingName;
                 skyfaller.cargo = cargo;
                 skyfaller.originPerch = originPerch;
-                skyfaller.destinationPerch = destinationPerch;
+                skyfaller.destinationPerch = landingPerch;
                 skyfaller.isWaypointStop = false;
                 skyfaller.isReturnFlight = isReturnFlight;
 
-                GenSpawn.Spawn(skyfaller, destinationPerch.Position, destinationPerch.Map);
+                GenSpawn.Spawn(skyfaller, landingPerch.Position, landingPerch.Map);
+            }
+            else if (originPerch != null && !originPerch.Destroyed && originPerch.Map != null && !originPerch.HasSlingOnPad)
+            {
+                // No available pad at destination - return to origin
+                Messages.Message($"{slingName ?? "SLING"} returning to {originPerch.Label} - no available pad at destination",
+                    MessageTypeDefOf.NeutralEvent);
+
+                // Reverse the journey
+                destinationPerch = originPerch;
+                originPerch = null;
+                destinationTile = destinationPerch.Map.Tile;
+                isReturnFlight = true;
+                cargo = new Dictionary<ThingDef, int>(); // Empty cargo on return
+                CalculateRoute();
+                return; // Don't destroy - continue traveling
             }
             else
             {
-                // Destination PERCH destroyed - find alternate
-                var alternate = FindAlternatePerch(destinationTile);
-                if (alternate != null)
+                // No alternate found and can't return - crash land
+                MapParent mp = Find.WorldObjects.MapParentAt(destinationTile);
+                if (mp?.Map != null)
                 {
+                    IntVec3 dropSpot = DropCellFinder.RandomDropSpot(mp.Map);
                     var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                         ArsenalDefOf.Arsenal_SlingLanding);
                     skyfaller.sling = sling;
                     skyfaller.slingName = slingName;
                     skyfaller.cargo = cargo;
-                    skyfaller.originPerch = originPerch;
-                    skyfaller.destinationPerch = alternate;
-                    skyfaller.isWaypointStop = false;
-                    skyfaller.isReturnFlight = isReturnFlight;
+                    skyfaller.isCrashLanding = true;
 
-                    GenSpawn.Spawn(skyfaller, alternate.Position, alternate.Map);
+                    GenSpawn.Spawn(skyfaller, dropSpot, mp.Map);
 
-                    Messages.Message($"SLING rerouted to {alternate.Label} (original destination lost)",
-                        alternate, MessageTypeDefOf.NeutralEvent);
-                }
-                else
-                {
-                    // No alternate found - crash land at random spot
-                    MapParent mp = Find.WorldObjects.MapParentAt(destinationTile);
-                    if (mp?.Map != null)
-                    {
-                        IntVec3 dropSpot = DropCellFinder.RandomDropSpot(mp.Map);
-                        var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
-                            ArsenalDefOf.Arsenal_SlingLanding);
-                        skyfaller.sling = sling;
-                        skyfaller.slingName = slingName;
-                        skyfaller.cargo = cargo;
-                        skyfaller.isCrashLanding = true;
-
-                        GenSpawn.Spawn(skyfaller, dropSpot, mp.Map);
-
-                        Messages.Message($"{slingName ?? "SLING"} crash-landing - no PERCH available at destination",
-                            new TargetInfo(dropSpot, mp.Map), MessageTypeDefOf.NegativeEvent);
-                    }
+                    Messages.Message($"{slingName ?? "SLING"} crash-landing - no PERCH available at destination",
+                        new TargetInfo(dropSpot, mp.Map), MessageTypeDefOf.NegativeEvent);
                 }
             }
 
@@ -471,7 +492,24 @@ namespace Arsenal
             return best;
         }
 
-        private Building_PERCH FindAlternatePerch(int nearTile)
+        private Building_PERCH FindAvailablePerchOnTile(int tile)
+        {
+            // First, try to find an available PERCH on the specified tile
+            foreach (var perch in ArsenalNetworkManager.GetAllPerches())
+            {
+                if (perch.Map == null || perch.Destroyed) continue;
+                if (perch.Map.Tile != tile) continue;
+                if (perch.HasSlingOnPad) continue; // Skip occupied pads
+                if (!perch.IsPoweredOn) continue;
+
+                return perch;
+            }
+
+            // No available PERCH on the target tile
+            return null;
+        }
+
+        private Building_PERCH FindNearestAvailablePerch(int nearTile)
         {
             Building_PERCH nearest = null;
             int nearestDist = int.MaxValue;
@@ -479,6 +517,8 @@ namespace Arsenal
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
                 if (perch.Map == null || perch.Destroyed) continue;
+                if (perch.HasSlingOnPad) continue; // Skip occupied pads
+                if (!perch.IsPoweredOn) continue;
 
                 int dist = Find.WorldGrid.TraversalDistanceBetween(nearTile, perch.Map.Tile);
                 if (dist < nearestDist)

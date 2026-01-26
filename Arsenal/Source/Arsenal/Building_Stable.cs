@@ -194,17 +194,14 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Scans for local tasks on tiles without LATTICE (remote outposts/asteroids).
-        /// This is the fallback when the connected LATTICE has no pending tasks for this map.
+        /// Scans for local tasks when LATTICE has no pending tasks.
+        /// Includes SLING loading as highest priority hauling task.
         /// </summary>
         private MuleTask ScanForLocalTask(MULE_Pawn mule)
         {
             if (Map == null) return null;
 
-            // Check if there's a LATTICE on this map - if so, let it handle tasks
-            if (ArsenalNetworkManager.GetLatticeOnMap(Map) != null) return null;
-
-            // Mining tasks - iterate all mining designations, not just first
+            // Mining tasks - iterate all mining designations
             foreach (var miningDes in Map.designationManager.AllDesignations
                 .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing))
             {
@@ -233,13 +230,21 @@ namespace Arsenal
                 // Skip if reserved by another pawn
                 if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
 
+                // Priority 1: Loading SLING (has timeout)
+                SLING_Thing loadingSling = FindLoadingSlingForItem(item);
+                if (loadingSling != null)
+                {
+                    return MuleTask.CreateSlingLoadTask(item, loadingSling);
+                }
+
+                // Priority 2: MORIA storage
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)
                 {
                     return MuleTask.CreateMoriaFeedTask(item, moria);
                 }
 
-                // Try to find a stockpile
+                // Priority 3: Try to find a stockpile
                 if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map,
                     StoragePriority.Unstored, Faction.OfPlayer, out IntVec3 stockpile, true))
                 {
@@ -247,6 +252,21 @@ namespace Arsenal
                 }
             }
 
+            return null;
+        }
+
+        private SLING_Thing FindLoadingSlingForItem(Thing item)
+        {
+            foreach (var perch in ArsenalNetworkManager.GetPerchesOnMap(Map))
+            {
+                if (!perch.HasSlingOnPad) continue;
+
+                var sling = perch.SlingOnPad as SLING_Thing;
+                if (sling == null || !sling.IsLoading) continue;
+                if (!sling.WantsItem(item.def)) continue;
+
+                return sling;
+            }
             return null;
         }
 
