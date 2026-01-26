@@ -97,7 +97,7 @@ namespace Arsenal
 
         #region Tick
 
-        public override void Tick()
+        protected override void Tick()
         {
             base.Tick();
 
