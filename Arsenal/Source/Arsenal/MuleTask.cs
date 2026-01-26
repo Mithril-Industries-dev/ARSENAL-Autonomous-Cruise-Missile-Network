@@ -85,6 +85,20 @@ namespace Arsenal
             };
         }
 
+        public static MuleTask CreateSlingLoadTask(Thing item, SLING_Thing sling)
+        {
+            return new MuleTask
+            {
+                taskType = MuleTaskType.SlingLoad,
+                targetCell = item.Position,
+                targetThing = item,
+                destination = sling,
+                destinationCell = sling.Position,
+                resourceDef = item.def,
+                resourceCount = item.stackCount
+            };
+        }
+
         public void ExposeData()
         {
             Scribe_Values.Look(ref taskType, "taskType", MuleTaskType.None);

@@ -244,6 +244,24 @@ namespace Arsenal
                     // Check if it's still haulable (not forbidden)
                     return !currentTask.targetThing.IsForbidden(Faction.OfPlayer);
 
+                case MuleTaskType.SlingLoad:
+                    // Check if thing still exists
+                    if (currentTask.targetThing == null) return false;
+                    if (currentTask.targetThing.Destroyed) return false;
+
+                    // Check if SLING is still loading
+                    var sling = currentTask.destination as SLING_Thing;
+                    if (sling == null || !sling.IsLoading) return false;
+
+                    // If we're carrying it, task is valid
+                    if (carryTracker?.CarriedThing == currentTask.targetThing) return true;
+
+                    // If item is not spawned and we're not carrying it, invalid
+                    if (!currentTask.targetThing.Spawned) return false;
+
+                    // Check if SLING still wants this item type
+                    return sling.WantsItem(currentTask.targetThing.def);
+
                 default:
                     return true;
             }
@@ -379,6 +397,18 @@ namespace Arsenal
                         {
                             targetToReserve = task.targetThing;
                         }
+                    }
+                    break;
+
+                case MuleTaskType.SlingLoad:
+                    if (task.targetThing != null && task.targetThing.Spawned &&
+                        task.destination is SLING_Thing sling && sling.IsLoading &&
+                        Map.reservationManager.CanReserve(this, task.targetThing))
+                    {
+                        // Use the HaulToSling job
+                        job = JobMaker.MakeJob(ArsenalDefOf.Arsenal_HaulToSling, task.targetThing, sling);
+                        job.count = sling.GetRemainingNeeded(task.targetThing.def);
+                        targetToReserve = task.targetThing;
                     }
                     break;
             }
@@ -519,12 +549,21 @@ namespace Arsenal
                 // Check if we can reserve this item
                 if (!Map.reservationManager.CanReserve(this, item)) continue;
 
+                // Priority 1: Loading SLING (has timeout, so highest hauling priority)
+                SLING_Thing loadingSling = FindLoadingSlingForItem(item);
+                if (loadingSling != null)
+                {
+                    return MuleTask.CreateSlingLoadTask(item, loadingSling);
+                }
+
+                // Priority 2: MORIA storage
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)
                 {
                     return MuleTask.CreateMoriaFeedTask(item, moria);
                 }
 
+                // Priority 3: Regular stockpile
                 IntVec3 stockpile = FindStockpileCell(item);
                 if (stockpile.IsValid)
                 {
@@ -532,6 +571,25 @@ namespace Arsenal
                 }
             }
 
+            return null;
+        }
+
+        private SLING_Thing FindLoadingSlingForItem(Thing item)
+        {
+            // Find all PERCHes on this map with loading SLINGs that want this item
+            foreach (var perch in ArsenalNetworkManager.GetPerchesOnMap(Map))
+            {
+                if (!perch.HasSlingOnPad) continue;
+
+                var sling = perch.SlingOnPad as SLING_Thing;
+                if (sling == null || !sling.IsLoading) continue;
+                if (!sling.WantsItem(item.def)) continue;
+
+                // Check if we can reach the SLING
+                if (!this.CanReach(sling, Verse.AI.PathEndMode.Touch, Danger.Deadly)) continue;
+
+                return sling;
+            }
             return null;
         }
 

@@ -45,6 +45,9 @@ namespace Arsenal
         Haul = 2,
 
         /// <summary>Deliver resources to MORIA nodes based on priority/need.</summary>
-        MoriaFeed = 3
+        MoriaFeed = 3,
+
+        /// <summary>Load cargo into a SLING for transport.</summary>
+        SlingLoad = 4
     }
 }
