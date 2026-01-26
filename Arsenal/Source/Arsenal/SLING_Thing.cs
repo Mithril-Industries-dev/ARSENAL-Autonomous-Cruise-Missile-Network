@@ -206,6 +206,7 @@ namespace Arsenal
 
         /// <summary>
         /// Tries to add an item to the cargo. Returns the amount actually added.
+        /// Handles items that are in pawn carry trackers.
         /// </summary>
         public int TryAddCargo(Thing item)
         {
@@ -220,17 +221,17 @@ namespace Arsenal
 
             if (toAdd >= item.stackCount)
             {
-                // Take the whole stack
-                if (cargoContainer.TryAdd(item, true))
+                // Take the whole stack - use TryAddOrTransfer to handle items in other containers
+                if (cargoContainer.TryAddOrTransfer(item, true))
                 {
                     return toAdd;
                 }
             }
             else
             {
-                // Split the stack
+                // Split the stack first
                 Thing split = item.SplitOff(toAdd);
-                if (cargoContainer.TryAdd(split, true))
+                if (cargoContainer.TryAddOrTransfer(split, true))
                 {
                     return toAdd;
                 }
