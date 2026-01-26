@@ -188,7 +188,7 @@ namespace Arsenal
                 var perchHere = ArsenalNetworkManager.GetPerchAtTile(Tile);
                 var hopHere = ArsenalNetworkManager.GetHopAtTile(Tile);
 
-                if (perchHere != null && perchHere.HasFuel && !perchHere.IsBusy)
+                if (perchHere != null && perchHere.HasFuel && perchHere.HasAvailableSlot)
                 {
                     // Refuel at PERCH waypoint
                     LandForRefueling(perchHere);
@@ -285,23 +285,23 @@ namespace Arsenal
 
         private void ArriveAtDestination()
         {
-            // Check if destination PERCH is valid and available
+            // Check if destination PERCH is valid and has an available slot
             Building_PERCH landingPerch = null;
 
             if (destinationPerch != null && destinationPerch.Map != null && !destinationPerch.Destroyed)
             {
-                if (!destinationPerch.HasSlingOnPad)
+                if (destinationPerch.HasAvailableSlot)
                 {
-                    // Destination available
+                    // Destination has an available slot
                     landingPerch = destinationPerch;
                 }
                 else
                 {
-                    // Destination occupied - find alternate on same tile
+                    // Destination full - find alternate PERCH on same tile with available slot
                     landingPerch = FindAvailablePerchOnTile(destinationTile);
                     if (landingPerch != null && landingPerch != destinationPerch)
                     {
-                        Messages.Message($"{slingName ?? "SLING"} rerouted to {landingPerch.Label} (original pad occupied)",
+                        Messages.Message($"{slingName ?? "SLING"} rerouted to {landingPerch.Label} (original pad full)",
                             landingPerch, MessageTypeDefOf.NeutralEvent);
                     }
                 }
@@ -328,7 +328,7 @@ namespace Arsenal
 
                 GenSpawn.Spawn(skyfaller, landingPerch.Position, landingPerch.Map);
             }
-            else if (originPerch != null && !originPerch.Destroyed && originPerch.Map != null && !originPerch.HasSlingOnPad)
+            else if (originPerch != null && !originPerch.Destroyed && originPerch.Map != null && originPerch.HasAvailableSlot)
             {
                 // No available pad at destination - return to origin
                 Messages.Message($"{slingName ?? "SLING"} returning to {originPerch.Label} - no available pad at destination",
@@ -405,7 +405,7 @@ namespace Arsenal
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
                 if (perch.Map == null) continue;
-                if (!perch.HasFuel || perch.IsBusy) continue;
+                if (!perch.HasFuel || !perch.HasAvailableSlot) continue;
 
                 int perchTile = perch.Map.Tile;
                 int distToPerch = Find.WorldGrid.TraversalDistanceBetween(fromTile, perchTile);
@@ -453,7 +453,7 @@ namespace Arsenal
             {
                 if (perch.Map == null) continue;
                 if (perch.Map.Tile == excludeTile) continue;
-                if (!perch.HasFuel || perch.IsBusy) continue;
+                if (!perch.HasFuel || !perch.HasAvailableSlot) continue;
 
                 int perchTile = perch.Map.Tile;
                 int distToPerch = Find.WorldGrid.TraversalDistanceBetween(fromTile, perchTile);
@@ -494,12 +494,12 @@ namespace Arsenal
 
         private Building_PERCH FindAvailablePerchOnTile(int tile)
         {
-            // First, try to find an available PERCH on the specified tile
+            // Try to find a PERCH on the specified tile with an available slot
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
                 if (perch.Map == null || perch.Destroyed) continue;
                 if (perch.Map.Tile != tile) continue;
-                if (perch.HasSlingOnPad) continue; // Skip occupied pads
+                if (!perch.HasAvailableSlot) continue; // Skip full pads (both slots occupied)
                 if (!perch.IsPoweredOn) continue;
 
                 return perch;
@@ -517,7 +517,7 @@ namespace Arsenal
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
                 if (perch.Map == null || perch.Destroyed) continue;
-                if (perch.HasSlingOnPad) continue; // Skip occupied pads
+                if (!perch.HasAvailableSlot) continue; // Skip full pads (both slots occupied)
                 if (!perch.IsPoweredOn) continue;
 
                 int dist = Find.WorldGrid.TraversalDistanceBetween(nearTile, perch.Map.Tile);

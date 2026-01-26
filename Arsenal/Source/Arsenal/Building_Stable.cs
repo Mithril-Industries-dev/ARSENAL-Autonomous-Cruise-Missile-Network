@@ -257,11 +257,12 @@ namespace Arsenal
 
         private SLING_Thing FindLoadingSlingForItem(Thing item)
         {
+            // Loading happens on slot 1 (primary staging slot)
             foreach (var perch in ArsenalNetworkManager.GetPerchesOnMap(Map))
             {
-                if (!perch.HasSlingOnPad) continue;
+                if (!perch.HasSlot1Sling) continue;
 
-                var sling = perch.SlingOnPad as SLING_Thing;
+                var sling = perch.Slot1Sling as SLING_Thing;
                 if (sling == null || !sling.IsLoading) continue;
                 if (!sling.WantsItem(item.def)) continue;
 

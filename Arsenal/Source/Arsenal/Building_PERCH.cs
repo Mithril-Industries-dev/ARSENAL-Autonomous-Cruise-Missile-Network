@@ -15,7 +15,9 @@ namespace Arsenal
     }
 
     /// <summary>
-    /// PERCH - Landing/Launch Pad for SLING cargo craft.
+    /// PERCH - Dual-slot Landing/Launch Pad for SLING cargo craft.
+    /// Slot 1: Primary slot for staging/loading (outbound operations)
+    /// Slot 2: Secondary slot for incoming SLINGs
     /// Can be configured as SOURCE (export) or SINK (import) via LATTICE UI.
     /// </summary>
     public class Building_PERCH : Building
@@ -37,35 +39,104 @@ namespace Arsenal
         public List<ThingDef> sourceFilter = new List<ThingDef>();
         public bool filterEnabled = false;
 
-        // SLING currently on pad
-        private Thing slingOnPad;
-        private bool isUnloading;
-        private int unloadTicksRemaining;
+        // Dual SLING slots
+        // Slot 1: Primary - for staging, loading, and outbound operations
+        // Slot 2: Secondary - for incoming SLINGs
+        private Thing slingSlot1;
+        private Thing slingSlot2;
+
+        // Slot 1 state (primary - loading/staging)
+        private bool slot1IsLoading;
+        private Building_PERCH slot1LoadDestination;
+        private Dictionary<ThingDef, int> slot1LoadingCargo = new Dictionary<ThingDef, int>();
+
+        // Slot 2 state (secondary - unloading/refueling incoming)
+        private bool slot2IsUnloading;
+        private int slot2UnloadTicksRemaining;
+        private bool slot2IsRefueling;
+        private int slot2RefuelTicksRemaining;
+        private Building_PERCH slot2PendingReturnOrigin;
+
         private const int UNLOAD_TICKS = 600; // 10 seconds
-
-        // Loading state
-        private bool isLoading;
-        private int loadTicksRemaining;
-        private const int LOAD_TICKS = 600; // 10 seconds
-        private Building_PERCH loadDestination;
-        private Dictionary<ThingDef, int> loadingCargo = new Dictionary<ThingDef, int>();
-
-        // Return flight tracking - set when SLING should return after unloading
-        private Building_PERCH pendingReturnOrigin;
-
-        // Refueling state for SLINGs
-        private bool isRefueling;
-        private int refuelTicksRemaining;
+        private const int LOAD_TICKS = 600; // 10 seconds (unused now, no timeout)
         private const int REFUEL_TICKS = 1800; // 30 seconds
+
+        // Backwards compatibility helpers - redirect to slot-specific fields
+        // These allow gradual migration from single-slot to dual-slot
+        private Thing slingOnPad
+        {
+            get => slingSlot1 ?? slingSlot2;
+            set
+            {
+                // For backward compat writes, assign to slot1 (primary)
+                slingSlot1 = value;
+            }
+        }
+
+        // Slot 1 (primary) properties with setters
+        private bool isLoading
+        {
+            get => slot1IsLoading;
+            set => slot1IsLoading = value;
+        }
+        private Building_PERCH loadDestination
+        {
+            get => slot1LoadDestination;
+            set => slot1LoadDestination = value;
+        }
+        private Dictionary<ThingDef, int> loadingCargo
+        {
+            get => slot1LoadingCargo;
+            set => slot1LoadingCargo = value;
+        }
+
+        // Slot 2 (secondary) properties with setters
+        private bool isUnloading
+        {
+            get => slot2IsUnloading;
+            set => slot2IsUnloading = value;
+        }
+        private int unloadTicksRemaining
+        {
+            get => slot2UnloadTicksRemaining;
+            set => slot2UnloadTicksRemaining = value;
+        }
+        private bool isRefueling
+        {
+            get => slot2IsRefueling;
+            set => slot2IsRefueling = value;
+        }
+        private int refuelTicksRemaining
+        {
+            get => slot2RefuelTicksRemaining;
+            set => slot2RefuelTicksRemaining = value;
+        }
+        private Building_PERCH pendingReturnOrigin
+        {
+            get => slot2PendingReturnOrigin;
+            set => slot2PendingReturnOrigin = value;
+        }
 
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;
         public bool HasFuel => refuelableComp != null && refuelableComp.Fuel >= 50f;
         public float FuelLevel => refuelableComp?.Fuel ?? 0f;
         public float FuelCapacity => refuelableComp?.Props.fuelCapacity ?? 500f;
-        public bool HasSlingOnPad => slingOnPad != null;
-        public bool IsBusy => isUnloading || isLoading || isRefueling;
-        public string SlingName => SLING_Thing.GetSlingName(slingOnPad);
-        public Thing SlingOnPad => slingOnPad;
+        public bool HasSlingOnPad => slingSlot1 != null || slingSlot2 != null;
+        public bool HasSlot1Sling => slingSlot1 != null;
+        public bool HasSlot2Sling => slingSlot2 != null;
+        public bool Slot1Available => slingSlot1 == null;
+        public bool Slot2Available => slingSlot2 == null;
+        public bool HasAvailableSlot => Slot1Available || Slot2Available;
+        public int SlingCount => (slingSlot1 != null ? 1 : 0) + (slingSlot2 != null ? 1 : 0);
+        public bool IsBusy => slot1IsLoading || slot2IsUnloading || slot2IsRefueling;
+        public bool Slot1Busy => slot1IsLoading;
+        public bool Slot2Busy => slot2IsUnloading || slot2IsRefueling;
+        public string SlingName => SLING_Thing.GetSlingName(slingSlot1 ?? slingSlot2);
+        public string Slot1SlingName => slingSlot1 != null ? SLING_Thing.GetSlingName(slingSlot1) : "Empty";
+        public string Slot2SlingName => slingSlot2 != null ? SLING_Thing.GetSlingName(slingSlot2) : "Empty";
+        public Thing SlingOnPad => slingSlot1 ?? slingSlot2;
+        public Thing Slot1Sling => slingSlot1;
+        public Thing Slot2Sling => slingSlot2;
 
         public float FuelPercent
         {
@@ -111,12 +182,17 @@ namespace Arsenal
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
-            // If we have a SLING on pad, it remains on the map
-            if (slingOnPad != null && slingOnPad.Spawned)
+            // If we have SLINGs on pads, they remain on the map
+            if (slingSlot1 != null && slingSlot1.Spawned)
             {
-                slingOnPad.SetForbidden(false, false);
+                slingSlot1.SetForbidden(false, false);
             }
-            slingOnPad = null;
+            if (slingSlot2 != null && slingSlot2.Spawned)
+            {
+                slingSlot2.SetForbidden(false, false);
+            }
+            slingSlot1 = null;
+            slingSlot2 = null;
             ArsenalNetworkManager.DeregisterPerch(this);
             base.DeSpawn(mode);
         }
@@ -255,69 +331,135 @@ namespace Arsenal
 
         /// <summary>
         /// Called when a SLING lands at this PERCH.
+        /// Handles the landing state (unloading, return tracking).
+        /// Note: Slot assignment may already be done by AssignToAvailableSlot - this method
+        /// will only assign if the SLING is not yet in a slot.
         /// </summary>
         public void ReceiveSling(Thing sling, Dictionary<ThingDef, int> cargo, Building_PERCH returnOrigin = null, string incomingSlingName = null)
         {
-            slingOnPad = sling;
-
             // Apply incoming name to the SLING_Thing if provided
             if (!string.IsNullOrEmpty(incomingSlingName) && sling is SLING_Thing slingThing)
             {
                 slingThing.AssignName(incomingSlingName);
             }
 
-            string displayName = SlingName;
+            string displayName = SLING_Thing.GetSlingName(sling);
+
+            // Check if SLING is already assigned to a slot (from AssignToAvailableSlot)
+            bool alreadyAssigned = sling == slingSlot1 || sling == slingSlot2;
 
             if (cargo != null && cargo.Count > 0)
             {
-                // Start unloading - track return origin for after unloading completes
-                isUnloading = true;
-                unloadTicksRemaining = UNLOAD_TICKS;
-                loadingCargo = new Dictionary<ThingDef, int>(cargo);
-                pendingReturnOrigin = returnOrigin;
+                // Incoming SLING with cargo - needs unloading
+                if (!alreadyAssigned)
+                {
+                    // Assign to Slot 2 for unloading (if not already assigned)
+                    if (slingSlot2 == null)
+                    {
+                        slingSlot2 = sling;
+                    }
+                    else if (slingSlot1 == null)
+                    {
+                        slingSlot1 = sling;
+                    }
+                    else
+                    {
+                        Log.Warning($"[ARSENAL] {Label}: Both slots full when receiving {displayName}!");
+                        slingSlot2 = sling;
+                    }
+                }
+
+                // Determine which slot the SLING is in for unloading state
+                // Unloading state is tracked on slot 2
+                if (sling == slingSlot2)
+                {
+                    slot2IsUnloading = true;
+                    slot2UnloadTicksRemaining = UNLOAD_TICKS;
+                    slot2PendingReturnOrigin = returnOrigin;
+                }
+                else if (sling == slingSlot1)
+                {
+                    // SLING with cargo landed in slot 1 (unusual but handle it)
+                    // For now, we'll still use slot2 state tracking but move to slot2 if available
+                    if (slingSlot2 == null)
+                    {
+                        slingSlot2 = slingSlot1;
+                        slingSlot1 = null;
+                        if (slingSlot2.Spawned)
+                            slingSlot2.Position = GetSlot2Position();
+                    }
+                    slot2IsUnloading = true;
+                    slot2UnloadTicksRemaining = UNLOAD_TICKS;
+                    slot2PendingReturnOrigin = returnOrigin;
+                }
+
+                // Store cargo manifest for unloading
+                slot1LoadingCargo = new Dictionary<ThingDef, int>(cargo);
                 Messages.Message($"{Label}: {displayName} landed, unloading cargo...", this, MessageTypeDefOf.NeutralEvent);
             }
             else
             {
-                // Empty SLING arrived (return flight) - stays here
-                pendingReturnOrigin = null;
+                // Empty SLING returning - ready for next mission
+                if (!alreadyAssigned)
+                {
+                    // Assign to Slot 1 (primary, ready for missions)
+                    if (slingSlot1 == null)
+                    {
+                        slingSlot1 = sling;
+                    }
+                    else if (slingSlot2 == null)
+                    {
+                        slingSlot2 = sling;
+                    }
+                    else
+                    {
+                        Log.Warning($"[ARSENAL] {Label}: Both slots full when receiving empty {displayName}!");
+                        slingSlot1 = sling;
+                    }
+                }
+
+                slot2PendingReturnOrigin = null;
                 Messages.Message($"{Label}: {displayName} returned", this, MessageTypeDefOf.NeutralEvent);
             }
         }
 
         /// <summary>
         /// Begins loading a SLING for departure to destination.
+        /// Loading happens on Slot 1 (primary staging slot).
         /// MULEs and colonists will haul cargo to the SLING.
         /// Loading continues until complete - no timeout.
         /// </summary>
         public bool StartLoading(Building_PERCH destination, Dictionary<ThingDef, int> cargoToLoad)
         {
-            if (slingOnPad == null || IsBusy) return false;
+            // Loading requires a SLING in slot 1, and slot 1 not busy
+            if (slingSlot1 == null || slot1IsLoading) return false;
             if (!HasNetworkConnection()) return false;
 
             // Tell the SLING to start accepting cargo
-            var sling = slingOnPad as SLING_Thing;
+            var sling = slingSlot1 as SLING_Thing;
             if (sling != null)
             {
                 sling.StartLoading(cargoToLoad);
             }
 
-            isLoading = true;
-            loadDestination = destination;
-            loadingCargo = new Dictionary<ThingDef, int>(cargoToLoad);
+            slot1IsLoading = true;
+            slot1LoadDestination = destination;
+            slot1LoadingCargo = new Dictionary<ThingDef, int>(cargoToLoad);
 
-            Messages.Message($"{Label}: {SlingName} awaiting cargo for {destination.Label}. Colonists/MULEs will load cargo.", this, MessageTypeDefOf.NeutralEvent);
+            string slingName = SLING_Thing.GetSlingName(slingSlot1);
+            Messages.Message($"{Label}: {slingName} awaiting cargo for {destination.Label}. Colonists/MULEs will load cargo.", this, MessageTypeDefOf.NeutralEvent);
             return true;
         }
 
         /// <summary>
         /// Manually dispatches the SLING with whatever cargo is currently loaded.
+        /// Dispatching happens from Slot 1.
         /// </summary>
         public void DispatchNow()
         {
-            if (!isLoading || slingOnPad == null) return;
+            if (!slot1IsLoading || slingSlot1 == null) return;
 
-            var sling = slingOnPad as SLING_Thing;
+            var sling = slingSlot1 as SLING_Thing;
             if (sling != null && sling.CurrentCargoCount > 0)
             {
                 CompleteLoading();
@@ -342,30 +484,33 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Called to refuel a SLING on the pad.
+        /// Called to refuel a SLING on Slot 2 (incoming slot).
         /// </summary>
         public void StartRefuelingSling()
         {
-            if (slingOnPad == null || IsBusy) return;
+            if (slingSlot2 == null || slot2IsUnloading || slot2IsRefueling) return;
             if (!HasFuel) return;
 
-            isRefueling = true;
-            refuelTicksRemaining = REFUEL_TICKS;
+            slot2IsRefueling = true;
+            slot2RefuelTicksRemaining = REFUEL_TICKS;
         }
 
         protected override void Tick()
         {
             base.Tick();
 
-            if (isUnloading)
-            {
-                TickUnloading();
-            }
-            else if (isLoading)
+            // Process Slot 1 operations (loading/staging)
+            if (slot1IsLoading && slingSlot1 != null)
             {
                 TickLoading();
             }
-            else if (isRefueling)
+
+            // Process Slot 2 operations (unloading/refueling incoming)
+            if (slot2IsUnloading && slingSlot2 != null)
+            {
+                TickUnloading();
+            }
+            else if (slot2IsRefueling && slingSlot2 != null)
             {
                 TickRefueling();
             }
@@ -373,15 +518,16 @@ namespace Arsenal
 
         private void TickUnloading()
         {
-            unloadTicksRemaining--;
+            slot2UnloadTicksRemaining--;
 
-            // Visual effects
-            if (unloadTicksRemaining % 30 == 0 && Map != null)
+            // Visual effects at slot 2 position
+            if (slot2UnloadTicksRemaining % 30 == 0 && Map != null)
             {
-                FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
+                Vector3 slot2Pos = GetSlot2Position().ToVector3Shifted();
+                FleckMaker.ThrowMicroSparks(slot2Pos, Map);
             }
 
-            if (unloadTicksRemaining <= 0)
+            if (slot2UnloadTicksRemaining <= 0)
             {
                 CompleteUnloading();
             }
@@ -389,10 +535,13 @@ namespace Arsenal
 
         private void CompleteUnloading()
         {
-            isUnloading = false;
+            slot2IsUnloading = false;
 
             // Unload cargo from SLING's container or from manifest
-            var sling = slingOnPad as SLING_Thing;
+            // Unloading happens on slot 2
+            var sling = slingSlot2 as SLING_Thing;
+            string unloadingSlingName = sling != null ? SLING_Thing.GetSlingName(sling) : "SLING";
+
             if (sling != null && sling.CurrentCargoCount > 0)
             {
                 // Drop cargo from SLING's physical container
@@ -403,7 +552,7 @@ namespace Arsenal
             else
             {
                 // Fallback: spawn from manifest (legacy/transit cargo)
-                foreach (var kvp in loadingCargo)
+                foreach (var kvp in slot1LoadingCargo)
                 {
                     int remaining = kvp.Value;
                     while (remaining > 0)
@@ -426,22 +575,36 @@ namespace Arsenal
                 }
             }
 
-            loadingCargo.Clear();
+            slot1LoadingCargo.Clear();
             Messages.Message($"{Label}: Cargo unloaded", this, MessageTypeDefOf.PositiveEvent);
 
             // Trigger return flight if this SLING needs to go back
-            if (pendingReturnOrigin != null && slingOnPad != null)
+            if (slot2PendingReturnOrigin != null && slingSlot2 != null)
             {
-                var returnTo = pendingReturnOrigin;
-                pendingReturnOrigin = null;
+                var returnTo = slot2PendingReturnOrigin;
+                slot2PendingReturnOrigin = null;
 
                 // Don't return if already at origin
                 if (returnTo != this && returnTo.Map != null && !returnTo.Destroyed)
                 {
-                    string returningSlingName = SlingName;
-                    SlingLogisticsManager.InitiateReturnFlight(slingOnPad, returningSlingName, this, returnTo);
-                    slingOnPad = null;
+                    SlingLogisticsManager.InitiateReturnFlight(slingSlot2, unloadingSlingName, this, returnTo);
+                    slingSlot2 = null;
                 }
+                else
+                {
+                    // Move to slot 1 if available (SLING stays at this PERCH)
+                    if (slingSlot1 == null)
+                    {
+                        slingSlot1 = slingSlot2;
+                        slingSlot2 = null;
+                    }
+                }
+            }
+            else if (slingSlot2 != null && slingSlot1 == null)
+            {
+                // No return needed, move SLING to slot 1 for staging
+                slingSlot1 = slingSlot2;
+                slingSlot2 = null;
             }
         }
 
@@ -456,16 +619,91 @@ namespace Arsenal
             return IntVec3.Invalid;
         }
 
+        /// <summary>
+        /// Gets the center position for Slot 1 (primary/staging slot at front of pad).
+        /// For a 5x14 PERCH, Slot 1 is at the bottom (y offset ~2).
+        /// </summary>
+        public IntVec3 GetSlot1Position()
+        {
+            // PERCH is 5x14, SLING is 7x5
+            // Slot 1 is near the bottom of the pad
+            // Position offset from PERCH lower-left corner
+            return Position + new IntVec3(0, 0, 2);
+        }
+
+        /// <summary>
+        /// Gets the center position for Slot 2 (secondary/incoming slot at back of pad).
+        /// For a 5x14 PERCH, Slot 2 is at the top (y offset ~9).
+        /// </summary>
+        public IntVec3 GetSlot2Position()
+        {
+            // PERCH is 5x14, SLING is 7x5
+            // Slot 2 is near the top of the pad
+            // Position offset from PERCH lower-left corner
+            return Position + new IntVec3(0, 0, 8);
+        }
+
+        /// <summary>
+        /// Gets the position for an available slot (prefers slot 2 for incoming).
+        /// </summary>
+        public IntVec3 GetAvailableSlotPosition()
+        {
+            if (slingSlot2 == null) return GetSlot2Position();
+            if (slingSlot1 == null) return GetSlot1Position();
+            return Position; // Both full, fallback to center
+        }
+
+        /// <summary>
+        /// Assigns a SLING to an available slot and returns the slot position.
+        /// Incoming SLINGs (with cargo) go to slot 2, returning go to slot 1.
+        /// </summary>
+        public IntVec3 AssignToAvailableSlot(Thing sling, bool hasCargoToUnload)
+        {
+            if (hasCargoToUnload)
+            {
+                // Incoming with cargo - prefer slot 2
+                if (slingSlot2 == null)
+                {
+                    slingSlot2 = sling;
+                    return GetSlot2Position();
+                }
+                else if (slingSlot1 == null)
+                {
+                    slingSlot1 = sling;
+                    return GetSlot1Position();
+                }
+            }
+            else
+            {
+                // Returning empty - prefer slot 1 (ready for next mission)
+                if (slingSlot1 == null)
+                {
+                    slingSlot1 = sling;
+                    return GetSlot1Position();
+                }
+                else if (slingSlot2 == null)
+                {
+                    slingSlot2 = sling;
+                    return GetSlot2Position();
+                }
+            }
+            // Both slots full - shouldn't happen with proper routing
+            Log.Warning($"[ARSENAL] {Label}: Both slots full when assigning SLING!");
+            return Position;
+        }
+
         private void TickLoading()
         {
+            // Loading happens on slot 1
             // Visual effects occasionally
             if (this.IsHashIntervalTick(30) && Map != null)
             {
-                FleckMaker.ThrowMicroSparks(Position.ToVector3Shifted(), Map);
+                Vector3 slot1Pos = GetSlot1Position().ToVector3Shifted();
+                FleckMaker.ThrowMicroSparks(slot1Pos, Map);
             }
 
             // Check if SLING has finished loading (all cargo has been hauled in)
-            var sling = slingOnPad as SLING_Thing;
+            var sling = slingSlot1 as SLING_Thing;
             if (sling != null && sling.IsLoadingComplete())
             {
                 CompleteLoading();
@@ -494,15 +732,16 @@ namespace Arsenal
 
         /// <summary>
         /// Checks if any of the requested cargo exists on the map.
+        /// Checks against Slot 1's loading manifest.
         /// </summary>
         private bool IsCargoAvailable()
         {
-            if (loadingCargo == null || loadingCargo.Count == 0) return false;
+            if (slot1LoadingCargo == null || slot1LoadingCargo.Count == 0) return false;
 
-            var sling = slingOnPad as SLING_Thing;
+            var sling = slingSlot1 as SLING_Thing;
             var available = GetAvailableResources();
 
-            foreach (var requested in loadingCargo)
+            foreach (var requested in slot1LoadingCargo)
             {
                 // Check if we still need this resource
                 int needed = requested.Value;
@@ -525,33 +764,35 @@ namespace Arsenal
 
         private void CancelLoading()
         {
-            isLoading = false;
-            loadingCargo.Clear();
+            slot1IsLoading = false;
+            slot1LoadingCargo.Clear();
+            slot1LoadDestination = null;
 
-            var sling = slingOnPad as SLING_Thing;
+            var sling = slingSlot1 as SLING_Thing;
+            string slingName = sling != null ? SLING_Thing.GetSlingName(sling) : "SLING";
             if (sling != null)
             {
                 sling.CancelLoading();
             }
 
-            Messages.Message($"{Label}: {SlingName} loading cancelled - no cargo available.", this, MessageTypeDefOf.NeutralEvent);
+            Messages.Message($"{Label}: {slingName} loading cancelled - no cargo available.", this, MessageTypeDefOf.NeutralEvent);
         }
 
         private void CompleteLoading()
         {
-            isLoading = false;
+            slot1IsLoading = false;
 
-            if (slingOnPad == null || loadDestination == null)
+            if (slingSlot1 == null || slot1LoadDestination == null)
             {
-                loadingCargo.Clear();
+                slot1LoadingCargo.Clear();
                 return;
             }
 
             // Get SLING name before despawning
-            string departingSlingName = SlingName;
+            string departingSlingName = SLING_Thing.GetSlingName(slingSlot1);
 
             // Complete the SLING's loading process and get cargo manifest
-            var sling = slingOnPad as SLING_Thing;
+            var sling = slingSlot1 as SLING_Thing;
             var actualCargo = new Dictionary<ThingDef, int>();
             if (sling != null)
             {
@@ -560,7 +801,7 @@ namespace Arsenal
             }
 
             // Consume fuel for the trip
-            float fuelCost = SlingLogisticsManager.CalculateFuelCost(Map.Tile, loadDestination.Map.Tile);
+            float fuelCost = SlingLogisticsManager.CalculateFuelCost(Map.Tile, slot1LoadDestination.Map.Tile);
             if (refuelableComp != null)
             {
                 refuelableComp.ConsumeFuel(fuelCost);
@@ -569,26 +810,26 @@ namespace Arsenal
             // Create launching skyfaller for takeoff animation
             var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
                 ArsenalDefOf.Arsenal_SlingLaunching);
-            launchingSkyfaller.sling = slingOnPad;
+            launchingSkyfaller.sling = slingSlot1;
             launchingSkyfaller.slingName = departingSlingName;
             launchingSkyfaller.cargo = actualCargo;
             launchingSkyfaller.originPerch = this;
-            launchingSkyfaller.destinationPerch = loadDestination;
-            launchingSkyfaller.destinationTile = loadDestination.Map.Tile;
+            launchingSkyfaller.destinationPerch = slot1LoadDestination;
+            launchingSkyfaller.destinationTile = slot1LoadDestination.Map.Tile;
             launchingSkyfaller.isReturnFlight = false;
 
-            // Despawn SLING from pad
-            if (slingOnPad.Spawned)
+            // Despawn SLING from slot 1
+            if (slingSlot1.Spawned)
             {
-                slingOnPad.DeSpawn(DestroyMode.Vanish);
+                slingSlot1.DeSpawn(DestroyMode.Vanish);
             }
 
-            // Spawn the launching skyfaller at PERCH position
-            GenSpawn.Spawn(launchingSkyfaller, Position, Map);
+            // Spawn the launching skyfaller at slot 1 position
+            GenSpawn.Spawn(launchingSkyfaller, GetSlot1Position(), Map);
 
-            slingOnPad = null;
-            loadDestination = null;
-            loadingCargo.Clear();
+            slingSlot1 = null;
+            slot1LoadDestination = null;
+            slot1LoadingCargo.Clear();
 
             Messages.Message($"{Label}: {departingSlingName} launching with {actualCargo.Values.Sum()} items", this, MessageTypeDefOf.PositiveEvent);
         }
@@ -628,14 +869,15 @@ namespace Arsenal
 
         private void TickRefueling()
         {
-            refuelTicksRemaining--;
+            slot2RefuelTicksRemaining--;
 
-            if (refuelTicksRemaining % 60 == 0 && Map != null)
+            if (slot2RefuelTicksRemaining % 60 == 0 && Map != null)
             {
-                FleckMaker.ThrowSmoke(Position.ToVector3Shifted() + new Vector3(Rand.Range(-0.5f, 0.5f), 0, Rand.Range(-0.5f, 0.5f)), Map, 0.5f);
+                Vector3 slot2Pos = GetSlot2Position().ToVector3Shifted();
+                FleckMaker.ThrowSmoke(slot2Pos + new Vector3(Rand.Range(-0.5f, 0.5f), 0, Rand.Range(-0.5f, 0.5f)), Map, 0.5f);
             }
 
-            if (refuelTicksRemaining <= 0)
+            if (slot2RefuelTicksRemaining <= 0)
             {
                 CompleteRefueling();
             }
@@ -643,20 +885,50 @@ namespace Arsenal
 
         private void CompleteRefueling()
         {
-            isRefueling = false;
-            // SLING is now refueled and ready for dispatch
-            Messages.Message($"{Label}: SLING refueled", this, MessageTypeDefOf.NeutralEvent);
+            slot2IsRefueling = false;
+            string slingName = slingSlot2 != null ? SLING_Thing.GetSlingName(slingSlot2) : "SLING";
+
+            // After refueling, move SLING to slot 1 if available (ready for dispatch)
+            if (slingSlot2 != null && slingSlot1 == null)
+            {
+                slingSlot1 = slingSlot2;
+                slingSlot2 = null;
+                // Reposition the SLING
+                if (slingSlot1.Spawned)
+                {
+                    slingSlot1.Position = GetSlot1Position();
+                }
+            }
+
+            Messages.Message($"{Label}: {slingName} refueled and ready", this, MessageTypeDefOf.NeutralEvent);
         }
 
         /// <summary>
-        /// Adds a SLING to this PERCH (for fleet count purposes).
+        /// Adds a SLING to this PERCH (for manufacturing/initial placement).
+        /// Newly assigned SLINGs go to Slot 1 (primary, ready for missions).
         /// </summary>
         public void AssignSling(Thing sling)
         {
-            slingOnPad = sling;
-            if (sling != null && !sling.Spawned && Map != null)
+            // Prefer slot 1 for newly assigned SLINGs
+            if (slingSlot1 == null)
             {
-                GenSpawn.Spawn(sling, Position, Map);
+                slingSlot1 = sling;
+                if (sling != null && !sling.Spawned && Map != null)
+                {
+                    GenSpawn.Spawn(sling, GetSlot1Position(), Map);
+                }
+            }
+            else if (slingSlot2 == null)
+            {
+                slingSlot2 = sling;
+                if (sling != null && !sling.Spawned && Map != null)
+                {
+                    GenSpawn.Spawn(sling, GetSlot2Position(), Map);
+                }
+            }
+            else
+            {
+                Log.Warning($"[ARSENAL] {Label}: Tried to assign SLING but both slots full!");
             }
         }
 
@@ -710,16 +982,17 @@ namespace Arsenal
                 };
             }
 
-            // Show Dispatch Now button when SLING is loading
-            if (isLoading && slingOnPad != null)
+            // Show Dispatch Now button when SLING in slot 1 is loading
+            if (slot1IsLoading && slingSlot1 != null)
             {
-                var sling = slingOnPad as SLING_Thing;
+                var sling = slingSlot1 as SLING_Thing;
                 int cargoCount = sling?.CurrentCargoCount ?? 0;
+                string slot1Name = SLING_Thing.GetSlingName(slingSlot1);
 
                 var dispatchCmd = new Command_Action
                 {
                     defaultLabel = "Dispatch Now",
-                    defaultDesc = $"Launch {SlingName} immediately with current cargo ({cargoCount} items).\nUse this to dispatch with partial loads.",
+                    defaultDesc = $"Launch {slot1Name} immediately with current cargo ({cargoCount} items).\nUse this to dispatch with partial loads.",
                     icon = ContentFinder<Texture2D>.Get("UI/Commands/LaunchShip", false),
                     action = delegate
                     {
@@ -746,7 +1019,7 @@ namespace Arsenal
 
             if (Prefs.DevMode)
             {
-                if (slingOnPad != null && !IsBusy)
+                if (slingSlot1 != null && !slot1IsLoading)
                 {
                     yield return new Command_Action
                     {
@@ -758,46 +1031,59 @@ namespace Arsenal
                     };
                 }
 
-                // Diagnostic for loading issues
+                // Diagnostic for dual slots
                 yield return new Command_Action
                 {
-                    defaultLabel = "DEV: Diagnose Loading",
-                    defaultDesc = "Show debug info about cargo loading status.",
+                    defaultLabel = "DEV: Diagnose Slots",
+                    defaultDesc = "Show debug info about dual slot status.",
                     action = delegate
                     {
-                        string msg = $"=== {Label} Loading Diagnostics ===\n";
+                        string msg = $"=== {Label} Dual Slot Diagnostics ===\n";
                         msg += $"Registered PERCHes: {ArsenalNetworkManager.GetAllPerches().Count}\n";
-                        msg += $"This PERCH HasSlingOnPad: {HasSlingOnPad}\n";
-                        msg += $"IsBusy: {IsBusy} (Loading: {isLoading}, Unloading: {isUnloading}, Refueling: {isRefueling})\n";
+                        msg += $"HasAvailableSlot: {HasAvailableSlot}\n";
+                        msg += $"SlingCount: {SlingCount}\n\n";
 
-                        if (slingOnPad != null)
+                        // Slot 1 info
+                        msg += $"--- SLOT 1 (Staging) ---\n";
+                        msg += $"Position: {GetSlot1Position()}\n";
+                        if (slingSlot1 != null)
                         {
-                            msg += $"SlingOnPad Type: {slingOnPad.GetType().Name}\n";
-                            var sling = slingOnPad as SLING_Thing;
-                            if (sling != null)
+                            msg += $"SLING: {SLING_Thing.GetSlingName(slingSlot1)}\n";
+                            msg += $"IsLoading: {slot1IsLoading}\n";
+                            var sling1 = slingSlot1 as SLING_Thing;
+                            if (sling1 != null)
                             {
-                                msg += $"SLING IsLoading: {sling.IsLoading}\n";
-                                msg += $"SLING CurrentCargo: {sling.CurrentCargoCount}\n";
-                                msg += $"SLING RemainingCapacity: {sling.RemainingCapacity}\n";
-
-                                // Check target cargo
-                                var available = GetAvailableResources();
-                                msg += $"\nAvailable resources on map: {available.Count}\n";
-                                foreach (var r in available.Take(5))
-                                {
-                                    bool wants = sling.WantsItem(r.Key);
-                                    int needed = sling.GetRemainingNeeded(r.Key);
-                                    msg += $"  {r.Key.label}: {r.Value} avail, wants={wants}, need={needed}\n";
-                                }
-                            }
-                            else
-                            {
-                                msg += "ERROR: SlingOnPad is not SLING_Thing!\n";
+                                msg += $"  CurrentCargo: {sling1.CurrentCargoCount}\n";
+                                msg += $"  RemainingCapacity: {sling1.RemainingCapacity}\n";
                             }
                         }
                         else
                         {
-                            msg += "No SLING on pad.\n";
+                            msg += "Empty\n";
+                        }
+
+                        // Slot 2 info
+                        msg += $"\n--- SLOT 2 (Incoming) ---\n";
+                        msg += $"Position: {GetSlot2Position()}\n";
+                        if (slingSlot2 != null)
+                        {
+                            msg += $"SLING: {SLING_Thing.GetSlingName(slingSlot2)}\n";
+                            msg += $"IsUnloading: {slot2IsUnloading}\n";
+                            msg += $"IsRefueling: {slot2IsRefueling}\n";
+                            if (slot2PendingReturnOrigin != null)
+                                msg += $"PendingReturn: {slot2PendingReturnOrigin.Label}\n";
+                        }
+                        else
+                        {
+                            msg += "Empty\n";
+                        }
+
+                        // Available resources check
+                        var available = GetAvailableResources();
+                        msg += $"\nAvailable resources on map: {available.Count}\n";
+                        foreach (var r in available.Take(5))
+                        {
+                            msg += $"  {r.Key.label}: {r.Value}\n";
                         }
 
                         Log.Message(msg);
@@ -830,19 +1116,20 @@ namespace Arsenal
             if (refuelableComp != null)
                 str += $"\nFuel: {refuelableComp.Fuel:F0} / {FuelCapacity:F0}";
 
-            // SLING status
-            if (slingOnPad != null)
+            // Dual slot status
+            // Slot 1 (Primary/Staging)
+            str += "\nSlot 1 (Staging): ";
+            if (slingSlot1 != null)
             {
-                str += $"\n{SlingName}: On pad";
-                if (isUnloading)
-                    str += $" (Unloading: {unloadTicksRemaining.ToStringTicksToPeriod()})";
-                else if (isLoading)
+                string slot1Name = SLING_Thing.GetSlingName(slingSlot1);
+                str += slot1Name;
+                if (slot1IsLoading)
                 {
-                    var sling = slingOnPad as SLING_Thing;
+                    var sling = slingSlot1 as SLING_Thing;
                     if (sling != null)
                     {
                         int loaded = sling.CurrentCargoCount;
-                        int target = loadingCargo?.Values.Sum() ?? 0;
+                        int target = slot1LoadingCargo?.Values.Sum() ?? 0;
                         str += $" (Loading: {loaded}/{target})";
                     }
                     else
@@ -850,14 +1137,32 @@ namespace Arsenal
                         str += " (Loading)";
                     }
                 }
-                else if (isRefueling)
-                    str += $" (Refueling: {refuelTicksRemaining.ToStringTicksToPeriod()})";
                 else
+                {
                     str += " (Ready)";
+                }
             }
             else
             {
-                str += "\nSLING: None";
+                str += "Empty";
+            }
+
+            // Slot 2 (Secondary/Incoming)
+            str += "\nSlot 2 (Incoming): ";
+            if (slingSlot2 != null)
+            {
+                string slot2Name = SLING_Thing.GetSlingName(slingSlot2);
+                str += slot2Name;
+                if (slot2IsUnloading)
+                    str += $" (Unloading: {slot2UnloadTicksRemaining.ToStringTicksToPeriod()})";
+                else if (slot2IsRefueling)
+                    str += $" (Refueling: {slot2RefuelTicksRemaining.ToStringTicksToPeriod()})";
+                else
+                    str += " (Idle)";
+            }
+            else
+            {
+                str += "Empty";
             }
 
             // Demand/Supply info
@@ -888,22 +1193,74 @@ namespace Arsenal
             Scribe_Collections.Look(ref sourceFilter, "sourceFilter", LookMode.Def);
             Scribe_Collections.Look(ref thresholdTargets, "thresholdTargets", LookMode.Def, LookMode.Value);
 
-            Scribe_References.Look(ref slingOnPad, "slingOnPad");
-            Scribe_Values.Look(ref isUnloading, "isUnloading", false);
-            Scribe_Values.Look(ref unloadTicksRemaining, "unloadTicksRemaining", 0);
-            Scribe_Values.Look(ref isLoading, "isLoading", false);
-            Scribe_Values.Look(ref loadTicksRemaining, "loadTicksRemaining", 0);
-            Scribe_References.Look(ref loadDestination, "loadDestination");
-            Scribe_References.Look(ref pendingReturnOrigin, "pendingReturnOrigin");
-            Scribe_Values.Look(ref isRefueling, "isRefueling", false);
-            Scribe_Values.Look(ref refuelTicksRemaining, "refuelTicksRemaining", 0);
-            Scribe_Collections.Look(ref loadingCargo, "loadingCargo", LookMode.Def, LookMode.Value);
+            // Dual slot system - save both slots
+            Scribe_References.Look(ref slingSlot1, "slingSlot1");
+            Scribe_References.Look(ref slingSlot2, "slingSlot2");
+
+            // Slot 1 state (primary - loading/staging)
+            Scribe_Values.Look(ref slot1IsLoading, "slot1IsLoading", false);
+            Scribe_References.Look(ref slot1LoadDestination, "slot1LoadDestination");
+            Scribe_Collections.Look(ref slot1LoadingCargo, "slot1LoadingCargo", LookMode.Def, LookMode.Value);
+
+            // Slot 2 state (secondary - unloading/refueling)
+            Scribe_Values.Look(ref slot2IsUnloading, "slot2IsUnloading", false);
+            Scribe_Values.Look(ref slot2UnloadTicksRemaining, "slot2UnloadTicksRemaining", 0);
+            Scribe_Values.Look(ref slot2IsRefueling, "slot2IsRefueling", false);
+            Scribe_Values.Look(ref slot2RefuelTicksRemaining, "slot2RefuelTicksRemaining", 0);
+            Scribe_References.Look(ref slot2PendingReturnOrigin, "slot2PendingReturnOrigin");
+
+            // Backwards compatibility - try loading old single-slot format
+            Thing legacySlingOnPad = null;
+            bool legacyIsUnloading = false;
+            int legacyUnloadTicks = 0;
+            bool legacyIsLoading = false;
+            bool legacyIsRefueling = false;
+            int legacyRefuelTicks = 0;
+            Building_PERCH legacyLoadDest = null;
+            Building_PERCH legacyReturnOrigin = null;
+            Dictionary<ThingDef, int> legacyLoadingCargo = null;
+
+            Scribe_References.Look(ref legacySlingOnPad, "slingOnPad");
+            Scribe_Values.Look(ref legacyIsUnloading, "isUnloading", false);
+            Scribe_Values.Look(ref legacyUnloadTicks, "unloadTicksRemaining", 0);
+            Scribe_Values.Look(ref legacyIsLoading, "isLoading", false);
+            Scribe_Values.Look(ref legacyIsRefueling, "isRefueling", false);
+            Scribe_Values.Look(ref legacyRefuelTicks, "refuelTicksRemaining", 0);
+            Scribe_References.Look(ref legacyLoadDest, "loadDestination");
+            Scribe_References.Look(ref legacyReturnOrigin, "pendingReturnOrigin");
+            Scribe_Collections.Look(ref legacyLoadingCargo, "loadingCargo", LookMode.Def, LookMode.Value);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
+                // Initialize collections if null
                 if (sourceFilter == null) sourceFilter = new List<ThingDef>();
                 if (thresholdTargets == null) thresholdTargets = new Dictionary<ThingDef, int>();
-                if (loadingCargo == null) loadingCargo = new Dictionary<ThingDef, int>();
+                if (slot1LoadingCargo == null) slot1LoadingCargo = new Dictionary<ThingDef, int>();
+
+                // Migrate legacy single-slot data to dual-slot system
+                if (legacySlingOnPad != null && slingSlot1 == null && slingSlot2 == null)
+                {
+                    // Put legacy SLING in slot 1
+                    slingSlot1 = legacySlingOnPad;
+                }
+                if (legacyIsLoading && !slot1IsLoading)
+                {
+                    slot1IsLoading = true;
+                    slot1LoadDestination = legacyLoadDest;
+                    if (legacyLoadingCargo != null)
+                        slot1LoadingCargo = legacyLoadingCargo;
+                }
+                if (legacyIsUnloading && !slot2IsUnloading)
+                {
+                    slot2IsUnloading = true;
+                    slot2UnloadTicksRemaining = legacyUnloadTicks;
+                    slot2PendingReturnOrigin = legacyReturnOrigin;
+                }
+                if (legacyIsRefueling && !slot2IsRefueling)
+                {
+                    slot2IsRefueling = true;
+                    slot2RefuelTicksRemaining = legacyRefuelTicks;
+                }
             }
         }
     }

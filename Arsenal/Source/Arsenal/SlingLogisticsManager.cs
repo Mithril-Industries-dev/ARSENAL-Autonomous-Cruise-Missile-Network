@@ -48,13 +48,13 @@ namespace Arsenal
 
             if (sinksWithDemand.Count == 0) return;
 
-            // Get all SOURCE perches with available SLINGs
+            // Get all SOURCE perches with SLINGs ready in slot 1 (staging slot)
             var availableSources = ArsenalNetworkManager.GetAllPerches()
                 .Where(p => p.role == PerchRole.SOURCE &&
                            p.HasNetworkConnection() &&
                            p.IsPoweredOn &&
-                           p.HasSlingOnPad &&
-                           !p.IsBusy)
+                           p.HasSlot1Sling &&    // Dispatch is from slot 1 (primary)
+                           !p.Slot1Busy)         // Slot 1 not busy (not loading)
                 .ToList();
 
             if (availableSources.Count == 0) return;
@@ -121,7 +121,7 @@ namespace Arsenal
         public static bool TryDispatchFromPerch(Building_PERCH source)
         {
             if (source == null || source.role != PerchRole.SOURCE) return false;
-            if (!source.HasSlingOnPad || source.IsBusy) return false;
+            if (!source.HasSlot1Sling || source.Slot1Busy) return false;
 
             // Find a SINK with demand
             var sink = ArsenalNetworkManager.GetAllPerches()
@@ -338,11 +338,10 @@ namespace Arsenal
         {
             int count = 0;
 
-            // SLINGs on PERCHes
+            // SLINGs on PERCHes (count both slots)
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
-                if (perch.HasSlingOnPad)
-                    count++;
+                count += perch.SlingCount;
             }
 
             // SLINGs in transit

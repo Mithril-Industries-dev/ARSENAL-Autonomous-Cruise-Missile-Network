@@ -554,9 +554,9 @@ namespace Arsenal
         /// </summary>
         private void ScanSlingLoadTasks()
         {
-            // Find all loading SLINGs on this map
+            // Find all PERCHes with loading SLINGs in slot 1 (loading happens on slot 1)
             var loadingPerches = ArsenalNetworkManager.GetPerchesOnMap(Map)
-                .Where(p => p.HasSlingOnPad && (p.SlingOnPad as SLING_Thing)?.IsLoading == true)
+                .Where(p => p.HasSlot1Sling && (p.Slot1Sling as SLING_Thing)?.IsLoading == true)
                 .ToList();
 
             if (loadingPerches.Count == 0) return;
@@ -579,10 +579,10 @@ namespace Arsenal
                     .Any(m => m.CurrentTask?.targetThing == item);
                 if (muleAssigned) continue;
 
-                // Find a SLING that wants this item
+                // Find a SLING in slot 1 that wants this item
                 foreach (var perch in loadingPerches)
                 {
-                    var sling = perch.SlingOnPad as SLING_Thing;
+                    var sling = perch.Slot1Sling as SLING_Thing;
                     if (sling != null && sling.WantsItem(item.def))
                     {
                         MuleTask task = MuleTask.CreateSlingLoadTask(item, sling);

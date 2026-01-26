@@ -192,7 +192,7 @@ namespace Arsenal
         private void HandlePerchWaypointLanding()
         {
             var localPerch = ArsenalNetworkManager.GetPerchAtTile(Map.Tile);
-            if (localPerch == null)
+            if (localPerch == null || !localPerch.HasAvailableSlot)
             {
                 HandleEmergencyLanding();
                 return;
@@ -204,10 +204,14 @@ namespace Arsenal
                 slingThing.AssignName(slingName);
             }
 
-            // Spawn SLING on PERCH pad
+            // Waypoint stops go to slot 2 (incoming) for refueling
+            bool hasCargoToUnload = cargo != null && cargo.Count > 0;
+            IntVec3 landingPos = localPerch.AssignToAvailableSlot(sling, hasCargoToUnload);
+
+            // Spawn SLING at the assigned slot position
             if (sling != null && !sling.Spawned)
             {
-                GenSpawn.Spawn(sling, localPerch.Position, Map);
+                GenSpawn.Spawn(sling, landingPos, Map);
                 sling.SetForbidden(true, false);
             }
 
@@ -215,7 +219,6 @@ namespace Arsenal
                 localPerch, MessageTypeDefOf.NeutralEvent);
 
             // Start refueling process
-            localPerch.AssignSling(sling);
             localPerch.StartRefuelingSling();
 
             // After refueling completes, continue journey
@@ -226,6 +229,14 @@ namespace Arsenal
         {
             if (destinationPerch == null || !destinationPerch.Spawned)
             {
+                HandleEmergencyLanding();
+                return;
+            }
+
+            // Check if PERCH has an available slot
+            if (!destinationPerch.HasAvailableSlot)
+            {
+                Log.Warning($"[ARSENAL] {slingName ?? "SLING"} landing at {destinationPerch.Label} but no slot available!");
                 HandleEmergencyLanding();
                 return;
             }
@@ -245,10 +256,14 @@ namespace Arsenal
                 }
             }
 
-            // Spawn SLING on pad BEFORE calling ReceiveSling
+            // Determine landing position based on cargo (incoming with cargo -> slot 2, return -> slot 1)
+            bool hasCargoToUnload = cargo != null && cargo.Count > 0;
+            IntVec3 landingPos = destinationPerch.AssignToAvailableSlot(sling, hasCargoToUnload);
+
+            // Spawn SLING at the assigned slot position
             if (sling != null && !sling.Spawned)
             {
-                GenSpawn.Spawn(sling, destinationPerch.Position, Map);
+                GenSpawn.Spawn(sling, landingPos, Map);
                 sling.SetForbidden(true, false);
             }
 
@@ -259,7 +274,8 @@ namespace Arsenal
                 returnOrigin = originPerch;
             }
 
-            // Deliver cargo to destination - PERCH will handle return after unloading
+            // Deliver cargo to destination - ReceiveSling handles unloading/return
+            // Note: slot assignment already done above, ReceiveSling will handle state
             destinationPerch.ReceiveSling(sling, cargo, returnOrigin, slingName);
         }
 

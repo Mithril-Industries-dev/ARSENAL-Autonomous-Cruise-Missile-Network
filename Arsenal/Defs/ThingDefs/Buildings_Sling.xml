@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Defs>
 
-  <!-- PERCH Landing/Launch Pad -->
+  <!-- PERCH Landing/Launch Pad (Dual Slot) -->
   <ThingDef ParentName="BuildingBase">
     <defName>Arsenal_PERCH</defName>
     <label>PERCH logistics hub</label>
-    <description>A landing and launch pad for SLING cargo craft. Configure as SOURCE (export) or SINK (import) via the LATTICE logistics tab. PERCHes require network connectivity and chemfuel for operations.
+    <description>A dual-slot landing and launch pad for SLING cargo craft. Each PERCH has two landing slots - one for staging/loading and one for incoming craft. Configure as SOURCE (export) or SINK (import) via the LATTICE logistics tab.
 
 SOURCEs export available resources from adjacent storage.
 SINKs import resources up to configured threshold targets.
 
-The total number of SLINGs in the network cannot exceed the number of PERCHes.</description>
+Manufacturing limit: 1 SLING per PERCH (but each PERCH can hold 2 SLINGs).</description>
     <thingClass>Arsenal.Building_PERCH</thingClass>
     <graphicData>
       <texPath>Arsenal/Arsenal_PERCH</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(7,5)</drawSize>
+      <drawSize>(5,14)</drawSize>
     </graphicData>
     <altitudeLayer>Building</altitudeLayer>
     <passability>PassThroughOnly</passability>
@@ -24,15 +24,15 @@ The total number of SLINGs in the network cannot exceed the number of PERCHes.</
     <fillPercent>0.4</fillPercent>
     <canOverlapZones>false</canOverlapZones>
     <statBases>
-      <MaxHitPoints>350</MaxHitPoints>
-      <WorkToBuild>12000</WorkToBuild>
-      <Mass>150</Mass>
+      <MaxHitPoints>500</MaxHitPoints>
+      <WorkToBuild>18000</WorkToBuild>
+      <Mass>250</Mass>
       <Flammability>0.5</Flammability>
     </statBases>
-    <size>(7,5)</size>
+    <size>(5,14)</size>
     <costList>
-      <Steel>200</Steel>
-      <ComponentIndustrial>6</ComponentIndustrial>
+      <Steel>350</Steel>
+      <ComponentIndustrial>10</ComponentIndustrial>
     </costList>
     <comps>
       <li Class="CompProperties_Power">
