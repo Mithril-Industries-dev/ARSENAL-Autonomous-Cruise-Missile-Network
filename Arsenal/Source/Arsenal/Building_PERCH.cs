@@ -716,18 +716,21 @@ namespace Arsenal
                 var sling = slingOnPad as SLING_Thing;
                 int cargoCount = sling?.CurrentCargoCount ?? 0;
 
-                yield return new Command_Action
+                var dispatchCmd = new Command_Action
                 {
                     defaultLabel = "Dispatch Now",
                     defaultDesc = $"Launch {SlingName} immediately with current cargo ({cargoCount} items).\nUse this to dispatch with partial loads.",
                     icon = ContentFinder<Texture2D>.Get("UI/Commands/LaunchShip", false),
-                    disabled = cargoCount == 0,
-                    disabledReason = "No cargo loaded yet.",
                     action = delegate
                     {
                         DispatchNow();
                     }
                 };
+                if (cargoCount == 0)
+                {
+                    dispatchCmd.Disable("No cargo loaded yet.");
+                }
+                yield return dispatchCmd;
 
                 yield return new Command_Action
                 {
