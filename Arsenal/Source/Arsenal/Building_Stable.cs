@@ -87,17 +87,28 @@ namespace Arsenal
             base.ExposeData();
 
             Scribe_Values.Look(ref customName, "customName");
-            Scribe_Collections.Look(ref dockedMules, "dockedMules", LookMode.Reference);
+
+            // CRITICAL: Use LookMode.Deep for docked MULEs because they are despawned
+            // and not part of any map or world pawn pool. LookMode.Reference would fail
+            // to save them properly, causing MULEs to be lost on game load.
+            Scribe_Collections.Look(ref dockedMules, "dockedMules", LookMode.Deep);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
                 dockedMules = dockedMules ?? new List<MULE_Pawn>();
                 dockedMules.RemoveAll(m => m == null);
 
-                // Re-assign home stable to docked MULEs
+                // Re-assign home stable to docked MULEs and ensure proper state
                 foreach (var mule in dockedMules)
                 {
                     mule.homeStable = this;
+
+                    // Ensure battery state is correct - if battery is full, set to Idle
+                    // This handles the case where state was saved as Charging but battery is now full
+                    if (mule.BatteryComp != null && mule.BatteryComp.IsFull && mule.state == MuleState.Charging)
+                    {
+                        mule.state = MuleState.Idle;
+                    }
                 }
             }
         }
