@@ -76,10 +76,10 @@ SLINGs are manufactured at ARSENAL facilities and automatically join the logisti
     <graphicData>
       <texPath>Arsenal/Arsenal_SLING</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(5,7)</drawSize>
+      <drawSize>(7,5)</drawSize>
     </graphicData>
     <altitudeLayer>BuildingOnTop</altitudeLayer>
-    <size>(5,7)</size>
+    <size>(7,5)</size>
     <passability>PassThroughOnly</passability>
     <pathCost>50</pathCost>
     <blockWind>false</blockWind>

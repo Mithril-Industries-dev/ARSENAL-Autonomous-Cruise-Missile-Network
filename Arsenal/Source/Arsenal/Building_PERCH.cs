@@ -643,32 +643,31 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the center position for Slot 1 (primary/staging slot at front of pad).
-        /// For a 5x14 PERCH with two 5x7 zones:
-        /// - Bottom zone (Slot 1): Z+0 to Z+6, center at Z+3
-        /// - SLING lands centered in this zone
+        /// SLING is 7x5 (horizontal), PERCH is 5x14 (vertical).
+        /// SLING is offset to the right of the PERCH pad with partial overlap.
+        /// - Bottom zone (Slot 1): Z+0 to Z+6, SLING center at Z+2
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
-            // PERCH is 5 wide x 14 tall, two 5x7 landing zones
-            // Slot 1 is the bottom 5x7 zone
-            // Center X: PERCH center = Position.x + 2 (for 5-wide)
-            // Center Z: Bottom zone center = Position.z + 3 (for 7-tall zone)
-            return Position + new IntVec3(2, 0, 3);
+            // PERCH is 5 wide x 14 tall, SLING is 7 wide x 5 tall (horizontal)
+            // SLING is offset to the RIGHT of the PERCH pad
+            // Center X: Position.x + 4 (SLING extends from X+1 to X+7, overlapping PERCH X+1 to X+4)
+            // Center Z: Position.z + 2 (SLING spans Z+0 to Z+4, fits in bottom zone)
+            return Position + new IntVec3(4, 0, 2);
         }
 
         /// <summary>
         /// Gets the center position for Slot 2 (secondary/incoming slot at back of pad).
-        /// For a 5x14 PERCH with two 5x7 zones:
-        /// - Top zone (Slot 2): Z+7 to Z+13, center at Z+10
-        /// - SLING lands centered in this zone
+        /// SLING is 7x5 (horizontal), PERCH is 5x14 (vertical).
+        /// - Top zone (Slot 2): Z+7 to Z+13, SLING center at Z+9
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
-            // PERCH is 5 wide x 14 tall, two 5x7 landing zones
-            // Slot 2 is the top 5x7 zone
-            // Center X: PERCH center = Position.x + 2 (for 5-wide)
-            // Center Z: Top zone center = Position.z + 10 (7 + 3 for center of second zone)
-            return Position + new IntVec3(2, 0, 10);
+            // PERCH is 5 wide x 14 tall, SLING is 7 wide x 5 tall (horizontal)
+            // SLING is offset to the RIGHT of the PERCH pad
+            // Center X: Position.x + 4 (SLING extends from X+1 to X+7)
+            // Center Z: Position.z + 9 (SLING spans Z+7 to Z+11, fits in top zone)
+            return Position + new IntVec3(4, 0, 9);
         }
 
         /// <summary>
@@ -1158,7 +1157,18 @@ namespace Arsenal
                     {
                         int loaded = sling.CurrentCargoCount;
                         int target = slot1LoadingCargo?.Values.Sum() ?? 0;
-                        str += $" (Loading: {loaded}/{target})";
+                        str += $" <color=#ffaa00>(LOADING: {loaded}/{target})</color>";
+
+                        // Show detailed breakdown by resource type
+                        if (slot1LoadingCargo != null && slot1LoadingCargo.Count > 0)
+                        {
+                            foreach (var cargo in slot1LoadingCargo)
+                            {
+                                int loadedAmount = sling.GetLoadedAmount(cargo.Key);
+                                string statusColor = loadedAmount >= cargo.Value ? "#00ff00" : "#ffaa00";
+                                str += $"\n    <color={statusColor}>{cargo.Key.label}: {loadedAmount}/{cargo.Value}</color>";
+                            }
+                        }
                     }
                     else
                     {
@@ -1167,7 +1177,15 @@ namespace Arsenal
                 }
                 else
                 {
-                    str += " (Ready)";
+                    var sling = slingSlot1 as SLING_Thing;
+                    if (sling != null && sling.CurrentCargoCount > 0)
+                    {
+                        str += $" (Has {sling.CurrentCargoCount} cargo)";
+                    }
+                    else
+                    {
+                        str += " (Ready)";
+                    }
                 }
             }
             else

@@ -586,12 +586,12 @@ namespace Arsenal
         private SLING_Thing FindLoadingSlingForItem(Thing item)
         {
             // Find all PERCHes on this map with loading SLINGs that want this item
+            // Loading only happens on slot 1, so use LoadingSling property
             foreach (var perch in ArsenalNetworkManager.GetPerchesOnMap(Map))
             {
-                if (!perch.HasSlingOnPad) continue;
-
-                var sling = perch.SlingOnPad as SLING_Thing;
-                if (sling == null || !sling.IsLoading) continue;
+                // Use LoadingSling which directly returns slot1 SLING if loading
+                var sling = perch.LoadingSling;
+                if (sling == null) continue;
                 if (!sling.WantsItem(item.def)) continue;
 
                 // Check if we can reach the SLING

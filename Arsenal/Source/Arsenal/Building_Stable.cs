@@ -103,13 +103,32 @@ namespace Arsenal
                 {
                     mule.homeStable = this;
 
-                    // Ensure battery state is correct - if battery is full, set to Idle
-                    // This handles the case where state was saved as Charging but battery is now full
-                    if (mule.BatteryComp != null && mule.BatteryComp.IsFull && mule.state == MuleState.Charging)
+                    // Ensure faction is set (may not be restored properly for despawned pawns)
+                    if (mule.Faction == null)
                     {
-                        mule.state = MuleState.Idle;
+                        mule.SetFaction(Faction.OfPlayer);
                     }
+
+                    // Ensure battery state is correct
+                    var battery = mule.BatteryComp;
+                    if (battery != null)
+                    {
+                        // If battery is full, ensure MULE is Idle (ready for deployment)
+                        if (battery.IsFull && mule.state == MuleState.Charging)
+                        {
+                            mule.state = MuleState.Idle;
+                        }
+                        // If battery is empty/low, ensure MULE is Charging
+                        else if (!battery.IsFull && mule.state == MuleState.Idle)
+                        {
+                            mule.state = MuleState.Charging;
+                        }
+                    }
+
+                    Log.Message($"[STABLE] PostLoadInit: {mule.Label} state={mule.state}, battery={mule.BatteryPercent:P0}, homeStable={mule.homeStable?.Label}");
                 }
+
+                Log.Message($"[STABLE] {customName ?? "STABLE"}: Loaded {dockedMules.Count} docked MULEs");
             }
         }
 
@@ -612,7 +631,17 @@ namespace Arsenal
                         Log.Warning($"=== STABLE TASK DIAGNOSIS ({Label}) ===");
                         Log.Warning($"Map: {Map?.uniqueID}, Tile: {Map?.Tile}");
                         Log.Warning($"Powered: {IsPoweredOn()}, Network: {HasNetworkConnection()}");
-                        Log.Warning($"Ready MULEs: {AvailableMuleCount}");
+                        Log.Warning($"Docked MULEs: {dockedMules.Count}, Ready: {AvailableMuleCount}");
+
+                        // Show each docked MULE's status
+                        foreach (var mule in dockedMules)
+                        {
+                            var battery = mule.BatteryComp;
+                            string batteryStr = battery != null
+                                ? $"{battery.ChargePercent:P0} (IsFull={battery.IsFull})"
+                                : "NULL BATTERY";
+                            Log.Warning($"  {mule.Label}: state={mule.state}, battery={batteryStr}, faction={mule.Faction?.Name ?? "NULL"}");
+                        }
 
                         // Check LATTICE connection
                         var localLattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
@@ -638,16 +667,30 @@ namespace Arsenal
                         var zones = Map.zoneManager.AllZones.Where(z => z is Zone_Stockpile).Count();
                         Log.Warning($"Stockpile zones: {zones}");
 
+                        // Check loading SLINGs
+                        var loadingPerches = ArsenalNetworkManager.GetPerchesOnMap(Map)
+                            .Where(p => p.LoadingSling != null).ToList();
+                        Log.Warning($"PERCHes with loading SLINGs: {loadingPerches.Count}");
+                        foreach (var perch in loadingPerches)
+                        {
+                            var sling = perch.LoadingSling;
+                            Log.Warning($"  {perch.Label}: {sling.Label} loading, cargo={sling.CurrentCargoCount}");
+                        }
+
                         // Try local scan
                         var readyMule = dockedMules.FirstOrDefault(m => m.state == MuleState.Idle && m.IsBatteryFull);
                         if (readyMule != null)
                         {
                             var localTask = ScanForLocalTask(readyMule);
                             Log.Warning($"Local scan result: {localTask?.taskType.ToString() ?? "NULL"}");
+                            if (localTask != null)
+                            {
+                                Log.Warning($"  Task target: {localTask.targetCell}, thing: {localTask.targetThing?.Label ?? "null"}");
+                            }
                         }
                         else
                         {
-                            Log.Warning("No ready MULE available for local scan test");
+                            Log.Warning("No ready MULE for local scan (need state=Idle AND IsBatteryFull=true)");
                         }
 
                         Log.Warning($"=== END DIAGNOSIS ===");
