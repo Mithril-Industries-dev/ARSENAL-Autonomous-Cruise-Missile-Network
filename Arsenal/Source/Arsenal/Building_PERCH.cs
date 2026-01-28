@@ -147,6 +147,19 @@ namespace Arsenal
         public Thing Slot1Sling => slingSlot1;
         public Thing Slot2Sling => slingSlot2;
 
+        /// <summary>
+        /// Returns the SLING_Thing that is currently in loading state (slot1 only).
+        /// Returns null if no SLING is loading.
+        /// </summary>
+        public SLING_Thing LoadingSling
+        {
+            get
+            {
+                if (!slot1IsLoading || slingSlot1 == null) return null;
+                return slingSlot1 as SLING_Thing;
+            }
+        }
+
         public float FuelPercent
         {
             get

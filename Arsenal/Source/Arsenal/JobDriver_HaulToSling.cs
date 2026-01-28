@@ -114,10 +114,10 @@ namespace Arsenal
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
                 if (perch.Map != pawn.Map) continue;
-                if (!perch.HasSlingOnPad) continue;
 
-                var sling = perch.SlingOnPad as SLING_Thing;
-                if (sling == null || !sling.IsLoading) continue;
+                // Use LoadingSling property which directly returns the slot1 SLING if loading
+                var sling = perch.LoadingSling;
+                if (sling == null) continue;
                 if (!sling.WantsItem(item.def)) continue;
 
                 // Check if pawn can reach the SLING
