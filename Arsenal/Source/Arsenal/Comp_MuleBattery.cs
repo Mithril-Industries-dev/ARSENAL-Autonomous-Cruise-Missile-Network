@@ -27,16 +27,28 @@ namespace Arsenal
     {
         private float currentCharge;
 
+        // Default values if Props is null (for deep-saved despawned pawns)
+        private const float DEFAULT_MAX_CHARGE = 100f;
+        private const float DEFAULT_DRAIN_PER_TICK = 0.005f;
+        private const float DEFAULT_CHARGE_PER_TICK = 0.05f;
+        private const float DEFAULT_PASSIVE_CHARGE_PER_TICK = 0.001f;
+        private const float DEFAULT_RECHARGE_THRESHOLD = 0.25f;
+
         public CompProperties_MuleBattery Props => (CompProperties_MuleBattery)props;
 
-        public float CurrentCharge => currentCharge;
-        public float MaxCharge => Props.maxCharge;
-        public float ChargePercent => currentCharge / Props.maxCharge;
-        public float DrainPerTick => Props.drainPerTick;
+        // Safe property accessors with fallback defaults
+        public float MaxCharge => Props?.maxCharge ?? DEFAULT_MAX_CHARGE;
+        public float ChargePerTick => Props?.chargePerTick ?? DEFAULT_CHARGE_PER_TICK;
+        public float DrainPerTick => Props?.drainPerTick ?? DEFAULT_DRAIN_PER_TICK;
+        public float PassiveChargePerTick => Props?.passiveChargePerTick ?? DEFAULT_PASSIVE_CHARGE_PER_TICK;
+        public float RechargeThreshold => Props?.rechargeThreshold ?? DEFAULT_RECHARGE_THRESHOLD;
 
-        public bool IsFull => currentCharge >= Props.maxCharge * 0.99f;  // 99% tolerance for floating point
+        public float CurrentCharge => currentCharge;
+        public float ChargePercent => MaxCharge > 0 ? currentCharge / MaxCharge : 0f;
+
+        public bool IsFull => currentCharge >= MaxCharge * 0.99f;  // 99% tolerance for floating point
         public bool IsDepleted => currentCharge <= 0f;
-        public bool NeedsRecharge => currentCharge <= Props.maxCharge * Props.rechargeThreshold;
+        public bool NeedsRecharge => currentCharge <= MaxCharge * RechargeThreshold;
 
         public override void PostSpawnSetup(bool respawningAfterLoad)
         {
@@ -44,19 +56,19 @@ namespace Arsenal
 
             if (!respawningAfterLoad)
             {
-                currentCharge = Props.maxCharge;
+                currentCharge = MaxCharge;
             }
         }
 
         public override void PostExposeData()
         {
             base.PostExposeData();
-            Scribe_Values.Look(ref currentCharge, "currentCharge", Props?.maxCharge ?? 100f);
+            Scribe_Values.Look(ref currentCharge, "currentCharge", DEFAULT_MAX_CHARGE);
 
             // Validate charge bounds after load
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
-                float maxCharge = Props?.maxCharge ?? 100f;
+                float maxCharge = MaxCharge;
 
                 // Fix invalid values: negative, zero, NaN, infinity, or over max
                 if (float.IsNaN(currentCharge) || float.IsInfinity(currentCharge))
@@ -72,7 +84,6 @@ namespace Arsenal
                 else if (currentCharge > maxCharge)
                 {
                     currentCharge = maxCharge;
-                    // Don't log - slightly over max is fine, just clamp it
                 }
             }
         }
@@ -82,7 +93,7 @@ namespace Arsenal
         /// </summary>
         public void Drain(float multiplier = 1f)
         {
-            currentCharge -= Props.drainPerTick * multiplier;
+            currentCharge -= DrainPerTick * multiplier;
             if (currentCharge < 0f) currentCharge = 0f;
         }
 
@@ -91,8 +102,8 @@ namespace Arsenal
         /// </summary>
         public void Charge()
         {
-            currentCharge += Props.chargePerTick;
-            if (currentCharge > Props.maxCharge) currentCharge = Props.maxCharge;
+            currentCharge += ChargePerTick;
+            if (currentCharge > MaxCharge) currentCharge = MaxCharge;
         }
 
         /// <summary>
@@ -100,8 +111,8 @@ namespace Arsenal
         /// </summary>
         public void PassiveCharge()
         {
-            currentCharge += Props.passiveChargePerTick;
-            if (currentCharge > Props.maxCharge) currentCharge = Props.maxCharge;
+            currentCharge += PassiveChargePerTick;
+            if (currentCharge > MaxCharge) currentCharge = MaxCharge;
         }
 
         /// <summary>
@@ -109,7 +120,7 @@ namespace Arsenal
         /// </summary>
         public void FillBattery()
         {
-            currentCharge = Props.maxCharge;
+            currentCharge = MaxCharge;
         }
 
         /// <summary>
@@ -122,7 +133,7 @@ namespace Arsenal
 
         public override string CompInspectStringExtra()
         {
-            return $"Battery: {ChargePercent:P0} ({currentCharge:F1}/{Props.maxCharge:F0})";
+            return $"Battery: {ChargePercent:P0} ({currentCharge:F1}/{MaxCharge:F0})";
         }
     }
 }
