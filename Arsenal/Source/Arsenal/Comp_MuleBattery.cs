@@ -51,7 +51,17 @@ namespace Arsenal
         public override void PostExposeData()
         {
             base.PostExposeData();
-            Scribe_Values.Look(ref currentCharge, "currentCharge", Props.maxCharge);
+            Scribe_Values.Look(ref currentCharge, "currentCharge", Props?.maxCharge ?? 100f);
+
+            // Ensure charge is never stuck at 0 after load (defensive)
+            if (Scribe.mode == LoadSaveMode.PostLoadInit)
+            {
+                if (currentCharge <= 0f)
+                {
+                    currentCharge = Props?.maxCharge ?? 100f;
+                    Log.Warning($"[MULE Battery] Charge was 0, reset to max: {currentCharge}");
+                }
+            }
         }
 
         /// <summary>
