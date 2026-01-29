@@ -53,13 +53,26 @@ namespace Arsenal
             base.PostExposeData();
             Scribe_Values.Look(ref currentCharge, "currentCharge", Props?.maxCharge ?? 100f);
 
-            // Ensure charge is never stuck at 0 after load (defensive)
+            // Validate charge bounds after load
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
-                if (currentCharge <= 0f)
+                float maxCharge = Props?.maxCharge ?? 100f;
+
+                // Fix invalid values: negative, zero, NaN, infinity, or over max
+                if (float.IsNaN(currentCharge) || float.IsInfinity(currentCharge))
                 {
-                    currentCharge = Props?.maxCharge ?? 100f;
-                    Log.Warning($"[MULE Battery] Charge was 0, reset to max: {currentCharge}");
+                    currentCharge = maxCharge;
+                    Log.Warning($"[MULE Battery] Charge was NaN/Infinity, reset to max: {currentCharge}");
+                }
+                else if (currentCharge <= 0f)
+                {
+                    currentCharge = maxCharge;
+                    Log.Warning($"[MULE Battery] Charge was <= 0, reset to max: {currentCharge}");
+                }
+                else if (currentCharge > maxCharge)
+                {
+                    currentCharge = maxCharge;
+                    // Don't log - slightly over max is fine, just clamp it
                 }
             }
         }
