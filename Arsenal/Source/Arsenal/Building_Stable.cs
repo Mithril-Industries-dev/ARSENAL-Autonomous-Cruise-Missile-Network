@@ -109,17 +109,24 @@ namespace Arsenal
                         mule.SetFaction(Faction.OfPlayer);
                     }
 
-                    // Ensure battery state is correct
+                    // Ensure docked MULEs are in a valid docked state (Charging or Idle)
+                    // Any other state is invalid for a docked MULE
+                    if (mule.state != MuleState.Charging && mule.state != MuleState.Idle)
+                    {
+                        mule.state = MuleState.Charging;
+                    }
+
+                    // Ensure battery state matches MULE state
                     var battery = mule.BatteryComp;
                     if (battery != null)
                     {
-                        // If battery is full, ensure MULE is Idle (ready for deployment)
-                        if (battery.IsFull && mule.state == MuleState.Charging)
+                        // If battery is full, set to Idle (ready for deployment)
+                        if (battery.IsFull)
                         {
                             mule.state = MuleState.Idle;
                         }
-                        // If battery is empty/low, ensure MULE is Charging
-                        else if (!battery.IsFull && mule.state == MuleState.Idle)
+                        // If battery is not full, set to Charging
+                        else
                         {
                             mule.state = MuleState.Charging;
                         }

@@ -34,7 +34,7 @@ namespace Arsenal
         public float ChargePercent => currentCharge / Props.maxCharge;
         public float DrainPerTick => Props.drainPerTick;
 
-        public bool IsFull => currentCharge >= Props.maxCharge;
+        public bool IsFull => currentCharge >= Props.maxCharge * 0.99f;  // 99% tolerance for floating point
         public bool IsDepleted => currentCharge <= 0f;
         public bool NeedsRecharge => currentCharge <= Props.maxCharge * Props.rechargeThreshold;
 
