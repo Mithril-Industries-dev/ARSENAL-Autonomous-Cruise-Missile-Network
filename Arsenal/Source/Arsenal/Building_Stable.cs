@@ -167,31 +167,35 @@ namespace Arsenal
             // Clean up null references
             dockedMules.RemoveAll(m => m == null || m.Destroyed);
 
-            // Charge docked MULEs if powered
+            // Charge ALL docked MULEs if powered - no state check, always charge
             if (IsPoweredOn())
             {
                 foreach (var mule in dockedMules)
                 {
-                    if (mule.state == MuleState.Charging || mule.state == MuleState.Idle)
-                    {
-                        var battery = mule.BatteryComp;
-                        if (battery == null) continue;
+                    if (mule == null) continue;
 
+                    var battery = mule.BatteryComp;
+                    if (battery == null)
+                    {
+                        Log.Warning($"[STABLE] {mule.Label} has no battery component!");
+                        continue;
+                    }
+
+                    // ALWAYS charge docked MULEs, regardless of current state
+                    // A docked MULE should always be either Charging or Idle
+                    if (!battery.IsFull)
+                    {
                         // Charge for 250 ticks worth (TickRare interval)
                         for (int i = 0; i < 250; i++)
                         {
                             battery.Charge();
                         }
-
-                        // Update state based on charge level
-                        if (!battery.IsFull && mule.state != MuleState.Charging)
-                        {
-                            mule.state = MuleState.Charging;
-                        }
-                        else if (battery.IsFull && mule.state == MuleState.Charging)
-                        {
-                            mule.state = MuleState.Idle;
-                        }
+                        mule.state = MuleState.Charging;
+                    }
+                    else
+                    {
+                        // Battery is full, set to Idle (ready for deployment)
+                        mule.state = MuleState.Idle;
                     }
                 }
             }

@@ -298,7 +298,24 @@ namespace Arsenal
         public static List<MULE_Pawn> GetAllMules()
         {
             mules.RemoveAll(m => m == null || m.Destroyed);
-            return mules.ToList();
+
+            // Include spawned MULEs
+            var result = mules.ToList();
+
+            // Also include docked MULEs from all STABLEs (they are despawned, not in mules list)
+            foreach (var stable in stables)
+            {
+                if (stable == null || stable.Destroyed || !stable.Spawned) continue;
+                foreach (var dockedMule in stable.DockedMules)
+                {
+                    if (dockedMule != null && !dockedMule.Destroyed && !result.Contains(dockedMule))
+                    {
+                        result.Add(dockedMule);
+                    }
+                }
+            }
+
+            return result;
         }
 
         public static IEnumerable<MULE_Pawn> GetMulesOnMap(Map map)
