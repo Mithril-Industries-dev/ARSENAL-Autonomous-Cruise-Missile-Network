@@ -645,14 +645,16 @@ namespace Arsenal
         /// Gets the position for Slot 1 (primary/staging slot).
         /// SLING is 7x5 (horizontal), PERCH is 5x14 (vertical).
         /// Position is the SLING's bottom-left corner for spawning.
+        /// SLING is centered over the PERCH landing zone.
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
             // PERCH is 5 wide (X: 0-4) x 14 tall (Z: 0-13)
             // SLING is 7 wide x 5 tall
-            // X+3: SLING spans X+3 to X+9, overlapping PERCH at X+3 and X+4 (left rotors on pad)
-            // Z+4: SLING spans Z+4 to Z+8, centered on orange landing zone (flame ~Z+6)
-            return Position + new IntVec3(3, 0, 4);
+            // Center SLING over PERCH: PERCH center X is +2, SLING center offset is 3
+            // X-1: SLING spans X-1 to X+5, centered over PERCH (rotors extend 1 cell each side)
+            // Z+5: SLING spans Z+5 to Z+9, centered on orange landing zone (flame ~Z+7)
+            return Position + new IntVec3(-1, 0, 5);
         }
 
         /// <summary>
@@ -661,9 +663,9 @@ namespace Arsenal
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
-            // Same X offset, higher Z for second SLING
-            // Z+9: SLING spans Z+9 to Z+13, above slot 1 with 1-cell gap
-            return Position + new IntVec3(3, 0, 9);
+            // Same X (centered), higher Z for second SLING
+            // Z+9: SLING spans Z+9 to Z+13, above slot 1
+            return Position + new IntVec3(-1, 0, 9);
         }
 
         /// <summary>
