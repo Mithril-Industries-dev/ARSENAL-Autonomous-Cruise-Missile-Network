@@ -164,6 +164,12 @@ namespace Arsenal
         {
             base.TickRare();
 
+            // DEBUG: Log every TickRare to confirm it's running
+            if (dockedMules.Count > 0)
+            {
+                Log.Message($"[STABLE DEBUG] {Label} TickRare: {dockedMules.Count} docked MULEs, powered={IsPoweredOn()}");
+            }
+
             // Clean up null references
             dockedMules.RemoveAll(m => m == null || m.Destroyed);
 
@@ -181,6 +187,8 @@ namespace Arsenal
                         continue;
                     }
 
+                    float beforeCharge = battery.CurrentCharge;
+
                     // ALWAYS charge docked MULEs, regardless of current state
                     // A docked MULE should always be either Charging or Idle
                     if (!battery.IsFull)
@@ -191,12 +199,22 @@ namespace Arsenal
                             battery.Charge();
                         }
                         mule.state = MuleState.Charging;
+
+                        float afterCharge = battery.CurrentCharge;
+                        Log.Message($"[STABLE DEBUG] {mule.Label}: Charged {beforeCharge:F1} -> {afterCharge:F1} (delta: {afterCharge - beforeCharge:F1}), IsFull={battery.IsFull}");
                     }
                     else
                     {
                         // Battery is full, set to Idle (ready for deployment)
                         mule.state = MuleState.Idle;
                     }
+                }
+            }
+            else
+            {
+                if (dockedMules.Count > 0)
+                {
+                    Log.Warning($"[STABLE] {Label} is NOT powered - cannot charge {dockedMules.Count} MULEs!");
                 }
             }
 
