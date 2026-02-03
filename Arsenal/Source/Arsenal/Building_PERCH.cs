@@ -477,8 +477,13 @@ namespace Arsenal
                     {
                         slingSlot2 = slingSlot1;
                         slingSlot1 = null;
+                        // Must despawn/respawn to properly update cell registration
                         if (slingSlot2.Spawned)
-                            slingSlot2.Position = GetSlot2Position();
+                        {
+                            IntVec3 newPos = GetSlot2Position();
+                            slingSlot2.DeSpawn(DestroyMode.Vanish);
+                            GenSpawn.Spawn(slingSlot2, newPos, Map, Rot4.North);
+                        }
                     }
                     slot2IsUnloading = true;
                     slot2UnloadTicksRemaining = UNLOAD_TICKS;
@@ -1089,10 +1094,12 @@ namespace Arsenal
             slingSlot1 = slingSlot2;
             slingSlot2 = null;
 
-            // Reposition the SLING to slot1 position
+            // Reposition the SLING to slot1 position - must despawn/respawn for proper cell registration
             if (slingSlot1.Spawned)
             {
-                slingSlot1.Position = GetSlot1Position();
+                IntVec3 newPos = GetSlot1Position();
+                slingSlot1.DeSpawn(DestroyMode.Vanish);
+                GenSpawn.Spawn(slingSlot1, newPos, Map, Rot4.North);
             }
 
             Log.Message($"[PERCH] {Label}: Moved {SLING_Thing.GetSlingName(slingSlot1)} from slot 2 to slot 1");
