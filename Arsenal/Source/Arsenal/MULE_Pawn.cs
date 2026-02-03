@@ -535,6 +535,29 @@ namespace Arsenal
 
         private MuleTask ScanForLocalTask()
         {
+            // PRIORITY 0: Loading SLING - check ALL haulable items (including stored ones)
+            // This is separate because ThingsPotentiallyNeedingHauling() doesn't include
+            // items already in stockpiles, but we need to haul FROM stockpiles to SLINGs
+            var loadingPerch = ArsenalNetworkManager.GetPerchesOnMap(Map)
+                .FirstOrDefault(p => p.LoadingSling != null);
+
+            if (loadingPerch != null)
+            {
+                var loadingSling = loadingPerch.LoadingSling;
+                // Scan ALL haulable items on map, not just "needing hauling"
+                foreach (Thing item in Map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableAlways))
+                {
+                    if (item == null || item.Destroyed || !item.Spawned) continue;
+                    if (item.IsForbidden(Faction.OfPlayer)) continue;
+                    if (!loadingSling.WantsItem(item.def)) continue;
+                    if (!Map.reservationManager.CanReserve(this, item)) continue;
+                    if (!this.CanReach(item, PathEndMode.ClosestTouch, Danger.Deadly)) continue;
+                    if (!this.CanReach(loadingSling, PathEndMode.Touch, Danger.Deadly)) continue;
+
+                    return MuleTask.CreateSlingLoadTask(item, loadingSling);
+                }
+            }
+
             // Mining tasks - find unreserved mineables
             foreach (var miningDes in Map.designationManager.AllDesignations
                 .Where(d => d.def == DesignationDefOf.Mine && !d.target.HasThing))
@@ -552,7 +575,7 @@ namespace Arsenal
                 }
             }
 
-            // Hauling tasks - find unreserved haulables
+            // Hauling tasks - find unreserved haulables (items needing to be moved)
             var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
             foreach (Thing item in haulables)
             {
@@ -562,21 +585,14 @@ namespace Arsenal
                 // Check if we can reserve this item
                 if (!Map.reservationManager.CanReserve(this, item)) continue;
 
-                // Priority 1: Loading SLING (has timeout, so highest hauling priority)
-                SLING_Thing loadingSling = FindLoadingSlingForItem(item);
-                if (loadingSling != null)
-                {
-                    return MuleTask.CreateSlingLoadTask(item, loadingSling);
-                }
-
-                // Priority 2: MORIA storage
+                // Priority 1: MORIA storage
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)
                 {
                     return MuleTask.CreateMoriaFeedTask(item, moria);
                 }
 
-                // Priority 3: Regular stockpile
+                // Priority 2: Regular stockpile
                 IntVec3 stockpile = FindStockpileCell(item);
                 if (stockpile.IsValid)
                 {
