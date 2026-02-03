@@ -77,6 +77,9 @@ SLINGs are manufactured at ARSENAL facilities and automatically join the logisti
       <texPath>Arsenal/Arsenal_SLING</texPath>
       <graphicClass>Graphic_Single</graphicClass>
       <drawSize>(6,10)</drawSize>
+      <!-- Draw offset to align visual with actual position -->
+      <!-- Testing: shift graphic down (negative Z = lower on screen) -->
+      <drawOffset>(0, 0, -5)</drawOffset>
     </graphicData>
     <altitudeLayer>BuildingOnTop</altitudeLayer>
     <size>(6,10)</size>
