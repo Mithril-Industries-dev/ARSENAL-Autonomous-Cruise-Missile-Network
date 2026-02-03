@@ -939,8 +939,8 @@ namespace Arsenal
                 slingSlot1 = sling;
                 if (sling != null && !sling.Spawned && Map != null)
                 {
-                    // Spawn with 90-degree rotation for landed orientation
-                    GenSpawn.Spawn(sling, GetSlot1Position(), Map, Rot4.East);
+                    // Spawn with north orientation to match vertical PERCH
+                    GenSpawn.Spawn(sling, GetSlot1Position(), Map, Rot4.North);
                 }
             }
             else if (slingSlot2 == null)
@@ -948,8 +948,8 @@ namespace Arsenal
                 slingSlot2 = sling;
                 if (sling != null && !sling.Spawned && Map != null)
                 {
-                    // Spawn with 90-degree rotation for landed orientation
-                    GenSpawn.Spawn(sling, GetSlot2Position(), Map, Rot4.East);
+                    // Spawn with north orientation to match vertical PERCH
+                    GenSpawn.Spawn(sling, GetSlot2Position(), Map, Rot4.North);
                 }
             }
             else
