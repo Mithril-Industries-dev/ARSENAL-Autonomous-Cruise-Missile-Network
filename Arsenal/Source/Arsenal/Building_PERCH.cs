@@ -708,31 +708,65 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the position for Slot 1 (primary/staging slot).
-        /// PERCH is 8x24 (8 wide, 24 tall). SLING is 6x10 at Rot4.North.
+        /// PERCH is 8x24 (8 wide, 24 tall at North). SLING is 6x10 at Rot4.North.
         /// Position returned is the SLING's bottom-left corner for spawning.
-        /// Layout: 1 col left margin | 6 col SLING | 1 col right margin = 8 cols
-        ///         2 row bottom margin | 10 row slot1 | 10 row slot2 | 2 row top margin = 24 rows
+        /// Rotation-aware: adjusts offset based on PERCH rotation.
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
-            // PERCH: 8 wide (X: 0-7) x 24 tall (Z: 0-23)
-            // SLING: 6 wide x 10 tall (at Rot4.North, no rotation)
+            // Base offsets for Rot4.North: PERCH 8x24, SLING 6x10
             // X offset: (8 - 6) / 2 = 1 (center horizontally)
             // Z offset: 2 (bottom margin)
-            // Slot 1 spans Z+2 to Z+11 (10 cells)
-            return Position + new IntVec3(1, 0, 2);
+            IntVec3 offset;
+            switch (Rotation.AsInt)
+            {
+                case 0: // North - 8 wide x 24 tall
+                    offset = new IntVec3(1, 0, 2);
+                    break;
+                case 1: // East - 24 wide x 8 tall (rotated 90 CW)
+                    offset = new IntVec3(2, 0, 1);
+                    break;
+                case 2: // South - 8 wide x 24 tall (flipped)
+                    offset = new IntVec3(1, 0, 12); // Slot 1 is now at top
+                    break;
+                case 3: // West - 24 wide x 8 tall (rotated 90 CCW)
+                    offset = new IntVec3(12, 0, 1);
+                    break;
+                default:
+                    offset = new IntVec3(1, 0, 2);
+                    break;
+            }
+            return Position + offset;
         }
 
         /// <summary>
         /// Gets the position for Slot 2 (secondary/incoming slot).
         /// Upper position for dual-SLING operations.
+        /// Rotation-aware: adjusts offset based on PERCH rotation.
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
-            // X offset: same as slot 1 (centered)
-            // Z offset: 2 (bottom margin) + 10 (slot 1) = 12
-            // Slot 2 spans Z+12 to Z+21 (10 cells)
-            return Position + new IntVec3(1, 0, 12);
+            // Slot 2 is 10 cells further along the long axis from Slot 1
+            IntVec3 offset;
+            switch (Rotation.AsInt)
+            {
+                case 0: // North - slot 2 is above slot 1
+                    offset = new IntVec3(1, 0, 12);
+                    break;
+                case 1: // East - slot 2 is to the right of slot 1
+                    offset = new IntVec3(12, 0, 1);
+                    break;
+                case 2: // South - slot 2 is below slot 1
+                    offset = new IntVec3(1, 0, 2);
+                    break;
+                case 3: // West - slot 2 is to the left of slot 1
+                    offset = new IntVec3(2, 0, 1);
+                    break;
+                default:
+                    offset = new IntVec3(1, 0, 12);
+                    break;
+            }
+            return Position + offset;
         }
 
         /// <summary>
@@ -1207,6 +1241,49 @@ namespace Arsenal
                             SlingLogisticsManager.TryDispatchFromPerch(this);
                         }
                     };
+
+                    // Manual loading start - for testing MULE detection
+                    yield return new Command_Action
+                    {
+                        defaultLabel = "DEV: Start Loading (All Items)",
+                        defaultDesc = "Manually start loading state with all haulable items. Use this to test if MULEs detect the loading SLING.",
+                        action = delegate
+                        {
+                            // Find all haulable items on map and create a cargo manifest
+                            var cargoToLoad = new Dictionary<ThingDef, int>();
+                            if (Map != null)
+                            {
+                                foreach (Thing t in Map.listerHaulables.ThingsPotentiallyNeedingHauling().Take(10))
+                                {
+                                    if (t != null && !t.Destroyed && t.Spawned && !t.IsForbidden(Faction.OfPlayer))
+                                    {
+                                        if (cargoToLoad.ContainsKey(t.def))
+                                            cargoToLoad[t.def] += t.stackCount;
+                                        else
+                                            cargoToLoad[t.def] = t.stackCount;
+                                    }
+                                }
+                            }
+
+                            if (cargoToLoad.Count == 0)
+                            {
+                                Messages.Message("No haulable items found on map", this, MessageTypeDefOf.RejectInput);
+                                return;
+                            }
+
+                            // Create a fake destination (self) just to enable loading state
+                            var sling = slingSlot1 as SLING_Thing;
+                            if (sling != null)
+                            {
+                                sling.StartLoading(cargoToLoad);
+                                slot1IsLoading = true;
+                                slot1LoadDestination = this; // Self as destination for testing
+                                slot1LoadingCargo = cargoToLoad;
+                                Log.Message($"[PERCH] DEV: Started loading {sling.Label} with {cargoToLoad.Count} item types");
+                                Messages.Message($"DEV: {sling.Label} now loading - MULEs should detect it", this, MessageTypeDefOf.NeutralEvent);
+                            }
+                        }
+                    };
                 }
 
                 // Diagnostic for dual slots
@@ -1277,6 +1354,120 @@ namespace Arsenal
                     {
                         RepositionSlings();
                         Messages.Message($"{Label}: SLINGs repositioned to correct slots", this, MessageTypeDefOf.NeutralEvent);
+                    }
+                };
+
+                // Full SLING Loading Diagnostic
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: SLING Loading Trace",
+                    defaultDesc = "Trace through the entire SLING loading flow to find issues.",
+                    action = delegate
+                    {
+                        Log.Warning($"=== SLING LOADING TRACE for {Label} ===");
+                        Log.Warning($"Role: {role}");
+                        Log.Warning($"Powered: {IsPoweredOn}, Network: {HasNetworkConnection()}");
+                        Log.Warning($"Slot1 SLING: {(slingSlot1 != null ? SLING_Thing.GetSlingName(slingSlot1) : "EMPTY")}");
+                        Log.Warning($"Slot1 Busy: {Slot1Busy}, slot1IsLoading: {slot1IsLoading}");
+
+                        if (role == PerchRole.SOURCE)
+                        {
+                            Log.Warning("--- SOURCE PERCH ---");
+                            if (slingSlot1 == null)
+                            {
+                                Log.Warning("ISSUE: No SLING in slot 1 - cannot dispatch");
+                            }
+                            else if (slot1IsLoading)
+                            {
+                                Log.Warning("SLING is already loading - checking SLING state:");
+                                var sling = slingSlot1 as SLING_Thing;
+                                if (sling != null)
+                                {
+                                    Log.Warning($"  sling.IsLoading: {sling.IsLoading}");
+                                    Log.Warning($"  sling.CurrentCargoCount: {sling.CurrentCargoCount}");
+                                    Log.Warning($"  sling.RemainingCapacity: {sling.RemainingCapacity}");
+
+                                    // Show what items SLING wants
+                                    var haulables = Map?.listerHaulables?.ThingsPotentiallyNeedingHauling();
+                                    if (haulables != null)
+                                    {
+                                        Log.Warning($"  Checking {haulables.Count} haulables:");
+                                        int wantCount = 0;
+                                        foreach (var item in haulables.Take(20))
+                                        {
+                                            if (sling.WantsItem(item.def))
+                                            {
+                                                Log.Warning($"    WANTS: {item.def.label} (stack={item.stackCount})");
+                                                wantCount++;
+                                            }
+                                        }
+                                        if (wantCount == 0)
+                                        {
+                                            Log.Warning("    ISSUE: SLING doesn't want any haulables!");
+                                            Log.Warning("    This means targetCargo doesn't contain any available item types.");
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Log.Warning("SLING NOT loading - checking why logistics manager hasn't started loading:");
+
+                                // Check SINKs
+                                var sinks = ArsenalNetworkManager.GetSinkPerches().Where(p => p.HasDemand() && p.HasNetworkConnection() && p.IsPoweredOn).ToList();
+                                Log.Warning($"  SINKs with demand: {sinks.Count}");
+                                foreach (var sink in sinks)
+                                {
+                                    var demand = sink.GetDemand();
+                                    Log.Warning($"    {sink.Label}: {string.Join(", ", demand.Select(d => $"{d.Key.label}x{d.Value}"))}");
+                                }
+
+                                if (sinks.Count == 0)
+                                {
+                                    Log.Warning("  ISSUE: No SINKs with demand! Set threshold targets on a SINK PERCH.");
+                                }
+
+                                // Check available resources
+                                var available = GetAvailableResources();
+                                Log.Warning($"  Available resources at this SOURCE: {available.Count}");
+                                foreach (var r in available.Take(10))
+                                {
+                                    Log.Warning($"    {r.Key.label}: {r.Value}");
+                                }
+                            }
+                        }
+                        else // SINK
+                        {
+                            Log.Warning("--- SINK PERCH ---");
+                            Log.Warning($"Priority: {priority}");
+                            var demand = GetDemand();
+                            Log.Warning($"Demand: {demand.Count} item types");
+                            foreach (var d in demand)
+                            {
+                                int current = GetMapStock(d.Key);
+                                int target = thresholdTargets.ContainsKey(d.Key) ? thresholdTargets[d.Key] : 0;
+                                Log.Warning($"  {d.Key.label}: {current}/{target} (need {d.Value})");
+                            }
+
+                            if (demand.Count == 0 && thresholdTargets.Count == 0)
+                            {
+                                Log.Warning("ISSUE: No threshold targets set! Use LATTICE UI to set import thresholds.");
+                            }
+                        }
+
+                        // Check MULE reachability
+                        var mules = ArsenalNetworkManager.GetMulesOnMap(Map).ToList();
+                        Log.Warning($"MULEs on this map: {mules.Count}");
+                        if (slingSlot1 != null && slot1IsLoading)
+                        {
+                            foreach (var mule in mules)
+                            {
+                                bool canReach = mule.CanReach(slingSlot1, Verse.AI.PathEndMode.Touch, Danger.Deadly);
+                                Log.Warning($"  {mule.Label}: state={mule.state}, canReach SLING={canReach}");
+                            }
+                        }
+
+                        Log.Warning($"=== END TRACE ===");
                     }
                 };
             }
