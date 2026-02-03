@@ -564,6 +564,13 @@ namespace Arsenal
             {
                 TickRefueling();
             }
+
+            // Periodically check if idle slot2 SLING should move to slot1
+            // This handles edge cases like game load with SLING stuck in slot2
+            if (this.IsHashIntervalTick(60))
+            {
+                TryMoveSlot2ToSlot1();
+            }
         }
 
         private void TickUnloading()
@@ -643,18 +650,13 @@ namespace Arsenal
                 else
                 {
                     // Move to slot 1 if available (SLING stays at this PERCH)
-                    if (slingSlot1 == null)
-                    {
-                        slingSlot1 = slingSlot2;
-                        slingSlot2 = null;
-                    }
+                    TryMoveSlot2ToSlot1();
                 }
             }
             else if (slingSlot2 != null && slingSlot1 == null)
             {
                 // No return needed, move SLING to slot 1 for staging
-                slingSlot1 = slingSlot2;
-                slingSlot2 = null;
+                TryMoveSlot2ToSlot1();
             }
         }
 
@@ -910,7 +912,34 @@ namespace Arsenal
             slot1LoadDestination = null;
             slot1LoadingCargo.Clear();
 
+            // Move idle slot2 SLING to slot1 if available
+            TryMoveSlot2ToSlot1();
+
             Messages.Message($"{Label}: {departingSlingName} launching with {actualCargo.Values.Sum()} items", this, MessageTypeDefOf.PositiveEvent);
+        }
+
+        /// <summary>
+        /// Moves an idle SLING from slot2 to slot1 if slot1 is empty.
+        /// Called after slot1 becomes available (dispatch, etc.)
+        /// </summary>
+        private void TryMoveSlot2ToSlot1()
+        {
+            // Only move if slot1 is empty and slot2 has an idle SLING
+            if (slingSlot1 != null) return;
+            if (slingSlot2 == null) return;
+            if (slot2IsUnloading || slot2IsRefueling) return;
+
+            // Move slot2 SLING to slot1
+            slingSlot1 = slingSlot2;
+            slingSlot2 = null;
+
+            // Reposition the SLING to slot1 position
+            if (slingSlot1.Spawned)
+            {
+                slingSlot1.Position = GetSlot1Position();
+            }
+
+            Log.Message($"[PERCH] {Label}: Moved {SLING_Thing.GetSlingName(slingSlot1)} from slot 2 to slot 1");
         }
 
         private int ConsumeResource(ThingDef resource, int amount)
@@ -968,16 +997,7 @@ namespace Arsenal
             string slingName = slingSlot2 != null ? SLING_Thing.GetSlingName(slingSlot2) : "SLING";
 
             // After refueling, move SLING to slot 1 if available (ready for dispatch)
-            if (slingSlot2 != null && slingSlot1 == null)
-            {
-                slingSlot1 = slingSlot2;
-                slingSlot2 = null;
-                // Reposition the SLING
-                if (slingSlot1.Spawned)
-                {
-                    slingSlot1.Position = GetSlot1Position();
-                }
-            }
+            TryMoveSlot2ToSlot1();
 
             Messages.Message($"{Label}: {slingName} refueled and ready", this, MessageTypeDefOf.NeutralEvent);
         }
