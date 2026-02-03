@@ -105,6 +105,18 @@ namespace Arsenal
             // Safety check - don't process if not spawned
             if (!Spawned || Map == null) return;
 
+            // CRITICAL: Don't process if downed - pawns cannot path or work while downed
+            if (Downed)
+            {
+                // If we were working, cancel the task
+                if (state != MuleState.Inert && state != MuleState.Idle)
+                {
+                    currentTask = null;
+                    state = MuleState.Inert;
+                }
+                return;
+            }
+
             // Battery drain while active (not when idle or charging)
             if (state != MuleState.Charging && state != MuleState.Idle && state != MuleState.Inert)
             {
@@ -376,6 +388,14 @@ namespace Arsenal
 
         private void StartJobForTask(MuleTask task)
         {
+            // CRITICAL: Don't start jobs if downed
+            if (Downed)
+            {
+                currentTask = null;
+                state = MuleState.Inert;
+                return;
+            }
+
             Job job = null;
             LocalTargetInfo targetToReserve = LocalTargetInfo.Invalid;
 
@@ -486,6 +506,9 @@ namespace Arsenal
         private bool TryFindAndStartTask()
         {
             if (Map == null) return false;
+
+            // Don't try to find tasks if downed
+            if (Downed) return false;
 
             // Try local LATTICE first
             Building_Lattice lattice = ArsenalNetworkManager.GetLatticeOnMap(Map);
@@ -600,6 +623,9 @@ namespace Arsenal
         {
             if (homeStable == null || jobs == null) return;
 
+            // Don't try to path if downed
+            if (Downed) return;
+
             Job job = JobMaker.MakeJob(JobDefOf.Goto, homeStable.InteractionCell);
             jobs.StartJob(job, JobCondition.InterruptForced);
         }
@@ -645,7 +671,7 @@ namespace Arsenal
             state = MuleState.DeliveringToStable;
 
             // Use job system to go to the stable
-            if (Spawned && jobs != null && targetStable != null)
+            if (Spawned && jobs != null && targetStable != null && !Downed)
             {
                 Job goToStableJob = JobMaker.MakeJob(JobDefOf.Goto, targetStable.InteractionCell);
                 jobs.StartJob(goToStableJob, JobCondition.InterruptForced);
