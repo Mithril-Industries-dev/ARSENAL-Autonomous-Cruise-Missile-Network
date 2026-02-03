@@ -395,11 +395,9 @@ namespace Arsenal
                     if (task.targetThing != null && task.targetThing.Spawned &&
                         Map.reservationManager.CanReserve(this, task.targetThing))
                     {
+                        // Let RimWorld find a valid storage location - don't use task.destinationCell
+                        // as it may have been reserved by another MULE since the task was created
                         job = HaulAIUtility.HaulToStorageJob(this, task.targetThing, false);
-                        if (job == null && task.destinationCell.IsValid)
-                        {
-                            job = HaulAIUtility.HaulToCellStorageJob(this, task.targetThing, task.destinationCell, false);
-                        }
                         if (job != null)
                         {
                             targetToReserve = task.targetThing;
@@ -431,25 +429,16 @@ namespace Arsenal
                         state = MuleState.Mining;
                     else
                         state = MuleState.Hauling;
-                }
-                else
-                {
-                    // Target was reserved between check and start - find another task
-                    currentTask = null;
-                    state = MuleState.Idle;
-                    TryFindAndStartTask();
+                    return;
                 }
             }
-            else
-            {
-                // Couldn't create job or target invalid, try to find another task or return home
-                currentTask = null;
-                state = MuleState.Idle;
-                if (!TryFindAndStartTask())
-                {
-                    ReturnToStable();
-                }
-            }
+
+            // Job creation failed or reservation failed - go idle and let TickIdle retry
+            // Don't recursively call TryFindAndStartTask to avoid tight loops when
+            // multiple MULEs compete for the same resources
+            currentTask = null;
+            state = MuleState.Idle;
+            idleTicks = 0;
         }
 
         public void OnTaskCompleted()
@@ -465,15 +454,9 @@ namespace Arsenal
                 return;
             }
 
-            // Try to find another task nearby before going idle
-            if (TryFindAndStartTask())
-            {
-                return; // Found and started a new task
-            }
-
-            // No task found immediately - stay idle and let TickIdle handle retries
-            // This gives time for chunks to spawn, haulables list to update, etc.
-            // TickIdle will check every 60 ticks and return to STABLE after MAX_IDLE_TICKS
+            // Don't immediately try to find a new task here - let TickIdle handle it
+            // This prevents tight loops when multiple MULEs compete for the same resources
+            // TickIdle checks every 15-60 ticks and returns to STABLE after MAX_IDLE_TICKS
         }
 
         public bool CanAcceptTask(MuleTask task)
