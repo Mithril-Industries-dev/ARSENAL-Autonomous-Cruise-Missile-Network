@@ -281,13 +281,35 @@ namespace Arsenal
                 }
             }
 
-            // Check for loading SLINGs FIRST before iterating all haulables
-            // This is more efficient and ensures we detect loading SLINGs
+            // Check for loading SLINGs FIRST - scan ALL haulable items for SLING loading
+            // IMPORTANT: Use HaulableAlways, not ThingsPotentiallyNeedingHauling
+            // We need to haul items FROM stockpiles TO SLINGs
             var loadingPerches = ArsenalNetworkManager.GetPerchesOnMap(Map)
                 .Where(p => p.LoadingSling != null)
                 .ToList();
 
-            // Hauling tasks
+            if (loadingPerches.Count > 0)
+            {
+                // Scan ALL haulable items for SLING loading
+                foreach (Thing item in Map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableAlways))
+                {
+                    if (item == null || item.Destroyed || !item.Spawned) continue;
+                    if (item.IsForbidden(Faction.OfPlayer)) continue;
+                    if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
+
+                    foreach (var perch in loadingPerches)
+                    {
+                        var sling = perch.LoadingSling;
+                        if (sling != null && sling.WantsItem(item.def))
+                        {
+                            Log.Message($"[STABLE] {Label}: Creating SLING load task for {item.def.label} -> {sling.Label}");
+                            return MuleTask.CreateSlingLoadTask(item, sling);
+                        }
+                    }
+                }
+            }
+
+            // Regular hauling tasks - items needing to be moved
             var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
             foreach (Thing item in haulables)
             {
@@ -297,25 +319,14 @@ namespace Arsenal
                 // Skip if reserved by another pawn
                 if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
 
-                // Priority 1: Loading SLING - check pre-computed list first
-                foreach (var perch in loadingPerches)
-                {
-                    var sling = perch.LoadingSling;
-                    if (sling != null && sling.WantsItem(item.def))
-                    {
-                        Log.Message($"[STABLE] {Label}: Creating SLING load task for {item.def.label} -> {sling.Label}");
-                        return MuleTask.CreateSlingLoadTask(item, sling);
-                    }
-                }
-
-                // Priority 2: MORIA storage
+                // Priority 1: MORIA storage
                 Building_Moria moria = ArsenalNetworkManager.GetNearestMoriaForItem(item, Map);
                 if (moria != null)
                 {
                     return MuleTask.CreateMoriaFeedTask(item, moria);
                 }
 
-                // Priority 3: Try to find a stockpile
+                // Priority 2: Try to find a stockpile
                 if (StoreUtility.TryFindBestBetterStoreCellFor(item, null, Map,
                     StoragePriority.Unstored, Faction.OfPlayer, out IntVec3 stockpile, true))
                 {

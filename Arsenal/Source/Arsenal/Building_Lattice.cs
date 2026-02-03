@@ -561,8 +561,9 @@ namespace Arsenal
 
             if (loadingPerches.Count == 0) return;
 
-            // Find items that can be loaded into SLINGs
-            var haulableItems = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
+            // IMPORTANT: Use ALL haulable items, not just ThingsPotentiallyNeedingHauling()
+            // We need to haul items FROM stockpiles TO SLINGs, which ThingsPotentiallyNeedingHauling doesn't include
+            var haulableItems = Map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableAlways);
 
             foreach (Thing item in haulableItems)
             {
