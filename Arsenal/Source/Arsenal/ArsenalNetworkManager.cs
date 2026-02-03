@@ -30,6 +30,7 @@ namespace Arsenal
 
         // SLING/PERCH logistics system
         private static List<Building_PERCH> perches = new List<Building_PERCH>();
+        private static List<Building_PerchBeacon> perchBeacons = new List<Building_PerchBeacon>();
 
         // MULE system components
         private static List<MULE_Pawn> mules = new List<MULE_Pawn>();
@@ -608,6 +609,54 @@ namespace Arsenal
 
         #endregion
 
+        #region PERCH Beacon Registration (New Landing Beacons)
+
+        public static void RegisterPerchBeacon(Building_PerchBeacon beacon)
+        {
+            if (!perchBeacons.Contains(beacon))
+                perchBeacons.Add(beacon);
+        }
+
+        public static void DeregisterPerchBeacon(Building_PerchBeacon beacon)
+        {
+            perchBeacons.Remove(beacon);
+        }
+
+        public static List<Building_PerchBeacon> GetAllPerchBeacons()
+        {
+            perchBeacons.RemoveAll(b => b == null || b.Destroyed || !b.Spawned);
+            return perchBeacons.ToList();
+        }
+
+        public static List<Building_PerchBeacon> GetPerchBeaconsOnMap(Map map)
+        {
+            if (map == null) return new List<Building_PerchBeacon>();
+            return GetAllPerchBeacons().Where(b => b.Map == map).ToList();
+        }
+
+        public static List<Building_PerchBeacon> GetPerchBeaconsAtTile(int tile)
+        {
+            return GetAllPerchBeacons().Where(b => b.Map != null && b.Map.Tile == tile).ToList();
+        }
+
+        public static Building_PerchBeacon GetBeaconWithLandingZone(int tile)
+        {
+            // Returns a beacon that has a valid landing zone at this tile
+            return GetPerchBeaconsAtTile(tile).FirstOrDefault(b => b.HasValidLandingZone);
+        }
+
+        public static List<Building_PerchBeacon> GetSourceBeacons()
+        {
+            return GetAllPerchBeacons().Where(b => b.IsSource && b.HasValidLandingZone).ToList();
+        }
+
+        public static List<Building_PerchBeacon> GetSinkBeacons()
+        {
+            return GetAllPerchBeacons().Where(b => b.IsSink && b.HasValidLandingZone).ToList();
+        }
+
+        #endregion
+
         public static void RegisterArsenal(Building_Arsenal arsenal)
         {
             if (!arsenals.Contains(arsenal))
@@ -774,6 +823,7 @@ namespace Arsenal
             terminals.Clear();
             hawkeyePawns.Clear();
             perches.Clear();
+            perchBeacons.Clear();
             mules.Clear();
             stables.Clear();
             morias.Clear();

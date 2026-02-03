@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- PERCH Landing Beacon - marks corner of SLING landing zone -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_PerchBeacon</defName>
+    <label>PERCH landing beacon</label>
+    <description>Marks the corner of a SLING landing zone. Place four beacons at the corners of a clear area (minimum 9x12) to create a landing pad for autonomous cargo craft.
+
+SLINGs will land within the marked zone when arriving. Configure as SOURCE to export resources or SINK to receive shipments.
+
+The landing zone must be kept clear - no buildings or roofs within the beacon rectangle.</description>
+    <thingClass>Arsenal.Building_PerchBeacon</thingClass>
+    <graphicData>
+      <texPath>Things/Building/Misc/ShipLandingBeacon</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(1,1)</drawSize>
+      <damageData>
+        <cornerTL>Damage/Corner</cornerTL>
+        <cornerTR>Damage/Corner</cornerTR>
+        <cornerBL>Damage/Corner</cornerBL>
+        <cornerBR>Damage/Corner</cornerBR>
+      </damageData>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>PassThroughOnly</passability>
+    <pathCost>15</pathCost>
+    <fillPercent>0.15</fillPercent>
+    <canOverlapZones>true</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>100</MaxHitPoints>
+      <WorkToBuild>2500</WorkToBuild>
+      <Mass>5</Mass>
+      <Flammability>0.5</Flammability>
+    </statBases>
+    <size>(1,1)</size>
+    <costList>
+      <Steel>25</Steel>
+      <ComponentIndustrial>2</ComponentIndustrial>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>25</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Cyan/teal glow for landing beacon -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>3</glowRadius>
+        <glowColor>(0,200,200,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Normal</tickerType>
+    <designationCategory>Misc</designationCategory>
+    <constructionSkillPrerequisite>6</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_SlingLogistics</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+</Defs>

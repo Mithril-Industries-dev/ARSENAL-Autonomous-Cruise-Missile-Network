@@ -9,15 +9,23 @@ using UnityEngine;
 namespace Arsenal
 {
     /// <summary>
-    /// Skyfaller for SLING landing at a PERCH or waypoint.
+    /// Skyfaller for SLING landing at a beacon-defined zone or waypoint.
     /// </summary>
     public class SlingLandingSkyfaller : Skyfaller
     {
         public Thing sling;
         public string slingName;
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
+
+        // New beacon-based system
+        public Building_PerchBeacon destinationBeacon;
+        public int originTile = -1;
+        public int destinationTile = -1;
+
+        // Legacy PERCH references (for backward compatibility with saves)
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
+
         public Building_Hop targetHop;
         public int finalDestinationTile = -1;
         public bool isWaypointStop = false;
@@ -30,8 +38,16 @@ namespace Arsenal
             Scribe_Deep.Look(ref sling, "sling");
             Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
+
+            // New beacon system
+            Scribe_References.Look(ref destinationBeacon, "destinationBeacon");
+            Scribe_Values.Look(ref originTile, "originTile", -1);
+            Scribe_Values.Look(ref destinationTile, "destinationTile", -1);
+
+            // Legacy (backward compatibility)
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
+
             Scribe_References.Look(ref targetHop, "targetHop");
             Scribe_Values.Look(ref finalDestinationTile, "finalDestinationTile", -1);
             Scribe_Values.Look(ref isWaypointStop, "isWaypointStop", false);
@@ -227,12 +243,74 @@ namespace Arsenal
 
         private void HandleDestinationLanding()
         {
-            if (destinationPerch == null || !destinationPerch.Spawned)
+            // Try new beacon system first
+            if (destinationBeacon != null && destinationBeacon.Spawned && destinationBeacon.HasValidLandingZone)
             {
+                HandleBeaconLanding();
+                return;
+            }
+
+            // Fall back to legacy PERCH system for backward compatibility
+            if (destinationPerch != null && destinationPerch.Spawned)
+            {
+                HandleLegacyPerchLanding();
+                return;
+            }
+
+            // No valid destination
+            HandleEmergencyLanding();
+        }
+
+        private void HandleBeaconLanding()
+        {
+            // Find landing spot in beacon zone
+            IntVec3 landingPos = destinationBeacon.FindLandingSpot();
+            if (!landingPos.IsValid)
+            {
+                Log.Warning($"[ARSENAL] {slingName ?? "SLING"} - no clear landing spot in beacon zone!");
                 HandleEmergencyLanding();
                 return;
             }
 
+            // Assign name before spawning
+            if (sling is SLING_Thing slingThing)
+            {
+                if (!string.IsNullOrEmpty(slingName))
+                {
+                    slingThing.AssignName(slingName);
+                }
+
+                // Load cargo manifest into container
+                if (cargo != null && cargo.Count > 0 && slingThing.CurrentCargoCount == 0)
+                {
+                    slingThing.LoadCargoFromManifest(cargo);
+                }
+            }
+
+            // Spawn SLING at the landing position
+            if (sling != null && !sling.Spawned)
+            {
+                Log.Message($"[SLING] {slingName} landing at {landingPos} in beacon zone");
+                GenSpawn.Spawn(sling, landingPos, Map, Rot4.North);
+                sling.SetForbidden(false, false); // SLINGs should be accessible
+            }
+
+            // Message
+            bool hasCargoToUnload = cargo != null && cargo.Count > 0;
+            if (hasCargoToUnload)
+            {
+                Messages.Message($"{slingName ?? "SLING"} landed with cargo at {destinationBeacon.Label}",
+                    sling, MessageTypeDefOf.NeutralEvent);
+            }
+            else
+            {
+                Messages.Message($"{slingName ?? "SLING"} returned to {destinationBeacon.Label}",
+                    sling, MessageTypeDefOf.NeutralEvent);
+            }
+        }
+
+        private void HandleLegacyPerchLanding()
+        {
             // Check if PERCH has an available slot
             if (!destinationPerch.HasAvailableSlot)
             {
@@ -263,10 +341,7 @@ namespace Arsenal
             // Spawn SLING at the assigned slot position
             if (sling != null && !sling.Spawned)
             {
-                Log.Warning($"[SLING LANDING] Spawning {slingName} at {landingPos}");
-                Log.Warning($"[SLING LANDING] PERCH: {destinationPerch.Label} at {destinationPerch.Position}, Rot={destinationPerch.Rotation.AsInt}, Size={destinationPerch.def.size}");
                 GenSpawn.Spawn(sling, landingPos, Map, Rot4.North);
-                Log.Warning($"[SLING LANDING] After spawn: Position={sling.Position}, OccupiedRect={sling.OccupiedRect()}");
                 sling.SetForbidden(true, false);
             }
 
@@ -278,7 +353,6 @@ namespace Arsenal
             }
 
             // Deliver cargo to destination - ReceiveSling handles unloading/return
-            // Note: slot assignment already done above, ReceiveSling will handle state
             destinationPerch.ReceiveSling(sling, cargo, returnOrigin, slingName);
         }
 
