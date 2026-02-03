@@ -900,25 +900,31 @@ namespace Arsenal
                 slot2PendingReturnOrigin = null;
             }
 
-            // Reposition slot 1 SLING
+            // Reposition slot 1 SLING - must despawn/respawn to properly update cell registration
             if (slingSlot1 != null && slingSlot1.Spawned)
             {
                 IntVec3 correctPos = GetSlot1Position();
                 if (slingSlot1.Position != correctPos)
                 {
                     Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot1)} from {slingSlot1.Position} to slot 1 at {correctPos}");
-                    slingSlot1.Position = correctPos;
+                    // Must despawn and respawn to properly update cell registration
+                    Thing sling = slingSlot1;
+                    sling.DeSpawn(DestroyMode.Vanish);
+                    GenSpawn.Spawn(sling, correctPos, Map, Rot4.North);
                 }
             }
 
-            // Reposition slot 2 SLING
+            // Reposition slot 2 SLING - must despawn/respawn to properly update cell registration
             if (slingSlot2 != null && slingSlot2.Spawned)
             {
                 IntVec3 correctPos = GetSlot2Position();
                 if (slingSlot2.Position != correctPos)
                 {
                     Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot2)} from {slingSlot2.Position} to slot 2 at {correctPos}");
-                    slingSlot2.Position = correctPos;
+                    // Must despawn and respawn to properly update cell registration
+                    Thing sling = slingSlot2;
+                    sling.DeSpawn(DestroyMode.Vanish);
+                    GenSpawn.Spawn(sling, correctPos, Map, Rot4.North);
                 }
             }
         }
