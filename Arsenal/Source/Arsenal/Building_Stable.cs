@@ -147,12 +147,17 @@ namespace Arsenal
         {
             base.Tick();
 
-            // On remote tiles (no local LATTICE), check for deployment opportunities more frequently
-            // This reduces the delay when MULEs return and new tasks are waiting
-            bool isRemoteTile = ArsenalNetworkManager.GetLatticeOnMap(Map) == null;
-            if (isRemoteTile && this.IsHashIntervalTick(60)) // Every second on remote tiles
+            // Charging and deployment every 250 ticks (same as TickRare interval)
+            // NOTE: tickerType is Normal, so TickRare is NOT called automatically
+            if (this.IsHashIntervalTick(250))
             {
-                // Only do the quick deploy check if we have ready MULEs
+                DoChargingAndDeployment();
+            }
+
+            // On remote tiles (no local LATTICE), check for deployment more frequently
+            bool isRemoteTile = ArsenalNetworkManager.GetLatticeOnMap(Map) == null;
+            if (isRemoteTile && this.IsHashIntervalTick(60))
+            {
                 if (AvailableMuleCount > 0)
                 {
                     TryDeployForTasks();
@@ -160,20 +165,22 @@ namespace Arsenal
             }
         }
 
-        public override void TickRare()
+        /// <summary>
+        /// Handles charging docked MULEs and deploying them for tasks.
+        /// Called every 250 ticks from Tick().
+        /// </summary>
+        private void DoChargingAndDeployment()
         {
-            base.TickRare();
-
-            // DEBUG: Log every TickRare to confirm it's running
+            // DEBUG: Log to confirm this is running
             if (dockedMules.Count > 0)
             {
-                Log.Message($"[STABLE DEBUG] {Label} TickRare: {dockedMules.Count} docked MULEs, powered={IsPoweredOn()}");
+                Log.Message($"[STABLE DEBUG] {Label} DoChargingAndDeployment: {dockedMules.Count} docked MULEs, powered={IsPoweredOn()}");
             }
 
             // Clean up null references
             dockedMules.RemoveAll(m => m == null || m.Destroyed);
 
-            // Charge ALL docked MULEs if powered - no state check, always charge
+            // Charge ALL docked MULEs if powered
             if (IsPoweredOn())
             {
                 foreach (var mule in dockedMules)
@@ -190,10 +197,9 @@ namespace Arsenal
                     float beforeCharge = battery.CurrentCharge;
 
                     // ALWAYS charge docked MULEs, regardless of current state
-                    // A docked MULE should always be either Charging or Idle
                     if (!battery.IsFull)
                     {
-                        // Charge for 250 ticks worth (TickRare interval)
+                        // Charge for 250 ticks worth
                         for (int i = 0; i < 250; i++)
                         {
                             battery.Charge();
