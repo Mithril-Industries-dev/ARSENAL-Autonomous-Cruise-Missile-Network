@@ -54,6 +54,9 @@ namespace Arsenal
         private Thing slingSlot1;
         private Thing slingSlot2;
 
+        // Flag to force SLING position validation (respawn) after load
+        private bool needsPositionValidation = false;
+
         // Slot 1 state (primary - loading/staging)
         private bool slot1IsLoading;
         private Building_PERCH slot1LoadDestination;
@@ -906,12 +909,14 @@ namespace Arsenal
             }
 
             // Reposition slot 1 SLING - must despawn/respawn to properly update cell registration
+            // Force respawn if needsPositionValidation is set (fixes saves with wrong cell registration)
             if (slingSlot1 != null && slingSlot1.Spawned)
             {
                 IntVec3 correctPos = GetSlot1Position();
-                if (slingSlot1.Position != correctPos)
+                bool positionMismatch = slingSlot1.Position != correctPos;
+                if (positionMismatch || needsPositionValidation)
                 {
-                    Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot1)} from {slingSlot1.Position} to slot 1 at {correctPos}");
+                    Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot1)} from {slingSlot1.Position} to slot 1 at {correctPos} (validation={needsPositionValidation}, mismatch={positionMismatch})");
                     // Must despawn and respawn to properly update cell registration
                     Thing sling = slingSlot1;
                     sling.DeSpawn(DestroyMode.Vanish);
@@ -923,15 +928,19 @@ namespace Arsenal
             if (slingSlot2 != null && slingSlot2.Spawned)
             {
                 IntVec3 correctPos = GetSlot2Position();
-                if (slingSlot2.Position != correctPos)
+                bool positionMismatch = slingSlot2.Position != correctPos;
+                if (positionMismatch || needsPositionValidation)
                 {
-                    Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot2)} from {slingSlot2.Position} to slot 2 at {correctPos}");
+                    Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot2)} from {slingSlot2.Position} to slot 2 at {correctPos} (validation={needsPositionValidation}, mismatch={positionMismatch})");
                     // Must despawn and respawn to properly update cell registration
                     Thing sling = slingSlot2;
                     sling.DeSpawn(DestroyMode.Vanish);
                     GenSpawn.Spawn(sling, correctPos, Map, Rot4.North);
                 }
             }
+
+            // Clear validation flag after first run
+            needsPositionValidation = false;
         }
 
         private void TickLoading()
@@ -1756,6 +1765,10 @@ namespace Arsenal
                     slot2IsRefueling = true;
                     slot2RefuelTicksRemaining = legacyRefuelTicks;
                 }
+
+                // Force SLING position validation on first tick after load
+                // This fixes saves where Position was set but cell registration is wrong
+                needsPositionValidation = true;
             }
         }
     }
