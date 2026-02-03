@@ -828,3 +828,195 @@ Output goes to `Arsenal/Assemblies/Arsenal.dll`
 ### Static state persisting across saves
 - Ensure `GameComponent_ArsenalNetwork.LoadedGame()` calls `Reset()`
 - Buildings must re-register in `SpawnSetup()`
+
+---
+
+## System 6: SLING System (Autonomous Cargo Craft)
+
+### Overview
+
+SLING (Suborbital Logistics INterchange Glider) - Autonomous cargo craft for inter-base resource transport.
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **SLING_Thing** | `SLING_Thing.cs` | Cargo craft (Building + IThingHolder) |
+| **Building_PerchBeacon** | `Building_PerchBeacon.cs` | Landing zone corner beacon (NEW) |
+| **Building_PERCH** | `Building_PERCH.cs` | Legacy dual-slot landing pad |
+| **SlingLandingSkyfaller** | `SlingSkyfaller.cs` | Landing animation |
+| **SlingLaunchingSkyfaller** | `SlingSkyfaller.cs` | Takeoff animation |
+| **WorldObject_TravelingSling** | `WorldObject_TravelingSling.cs` | World map transit |
+
+### SLING_Thing
+
+```csharp
+public class SLING_Thing : Building, IThingHolder
+{
+    public const int MAX_CARGO_CAPACITY = 750;
+    private ThingOwner<Thing> cargoContainer;
+    private bool isLoading;
+    private Dictionary<ThingDef, int> targetCargo;
+
+    public bool WantsItem(ThingDef def);
+    public int TryAddCargo(Thing item);
+    public void StartLoading(Dictionary<ThingDef, int> cargo);
+    public bool CompleteLoading();
+}
+```
+
+### SLING Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Size | 6x10 |
+| Cargo Capacity | 750 |
+| Fuel Capacity | 150 |
+| World Speed | 0.004 |
+
+---
+
+## System 7: PERCH Landing Beacon (Recommended)
+
+The beacon system is **recommended** over the legacy PERCH. Place 4 beacons at corners to define a landing zone (similar to vanilla ship landing beacons).
+
+### How It Works
+
+1. Place 4 `Building_PerchBeacon` at rectangle corners
+2. Beacons detect valid zones (minimum 9x12 for SLING 6x10 + margin)
+3. System finds clear landing spot within zone
+4. SLINGs land anywhere in validated zone
+
+### Beacon Roles
+
+```csharp
+public enum PerchRole { Source, Sink }
+```
+- **Source**: Exports resources above threshold
+- **Sink**: Imports resources to meet target levels
+
+### Key Methods
+
+```csharp
+public CellRect? GetLandingZone();  // Find 4-beacon rectangle
+public IntVec3 FindLandingSpot();   // Find clear spot in zone
+public List<SLING_Thing> GetDockedSlings();
+public Dictionary<ThingDef, int> GetAvailableForExport();
+public Dictionary<ThingDef, int> GetResourcesNeeded();
+```
+
+### Beacon Constants
+
+| Constant | Value |
+|----------|-------|
+| MIN_WIDTH | 9 |
+| MIN_HEIGHT | 12 |
+| MAX_BEACON_DISTANCE | 30 |
+| ZONE_CHECK_INTERVAL | 120 ticks |
+
+---
+
+## System 8: Legacy PERCH Slot System
+
+The original PERCH uses a large 8x24 building with fixed dual slots. Supported for backward compatibility.
+
+### CRITICAL: Position/Cell Registration Bug
+
+**ALWAYS use despawn/respawn when moving SLINGs:**
+
+```csharp
+// WRONG - Position set but cell registration NOT updated
+sling.Position = newPos;
+
+// CORRECT - Proper cell registration
+sling.DeSpawn(DestroyMode.Vanish);
+GenSpawn.Spawn(sling, newPos, Map, Rot4.North);
+```
+
+Setting Position directly causes:
+- Correct Position value in debug
+- WRONG visual location
+- WRONG selection outline (white squares)
+- WRONG occupied cells
+
+### Position Validation on Load
+
+```csharp
+private bool needsPositionValidation = false;
+
+// Set in PostLoadInit
+if (Scribe.mode == LoadSaveMode.PostLoadInit)
+    needsPositionValidation = true;
+
+// In RepositionSlings - respawn if flag set OR mismatch
+if (positionMismatch || needsPositionValidation)
+{
+    sling.DeSpawn(DestroyMode.Vanish);
+    GenSpawn.Spawn(sling, correctPos, Map, Rot4.North);
+}
+needsPositionValidation = false;
+```
+
+---
+
+## MULE Integration with SLING Loading
+
+### CRITICAL: Finding Items for SLING Loading
+
+```csharp
+// WRONG - Excludes items in stockpiles/storage!
+foreach (Thing item in Map.listerHaulables.ThingsPotentiallyNeedingHauling())
+
+// CORRECT - Finds ALL haulable items including stored ones
+foreach (Thing item in Map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableAlways))
+```
+
+`ThingsPotentiallyNeedingHauling()` excludes items already in valid storage, but those ARE valid for SLING loading.
+
+### MULE Task Priority
+
+1. **SLING Loading** - Highest when SLING.IsLoading
+2. Mining
+3. Hauling to MORIA
+
+### Downed State Handling
+
+Add `if (Downed) return;` before any pathing:
+- `Tick()`
+- `StartJobForTask()`
+- `TryFindAndStartTask()`
+- `GoToStable()`
+
+---
+
+## SLING-Related Issues & Solutions
+
+### SLING position/visual mismatch
+- Use despawn/respawn, NOT direct Position assignment
+- Use `needsPositionValidation` flag on load
+- Check selection outline matches visual
+
+### MULEs not hauling to SLINGs
+- Use `ThingsInGroup(HaulableAlways)` NOT `ThingsPotentiallyNeedingHauling()`
+
+### MULEs "tried to path while downed"
+- Add `if (Downed) return;` checks before pathing operations
+
+### Beacon zone not detected
+- Need exactly 4 beacons at rectangle corners
+- Minimum 9x12 size
+- All beacons must be powered
+
+---
+
+## SLING DefOf References
+
+```csharp
+Arsenal_SLING              // SLING cargo craft
+Arsenal_PerchBeacon        // Landing beacon
+Arsenal_PERCH              // Legacy landing pad
+Arsenal_SlingLaunching     // Takeoff skyfaller
+Arsenal_SlingLanding       // Landing skyfaller
+Arsenal_TravelingSling     // World object
+MITHRIL_Product_SLING      // Manufacturing def
+```
