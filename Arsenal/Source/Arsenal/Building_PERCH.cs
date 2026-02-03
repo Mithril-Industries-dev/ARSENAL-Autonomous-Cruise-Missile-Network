@@ -744,63 +744,66 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Gets the position for Slot 1 (primary/staging slot).
-        /// PERCH is 8x24 (8 wide, 24 tall at North). SLING is 6x10 at Rot4.North.
+        /// Gets the position for Slot 1 (primary/staging slot - TOP area).
+        /// PERCH is 8x24 (8 wide, 24 tall at North). SLING is 6x10.
         /// Position returned is the SLING's bottom-left corner for spawning.
-        /// Rotation-aware: adjusts offset based on PERCH rotation.
+        ///
+        /// For North rotation (per Excel diagram):
+        /// - SLING 1 occupies rows 2-11 (X cols B-G)
+        /// - Bottom edge at row 11 = Z offset 13 from PERCH position
+        /// - X offset 1 (column B, centered)
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
-            // Base offsets for Rot4.North: PERCH 8x24, SLING 6x10
-            // X offset: (8 - 6) / 2 = 1 (center horizontally)
-            // Z offset: 2 (bottom margin)
             IntVec3 offset;
             switch (Rotation.AsInt)
             {
-                case 0: // North - 8 wide x 24 tall
-                    offset = new IntVec3(1, 0, 2);
+                case 0: // North - 8 wide x 24 tall, slot 1 at TOP
+                    offset = new IntVec3(1, 0, 13);
                     break;
-                case 1: // East - 24 wide x 8 tall (rotated 90 CW)
-                    offset = new IntVec3(2, 0, 1);
+                case 1: // East - 24 wide x 8 tall, slot 1 at RIGHT
+                    offset = new IntVec3(13, 0, 1);
                     break;
-                case 2: // South - 8 wide x 24 tall (flipped)
-                    offset = new IntVec3(1, 0, 12); // Slot 1 is now at top
+                case 2: // South - 8 wide x 24 tall (flipped), slot 1 at BOTTOM
+                    offset = new IntVec3(1, 0, 1);
                     break;
-                case 3: // West - 24 wide x 8 tall (rotated 90 CCW)
-                    offset = new IntVec3(12, 0, 1);
+                case 3: // West - 24 wide x 8 tall, slot 1 at LEFT
+                    offset = new IntVec3(1, 0, 1);
                     break;
                 default:
-                    offset = new IntVec3(1, 0, 2);
+                    offset = new IntVec3(1, 0, 13);
                     break;
             }
             return Position + offset;
         }
 
         /// <summary>
-        /// Gets the position for Slot 2 (secondary/incoming slot).
-        /// Upper position for dual-SLING operations.
-        /// Rotation-aware: adjusts offset based on PERCH rotation.
+        /// Gets the position for Slot 2 (secondary/incoming slot - BOTTOM area).
+        ///
+        /// For North rotation (per Excel diagram):
+        /// - SLING 2 occupies rows 14-23 (X cols B-G)
+        /// - Bottom edge at row 23 = Z offset 1 from PERCH position
+        /// - X offset 1 (column B, centered)
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
-            // Slot 2 is 10 cells further along the long axis from Slot 1
             IntVec3 offset;
             switch (Rotation.AsInt)
             {
-                case 0: // North - slot 2 is above slot 1
-                    offset = new IntVec3(1, 0, 12);
+                case 0: // North - 8 wide x 24 tall, slot 2 at BOTTOM
+                    offset = new IntVec3(1, 0, 1);
                     break;
-                case 1: // East - slot 2 is to the right of slot 1
-                    offset = new IntVec3(12, 0, 1);
+                case 1: // East - 24 wide x 8 tall, slot 2 at LEFT
+                    offset = new IntVec3(1, 0, 1);
                     break;
-                case 2: // South - slot 2 is below slot 1
-                    offset = new IntVec3(1, 0, 2);
+                case 2: // South - 8 wide x 24 tall (flipped), slot 2 at TOP
+                    offset = new IntVec3(1, 0, 13);
                     break;
-                case 3: // West - slot 2 is to the left of slot 1
-                    offset = new IntVec3(2, 0, 1);
+                case 3: // West - 24 wide x 8 tall, slot 2 at RIGHT
+                    offset = new IntVec3(13, 0, 1);
                     break;
                 default:
-                    offset = new IntVec3(1, 0, 12);
+                    offset = new IntVec3(1, 0, 1);
                     break;
             }
             return Position + offset;
