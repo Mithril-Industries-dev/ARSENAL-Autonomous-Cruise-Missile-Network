@@ -260,10 +260,13 @@ namespace Arsenal
             bool hasCargoToUnload = cargo != null && cargo.Count > 0;
             IntVec3 landingPos = destinationPerch.AssignToAvailableSlot(sling, hasCargoToUnload);
 
-            // Spawn SLING at the assigned slot position with north orientation to match vertical PERCH
+            // Spawn SLING at the assigned slot position
             if (sling != null && !sling.Spawned)
             {
+                Log.Warning($"[SLING LANDING] Spawning {slingName} at {landingPos}");
+                Log.Warning($"[SLING LANDING] PERCH: {destinationPerch.Label} at {destinationPerch.Position}, Rot={destinationPerch.Rotation.AsInt}, Size={destinationPerch.def.size}");
                 GenSpawn.Spawn(sling, landingPos, Map, Rot4.North);
+                Log.Warning($"[SLING LANDING] After spawn: Position={sling.Position}, OccupiedRect={sling.OccupiedRect()}");
                 sling.SetForbidden(true, false);
             }
 

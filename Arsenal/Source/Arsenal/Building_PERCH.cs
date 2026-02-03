@@ -227,9 +227,12 @@ namespace Arsenal
             }
             else
             {
-                // After load, reposition any SLINGs to correct slot positions
-                // This fixes positions from old saves before slot position code was correct
-                RepositionSlings();
+                // After load, force SLING position validation on first TickRare
+                // Can't do it here because SLINGs might not be spawned yet
+                needsPositionValidation = true;
+                Log.Message($"[PERCH] {customName}: SpawnSetup after load - will validate SLING positions on first tick. " +
+                    $"Slot1: {(slingSlot1 != null ? (slingSlot1.Spawned ? "spawned" : "not spawned") : "null")}, " +
+                    $"Slot2: {(slingSlot2 != null ? (slingSlot2.Spawned ? "spawned" : "not spawned") : "null")}");
             }
         }
 
