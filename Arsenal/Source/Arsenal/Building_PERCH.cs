@@ -1397,6 +1397,48 @@ namespace Arsenal
                     }
                 };
 
+                // Show calculated slot positions
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Show Slot Positions",
+                    defaultDesc = "Log the calculated slot positions for debugging.",
+                    action = delegate
+                    {
+                        Log.Warning($"=== SLOT POSITION DEBUG for {Label} ===");
+                        Log.Warning($"PERCH Position: {Position}");
+                        Log.Warning($"PERCH Rotation: {Rotation} (AsInt={Rotation.AsInt})");
+                        Log.Warning($"PERCH Size: {def.size}");
+                        Log.Warning($"Calculated Slot 1 Position: {GetSlot1Position()}");
+                        Log.Warning($"Calculated Slot 2 Position: {GetSlot2Position()}");
+
+                        if (slingSlot1 != null)
+                        {
+                            Log.Warning($"Slot 1 SLING: {SLING_Thing.GetSlingName(slingSlot1)}");
+                            Log.Warning($"  Actual Position: {slingSlot1.Position}");
+                            Log.Warning($"  Expected Position: {GetSlot1Position()}");
+                            Log.Warning($"  Match: {slingSlot1.Position == GetSlot1Position()}");
+                        }
+                        else
+                        {
+                            Log.Warning($"Slot 1: EMPTY");
+                        }
+
+                        if (slingSlot2 != null)
+                        {
+                            Log.Warning($"Slot 2 SLING: {SLING_Thing.GetSlingName(slingSlot2)}");
+                            Log.Warning($"  Actual Position: {slingSlot2.Position}");
+                            Log.Warning($"  Expected Position: {GetSlot2Position()}");
+                            Log.Warning($"  Match: {slingSlot2.Position == GetSlot2Position()}");
+                        }
+                        else
+                        {
+                            Log.Warning($"Slot 2: EMPTY");
+                        }
+
+                        Messages.Message($"Slot positions logged - check debug log", this, MessageTypeDefOf.NeutralEvent);
+                    }
+                };
+
                 // Full SLING Loading Diagnostic
                 yield return new Command_Action
                 {
