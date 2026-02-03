@@ -208,10 +208,10 @@ namespace Arsenal
             bool hasCargoToUnload = cargo != null && cargo.Count > 0;
             IntVec3 landingPos = localPerch.AssignToAvailableSlot(sling, hasCargoToUnload);
 
-            // Spawn SLING at the assigned slot position
+            // Spawn SLING at the assigned slot position with 90-degree rotation
             if (sling != null && !sling.Spawned)
             {
-                GenSpawn.Spawn(sling, landingPos, Map);
+                GenSpawn.Spawn(sling, landingPos, Map, Rot4.East);
                 sling.SetForbidden(true, false);
             }
 
@@ -260,10 +260,10 @@ namespace Arsenal
             bool hasCargoToUnload = cargo != null && cargo.Count > 0;
             IntVec3 landingPos = destinationPerch.AssignToAvailableSlot(sling, hasCargoToUnload);
 
-            // Spawn SLING at the assigned slot position
+            // Spawn SLING at the assigned slot position with 90-degree rotation
             if (sling != null && !sling.Spawned)
             {
-                GenSpawn.Spawn(sling, landingPos, Map);
+                GenSpawn.Spawn(sling, landingPos, Map, Rot4.East);
                 sling.SetForbidden(true, false);
             }
 

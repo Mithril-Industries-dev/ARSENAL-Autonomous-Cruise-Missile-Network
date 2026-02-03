@@ -643,29 +643,27 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the position for Slot 1 (primary/staging slot).
-        /// SLING is 7x5 (horizontal), PERCH is 5x14 (vertical).
+        /// PERCH is 8x24 (8 wide, 24 tall). SLING is 6x10 after landing rotation.
         /// Position is the SLING's bottom-left corner for spawning.
-        /// SLING is centered over the PERCH landing zone.
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
-            // PERCH is 5 wide (X: 0-4) x 14 tall (Z: 0-13)
-            // SLING is 7 wide x 5 tall
-            // Center SLING over PERCH: PERCH center X is +2, SLING center offset is 3
-            // X-1: SLING spans X-1 to X+5, centered over PERCH (rotors extend 1 cell each side)
-            // Z+5: SLING spans Z+5 to Z+9, centered on orange landing zone (flame ~Z+7)
-            return Position + new IntVec3(-1, 0, 5);
+            // PERCH is 8 wide (X: 0-7) x 24 tall (Z: 0-23)
+            // SLING is 6 wide x 10 tall (after 90-degree rotation on landing)
+            // Center SLING X: (8 - 6) / 2 = +1 offset
+            // Slot 1 is lower half: Z+2 (SLING spans Z+2 to Z+11)
+            return Position + new IntVec3(1, 0, 2);
         }
 
         /// <summary>
         /// Gets the position for Slot 2 (secondary/incoming slot).
-        /// Offset higher for dual-SLING operations.
+        /// Upper position for dual-SLING operations.
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
             // Same X (centered), higher Z for second SLING
-            // Z+9: SLING spans Z+9 to Z+13, above slot 1
-            return Position + new IntVec3(-1, 0, 9);
+            // Slot 2 is upper half: Z+12 (SLING spans Z+12 to Z+21)
+            return Position + new IntVec3(1, 0, 12);
         }
 
         /// <summary>
@@ -931,6 +929,7 @@ namespace Arsenal
         /// <summary>
         /// Adds a SLING to this PERCH (for manufacturing/initial placement).
         /// Newly assigned SLINGs go to Slot 1 (primary, ready for missions).
+        /// SLINGs are rotated 90 degrees when landing/docking at PERCH.
         /// </summary>
         public void AssignSling(Thing sling)
         {
@@ -940,7 +939,8 @@ namespace Arsenal
                 slingSlot1 = sling;
                 if (sling != null && !sling.Spawned && Map != null)
                 {
-                    GenSpawn.Spawn(sling, GetSlot1Position(), Map);
+                    // Spawn with 90-degree rotation for landed orientation
+                    GenSpawn.Spawn(sling, GetSlot1Position(), Map, Rot4.East);
                 }
             }
             else if (slingSlot2 == null)
@@ -948,7 +948,8 @@ namespace Arsenal
                 slingSlot2 = sling;
                 if (sling != null && !sling.Spawned && Map != null)
                 {
-                    GenSpawn.Spawn(sling, GetSlot2Position(), Map);
+                    // Spawn with 90-degree rotation for landed orientation
+                    GenSpawn.Spawn(sling, GetSlot2Position(), Map, Rot4.East);
                 }
             }
             else

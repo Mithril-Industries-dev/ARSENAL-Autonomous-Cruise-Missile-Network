@@ -171,12 +171,6 @@ namespace Arsenal
         /// </summary>
         private void DoChargingAndDeployment()
         {
-            // DEBUG: Log to confirm this is running
-            if (dockedMules.Count > 0)
-            {
-                Log.Message($"[STABLE DEBUG] {Label} DoChargingAndDeployment: {dockedMules.Count} docked MULEs, powered={IsPoweredOn()}");
-            }
-
             // Clean up null references
             dockedMules.RemoveAll(m => m == null || m.Destroyed);
 
@@ -194,8 +188,6 @@ namespace Arsenal
                         continue;
                     }
 
-                    float beforeCharge = battery.CurrentCharge;
-
                     // ALWAYS charge docked MULEs, regardless of current state
                     if (!battery.IsFull)
                     {
@@ -205,22 +197,12 @@ namespace Arsenal
                             battery.Charge();
                         }
                         mule.state = MuleState.Charging;
-
-                        float afterCharge = battery.CurrentCharge;
-                        Log.Message($"[STABLE DEBUG] {mule.Label}: Charged {beforeCharge:F1} -> {afterCharge:F1} (delta: {afterCharge - beforeCharge:F1}), IsFull={battery.IsFull}");
                     }
                     else
                     {
                         // Battery is full, set to Idle (ready for deployment)
                         mule.state = MuleState.Idle;
                     }
-                }
-            }
-            else
-            {
-                if (dockedMules.Count > 0)
-                {
-                    Log.Warning($"[STABLE] {Label} is NOT powered - cannot charge {dockedMules.Count} MULEs!");
                 }
             }
 
@@ -396,26 +378,17 @@ namespace Arsenal
         /// </summary>
         public bool DockMule(MULE_Pawn mule)
         {
-            Log.Message($"[STABLE DEBUG] DockMule called for {mule?.Label ?? "NULL"} at {Label}");
-
-            if (!CanAcceptMule())
-            {
-                Log.Warning($"[STABLE] Cannot accept MULE: HasSpace={HasSpace}, Destroyed={Destroyed}");
-                return false;
-            }
+            if (!CanAcceptMule()) return false;
             if (dockedMules.Contains(mule)) return true; // Already docked
 
             dockedMules.Add(mule);
             mule.homeStable = this;
             mule.state = MuleState.Charging;
 
-            Log.Message($"[STABLE DEBUG] {mule.Label} added to dockedMules (now {dockedMules.Count}), state set to Charging");
-
             // Despawn the MULE from the map (it's now stored)
             if (mule.Spawned)
             {
                 mule.DeSpawn(DestroyMode.Vanish);
-                Log.Message($"[STABLE DEBUG] {mule.Label} despawned (docked)");
             }
 
             return true;

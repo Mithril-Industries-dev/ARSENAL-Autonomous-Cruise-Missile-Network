@@ -15,7 +15,7 @@ Manufacturing limit: 1 SLING per PERCH (but each PERCH can hold 2 SLINGs).</desc
     <graphicData>
       <texPath>Arsenal/Arsenal_PERCH</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(5,14)</drawSize>
+      <drawSize>(8,24)</drawSize>
     </graphicData>
     <altitudeLayer>Building</altitudeLayer>
     <passability>PassThroughOnly</passability>
@@ -29,7 +29,7 @@ Manufacturing limit: 1 SLING per PERCH (but each PERCH can hold 2 SLINGs).</desc
       <Mass>250</Mass>
       <Flammability>0.5</Flammability>
     </statBases>
-    <size>(5,14)</size>
+    <size>(8,24)</size>
     <costList>
       <Steel>350</Steel>
       <ComponentIndustrial>10</ComponentIndustrial>
@@ -76,10 +76,10 @@ SLINGs are manufactured at ARSENAL facilities and automatically join the logisti
     <graphicData>
       <texPath>Arsenal/Arsenal_SLING</texPath>
       <graphicClass>Graphic_Single</graphicClass>
-      <drawSize>(7,5)</drawSize>
+      <drawSize>(6,10)</drawSize>
     </graphicData>
     <altitudeLayer>BuildingOnTop</altitudeLayer>
-    <size>(7,5)</size>
+    <size>(6,10)</size>
     <passability>PassThroughOnly</passability>
     <pathCost>50</pathCost>
     <blockWind>false</blockWind>

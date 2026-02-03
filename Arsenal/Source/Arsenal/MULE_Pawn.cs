@@ -105,12 +105,6 @@ namespace Arsenal
             // Safety check - don't process if not spawned
             if (!Spawned || Map == null) return;
 
-            // DEBUG: Log MULE state every 120 ticks
-            if (this.IsHashIntervalTick(120))
-            {
-                Log.Message($"[MULE DEBUG] {Label} Tick: state={state}, battery={BatteryPercent:P0}, pos={Position}, homeStable={homeStable?.Label ?? "NULL"}");
-            }
-
             // Battery drain while active (not when idle or charging)
             if (state != MuleState.Charging && state != MuleState.Idle && state != MuleState.Inert)
             {
@@ -166,22 +160,14 @@ namespace Arsenal
                 if (homeStable == null)
                 {
                     state = MuleState.Idle;
-                    Log.Warning($"[MULE] {Label}: No stable with space found, going Idle");
                     return;
                 }
                 GoToStable();
                 return;
             }
 
-            float distToStable = Position.DistanceTo(homeStable.Position);
             bool atInteractionCell = Position == homeStable.InteractionCell;
             bool closeEnough = Position.InHorDistOf(homeStable.Position, 2f);
-
-            // Debug log every 60 ticks
-            if (this.IsHashIntervalTick(60))
-            {
-                Log.Message($"[MULE DEBUG] {Label} TickMovingToStable: dist={distToStable:F1}, closeEnough={closeEnough}, atInteraction={atInteractionCell}, job={jobs?.curJob?.def?.defName ?? "NONE"}");
-            }
 
             // Check if we've arrived at the stable (adjacent or at interaction cell)
             if (closeEnough || atInteractionCell)
@@ -189,17 +175,11 @@ namespace Arsenal
                 // Check if our Goto job is done or we're close enough
                 if (jobs?.curJob == null || jobs.curJob.def != JobDefOf.Goto)
                 {
-                    Log.Message($"[MULE] {Label}: At stable, attempting to dock...");
                     // We've arrived - dock at the stable
-                    if (homeStable.DockMule(this))
-                    {
-                        Log.Message($"[MULE] {Label}: Docked at {homeStable.Label}");
-                    }
-                    else
+                    if (!homeStable.DockMule(this))
                     {
                         // Stable is full, wait as idle
                         state = MuleState.Idle;
-                        Log.Warning($"[MULE] {Label}: Could not dock at {homeStable.Label} - stable full?");
                     }
                 }
             }
@@ -208,7 +188,6 @@ namespace Arsenal
                 // Not at stable yet - make sure we have a job to get there
                 if (jobs?.curJob == null || jobs.curJob.def != JobDefOf.Goto)
                 {
-                    Log.Message($"[MULE] {Label}: Not at stable (dist={distToStable:F1}), issuing GoToStable");
                     GoToStable();
                 }
             }
