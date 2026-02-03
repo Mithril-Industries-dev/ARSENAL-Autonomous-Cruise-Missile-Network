@@ -102,8 +102,16 @@ namespace Arsenal
         /// </summary>
         public void Charge()
         {
-            currentCharge += ChargePerTick;
+            float before = currentCharge;
+            float rate = ChargePerTick;
+            currentCharge += rate;
             if (currentCharge > MaxCharge) currentCharge = MaxCharge;
+
+            // Debug: log first charge call per session to verify it works
+            if (before == 0f || (before < 1f && currentCharge >= 1f))
+            {
+                Log.Message($"[BATTERY DEBUG] Charge(): {before:F2} + {rate:F3} = {currentCharge:F2}, Props null={Props == null}, MaxCharge={MaxCharge}");
+            }
         }
 
         /// <summary>
