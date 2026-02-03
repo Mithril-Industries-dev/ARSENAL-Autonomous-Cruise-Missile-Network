@@ -351,20 +351,42 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the demand for resources at this SINK.
-        /// Returns resource types and amounts needed to reach threshold.
-        /// Uses map-wide stock to determine demand.
+        /// If thresholds are configured, returns unfilled threshold amounts.
+        /// If NO thresholds configured, returns demand for ALL available resources from connected SOURCEs.
+        /// This allows SINKs to work without explicit configuration.
         /// </summary>
         public Dictionary<ThingDef, int> GetDemand()
         {
             var demand = new Dictionary<ThingDef, int>();
             if (role != PerchRole.SINK) return demand;
 
-            foreach (var kvp in thresholdTargets)
+            // If thresholds are configured, use them
+            if (thresholdTargets.Count > 0)
             {
-                int current = GetMapStock(kvp.Key);
-                int needed = kvp.Value - current;
-                if (needed > 0)
-                    demand[kvp.Key] = needed;
+                foreach (var kvp in thresholdTargets)
+                {
+                    int current = GetMapStock(kvp.Key);
+                    int needed = kvp.Value - current;
+                    if (needed > 0)
+                        demand[kvp.Key] = needed;
+                }
+                return demand;
+            }
+
+            // NO thresholds configured - accept ANY resources from SOURCEs
+            // This is the default "accept all" mode for unconfigured SINKs
+            foreach (var source in ArsenalNetworkManager.GetSourcePerches())
+            {
+                if (!source.HasNetworkConnection() || !source.IsPoweredOn) continue;
+
+                var available = source.GetAvailableResources();
+                foreach (var kvp in available)
+                {
+                    if (demand.ContainsKey(kvp.Key))
+                        demand[kvp.Key] = Mathf.Max(demand[kvp.Key], kvp.Value);
+                    else
+                        demand[kvp.Key] = kvp.Value;
+                }
             }
 
             return demand;
@@ -372,11 +394,26 @@ namespace Arsenal
 
         /// <summary>
         /// Checks if this SINK has any unfilled demand.
+        /// Returns true if thresholds are unfilled OR if no thresholds and any SOURCE has resources.
         /// </summary>
         public bool HasDemand()
         {
             if (role != PerchRole.SINK) return false;
-            return GetDemand().Any(d => d.Value > 0);
+
+            // If thresholds configured, check if any are unfilled
+            if (thresholdTargets.Count > 0)
+            {
+                return GetDemand().Any(d => d.Value > 0);
+            }
+
+            // No thresholds - check if any SOURCE has exportable resources
+            foreach (var source in ArsenalNetworkManager.GetSourcePerches())
+            {
+                if (!source.HasNetworkConnection() || !source.IsPoweredOn) continue;
+                if (source.GetAvailableResources().Count > 0)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
