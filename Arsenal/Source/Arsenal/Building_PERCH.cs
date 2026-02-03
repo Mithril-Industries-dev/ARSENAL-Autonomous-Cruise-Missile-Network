@@ -222,6 +222,12 @@ namespace Arsenal
                 customName = "PERCH-" + perchCounter.ToString("D2");
                 perchCounter++;
             }
+            else
+            {
+                // After load, reposition any SLINGs to correct slot positions
+                // This fixes positions from old saves before slot position code was correct
+                RepositionSlings();
+            }
         }
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
@@ -665,15 +671,18 @@ namespace Arsenal
 
         /// <summary>
         /// Gets the position for Slot 1 (primary/staging slot).
-        /// PERCH is 8x24 (8 wide, 24 tall). SLING is 6x10 after landing rotation.
-        /// Position is the SLING's bottom-left corner for spawning.
+        /// PERCH is 8x24 (8 wide, 24 tall). SLING is 6x10 at Rot4.North.
+        /// Position returned is the SLING's bottom-left corner for spawning.
+        /// Layout: 1 col left margin | 6 col SLING | 1 col right margin = 8 cols
+        ///         2 row bottom margin | 10 row slot1 | 10 row slot2 | 2 row top margin = 24 rows
         /// </summary>
         public IntVec3 GetSlot1Position()
         {
-            // PERCH is 8 wide (X: 0-7) x 24 tall (Z: 0-23)
-            // SLING is 6 wide x 10 tall (after 90-degree rotation on landing)
-            // Center SLING X: (8 - 6) / 2 = +1 offset
-            // Slot 1 is lower half: Z+2 (SLING spans Z+2 to Z+11)
+            // PERCH: 8 wide (X: 0-7) x 24 tall (Z: 0-23)
+            // SLING: 6 wide x 10 tall (at Rot4.North, no rotation)
+            // X offset: (8 - 6) / 2 = 1 (center horizontally)
+            // Z offset: 2 (bottom margin)
+            // Slot 1 spans Z+2 to Z+11 (10 cells)
             return Position + new IntVec3(1, 0, 2);
         }
 
@@ -683,8 +692,9 @@ namespace Arsenal
         /// </summary>
         public IntVec3 GetSlot2Position()
         {
-            // Same X (centered), higher Z for second SLING
-            // Slot 2 is upper half: Z+12 (SLING spans Z+12 to Z+21)
+            // X offset: same as slot 1 (centered)
+            // Z offset: 2 (bottom margin) + 10 (slot 1) = 12
+            // Slot 2 spans Z+12 to Z+21 (10 cells)
             return Position + new IntVec3(1, 0, 12);
         }
 
@@ -734,7 +744,31 @@ namespace Arsenal
             }
             // Both slots full - shouldn't happen with proper routing
             Log.Warning($"[ARSENAL] {Label}: Both slots full when assigning SLING!");
-            return Position;
+            return GetSlot1Position(); // Return valid position even in error case
+        }
+
+        /// <summary>
+        /// Repositions all SLINGs to their correct slot positions.
+        /// Called after load and periodically to fix any position issues.
+        /// </summary>
+        public void RepositionSlings()
+        {
+            if (slingSlot1 != null && slingSlot1.Spawned)
+            {
+                IntVec3 correctPos = GetSlot1Position();
+                if (slingSlot1.Position != correctPos)
+                {
+                    slingSlot1.Position = correctPos;
+                }
+            }
+            if (slingSlot2 != null && slingSlot2.Spawned)
+            {
+                IntVec3 correctPos = GetSlot2Position();
+                if (slingSlot2.Position != correctPos)
+                {
+                    slingSlot2.Position = correctPos;
+                }
+            }
         }
 
         private void TickLoading()
@@ -1135,6 +1169,18 @@ namespace Arsenal
                         }
 
                         Log.Message(msg);
+                    }
+                };
+
+                // Reposition SLINGs button for fixing position issues
+                yield return new Command_Action
+                {
+                    defaultLabel = "DEV: Reposition SLINGs",
+                    defaultDesc = "Force all SLINGs on this PERCH to their correct slot positions.",
+                    action = delegate
+                    {
+                        RepositionSlings();
+                        Messages.Message($"{Label}: SLINGs repositioned to correct slots", this, MessageTypeDefOf.NeutralEvent);
                     }
                 };
             }
