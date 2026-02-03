@@ -33,10 +33,14 @@ namespace Arsenal
 
         /// <summary>
         /// Main logistics processing loop.
-        /// Dispatches multiple SLINGs if demand is high.
+        /// Distributes SLINGs across SINKs in round-robin fashion for fair distribution.
+        /// Also redistributes SLINGs stuck at SINKs back to SOURCEs.
         /// </summary>
         private static void ProcessLogistics()
         {
+            // First, redistribute any SLINGs stuck at SINK PERCHes
+            RedistributeSlingsFromSinks();
+
             // Get all active SINKs with demand, sorted by priority
             var sinksWithDemand = ArsenalNetworkManager.GetAllPerches()
                 .Where(p => p.role == PerchRole.SINK &&
@@ -59,22 +63,30 @@ namespace Arsenal
 
             if (availableSources.Count == 0) return;
 
-            // Process highest priority SINK first
-            foreach (var sink in sinksWithDemand)
+            // Track demand per sink for round-robin distribution
+            var sinkDemands = sinksWithDemand.ToDictionary(
+                s => s,
+                s => new Dictionary<ThingDef, int>(s.GetDemand()));
+
+            // Round-robin distribution: dispatch one SLING per sink per round
+            // This ensures fair distribution across all SINKs
+            bool dispatchedAny = true;
+            while (dispatchedAny && availableSources.Count > 0)
             {
-                if (availableSources.Count == 0) break;
+                dispatchedAny = false;
 
-                // Get current unfulfilled demand for this sink
-                var remainingDemand = new Dictionary<ThingDef, int>(sink.GetDemand());
-                if (remainingDemand.Count == 0) continue;
-
-                // Keep dispatching SLINGs until demand is met or no more sources
-                bool dispatchedAny = true;
-                while (dispatchedAny && availableSources.Count > 0 && remainingDemand.Values.Sum() > 0)
+                // Try to dispatch one SLING to each sink (in priority order)
+                foreach (var sink in sinksWithDemand)
                 {
-                    dispatchedAny = false;
+                    if (availableSources.Count == 0) break;
 
-                    // Find a SOURCE that can fulfill remaining demand
+                    var remainingDemand = sinkDemands[sink];
+                    if (remainingDemand.Values.Sum() <= 0) continue;
+
+                    // Find a SOURCE that can fulfill some demand for this sink
+                    Building_PERCH bestSource = null;
+                    Dictionary<ThingDef, int> bestCargo = null;
+
                     foreach (var resource in remainingDemand.Keys.ToList().OrderByDescending(r => remainingDemand[r]))
                     {
                         if (remainingDemand[resource] <= 0) continue;
@@ -86,30 +98,99 @@ namespace Arsenal
                         // Check if route is viable
                         if (!IsRouteViable(source, sink)) continue;
 
-                        // Calculate cargo to load based on remaining demand
+                        // Calculate cargo to load
                         var cargoToLoad = CalculateCargo(source, sink, remainingDemand);
                         if (cargoToLoad.Count == 0) continue;
 
-                        // Dispatch SLING
-                        if (source.StartLoading(sink, cargoToLoad))
+                        bestSource = source;
+                        bestCargo = cargoToLoad;
+                        break;
+                    }
+
+                    // Dispatch if we found a viable source
+                    if (bestSource != null && bestCargo != null && bestSource.StartLoading(sink, bestCargo))
+                    {
+                        availableSources.Remove(bestSource);
+                        dispatchedAny = true;
+
+                        // Reduce remaining demand
+                        foreach (var kvp in bestCargo)
                         {
-                            availableSources.Remove(source);
-                            dispatchedAny = true;
-
-                            // Reduce remaining demand by what was dispatched
-                            foreach (var kvp in cargoToLoad)
+                            if (remainingDemand.ContainsKey(kvp.Key))
                             {
-                                if (remainingDemand.ContainsKey(kvp.Key))
-                                {
-                                    remainingDemand[kvp.Key] -= kvp.Value;
-                                    if (remainingDemand[kvp.Key] <= 0)
-                                        remainingDemand.Remove(kvp.Key);
-                                }
+                                remainingDemand[kvp.Key] -= kvp.Value;
+                                if (remainingDemand[kvp.Key] <= 0)
+                                    remainingDemand.Remove(kvp.Key);
                             }
-
-                            break; // Check for more sources for remaining demand
                         }
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Redistributes SLINGs that are stuck at SINK PERCHes back to SOURCE PERCHes.
+        /// This handles cases where SLINGs end up at SINKs due to cancelled loads or bugs.
+        /// </summary>
+        private static void RedistributeSlingsFromSinks()
+        {
+            // Find SINK PERCHes with idle SLINGs in slot1 (not unloading, not refueling)
+            var sinksWithIdleSlings = ArsenalNetworkManager.GetAllPerches()
+                .Where(p => p.role == PerchRole.SINK &&
+                           p.HasNetworkConnection() &&
+                           p.IsPoweredOn &&
+                           p.HasSlot1Sling &&
+                           !p.Slot1Busy)
+                .ToList();
+
+            if (sinksWithIdleSlings.Count == 0) return;
+
+            // Find SOURCE PERCHes that need SLINGs (no SLING in slot1)
+            var sourcesNeedingSlings = ArsenalNetworkManager.GetAllPerches()
+                .Where(p => p.role == PerchRole.SOURCE &&
+                           p.HasNetworkConnection() &&
+                           p.IsPoweredOn &&
+                           !p.HasSlot1Sling &&
+                           p.HasAvailableSlot)
+                .ToList();
+
+            if (sourcesNeedingSlings.Count == 0) return;
+
+            // Send SLINGs from SINKs to SOURCEs
+            foreach (var sink in sinksWithIdleSlings)
+            {
+                if (sourcesNeedingSlings.Count == 0) break;
+
+                // Find nearest SOURCE that needs a SLING
+                Building_PERCH nearestSource = null;
+                int nearestDist = int.MaxValue;
+
+                foreach (var source in sourcesNeedingSlings)
+                {
+                    if (!IsRouteViable(sink, source)) continue;
+
+                    int dist = Find.WorldGrid.TraversalDistanceBetween(
+                        sink.Map.Tile, source.Map.Tile);
+                    if (dist < nearestDist)
+                    {
+                        nearestDist = dist;
+                        nearestSource = source;
+                    }
+                }
+
+                if (nearestSource != null)
+                {
+                    // Send the idle SLING to the SOURCE (empty return flight)
+                    var sling = sink.Slot1Sling;
+                    string slingName = SLING_Thing.GetSlingName(sling);
+
+                    InitiateReturnFlight(sling, slingName, sink, nearestSource);
+
+                    // Clear the SLING from the sink's slot
+                    sink.ClearSlot1();
+                    sourcesNeedingSlings.Remove(nearestSource);
+
+                    Log.Message($"[SLING] Redistributing {slingName} from SINK {sink.Label} to SOURCE {nearestSource.Label}");
                 }
             }
         }

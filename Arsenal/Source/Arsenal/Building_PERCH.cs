@@ -148,6 +148,28 @@ namespace Arsenal
         public Thing Slot2Sling => slingSlot2;
 
         /// <summary>
+        /// Clears slot 1 reference. Used when SLING is dispatched/redistributed.
+        /// </summary>
+        public void ClearSlot1()
+        {
+            slingSlot1 = null;
+            slot1IsLoading = false;
+            slot1LoadDestination = null;
+            slot1LoadingCargo.Clear();
+        }
+
+        /// <summary>
+        /// Clears slot 2 reference. Used when SLING is dispatched/returned.
+        /// </summary>
+        public void ClearSlot2()
+        {
+            slingSlot2 = null;
+            slot2IsUnloading = false;
+            slot2IsRefueling = false;
+            slot2PendingReturnOrigin = null;
+        }
+
+        /// <summary>
         /// Returns the SLING_Thing that is currently in loading state (slot1 only).
         /// Returns null if no SLING is loading.
         /// </summary>
