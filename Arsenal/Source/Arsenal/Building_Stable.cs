@@ -390,17 +390,26 @@ namespace Arsenal
         /// </summary>
         public bool DockMule(MULE_Pawn mule)
         {
-            if (!CanAcceptMule()) return false;
+            Log.Message($"[STABLE DEBUG] DockMule called for {mule?.Label ?? "NULL"} at {Label}");
+
+            if (!CanAcceptMule())
+            {
+                Log.Warning($"[STABLE] Cannot accept MULE: HasSpace={HasSpace}, Destroyed={Destroyed}");
+                return false;
+            }
             if (dockedMules.Contains(mule)) return true; // Already docked
 
             dockedMules.Add(mule);
             mule.homeStable = this;
             mule.state = MuleState.Charging;
 
+            Log.Message($"[STABLE DEBUG] {mule.Label} added to dockedMules (now {dockedMules.Count}), state set to Charging");
+
             // Despawn the MULE from the map (it's now stored)
             if (mule.Spawned)
             {
                 mule.DeSpawn(DestroyMode.Vanish);
+                Log.Message($"[STABLE DEBUG] {mule.Label} despawned (docked)");
             }
 
             return true;
