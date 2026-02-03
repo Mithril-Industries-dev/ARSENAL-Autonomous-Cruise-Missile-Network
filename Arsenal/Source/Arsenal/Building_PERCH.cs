@@ -407,15 +407,20 @@ namespace Arsenal
                     if (slingSlot2 == null)
                     {
                         slingSlot2 = sling;
+                        Log.Message($"[PERCH] {Label}: ReceiveSling assigned {displayName} to slot 2 for unloading");
                     }
                     else if (slingSlot1 == null)
                     {
                         slingSlot1 = sling;
+                        Log.Message($"[PERCH] {Label}: ReceiveSling assigned {displayName} to slot 1 for unloading (slot2 full)");
                     }
                     else
                     {
-                        Log.Warning($"[ARSENAL] {Label}: Both slots full when receiving {displayName}!");
-                        slingSlot2 = sling;
+                        // CRITICAL: Don't overwrite! Both slots occupied is an error state.
+                        Log.Error($"[PERCH] {Label}: Cannot receive {displayName} - both slots full! " +
+                                 $"Slot1={SLING_Thing.GetSlingName(slingSlot1)}, Slot2={SLING_Thing.GetSlingName(slingSlot2)}");
+                        // Don't assign - the SLING is spawned but not tracked
+                        // This is better than losing an existing SLING reference
                     }
                 }
 
@@ -456,15 +461,18 @@ namespace Arsenal
                     if (slingSlot1 == null)
                     {
                         slingSlot1 = sling;
+                        Log.Message($"[PERCH] {Label}: ReceiveSling assigned {displayName} to slot 1 (empty, ready)");
                     }
                     else if (slingSlot2 == null)
                     {
                         slingSlot2 = sling;
+                        Log.Message($"[PERCH] {Label}: ReceiveSling assigned {displayName} to slot 2 (empty, slot1 full)");
                     }
                     else
                     {
-                        Log.Warning($"[ARSENAL] {Label}: Both slots full when receiving empty {displayName}!");
-                        slingSlot1 = sling;
+                        // CRITICAL: Don't overwrite! Both slots occupied is an error state.
+                        Log.Error($"[PERCH] {Label}: Cannot receive empty {displayName} - both slots full! " +
+                                 $"Slot1={SLING_Thing.GetSlingName(slingSlot1)}, Slot2={SLING_Thing.GetSlingName(slingSlot2)}");
                     }
                 }
 
@@ -481,9 +489,24 @@ namespace Arsenal
         /// </summary>
         public bool StartLoading(Building_PERCH destination, Dictionary<ThingDef, int> cargoToLoad)
         {
+            string slingName = slingSlot1 != null ? SLING_Thing.GetSlingName(slingSlot1) : "NO SLING";
+
             // Loading requires a SLING in slot 1, and slot 1 not busy
-            if (slingSlot1 == null || slot1IsLoading) return false;
-            if (!HasNetworkConnection()) return false;
+            if (slingSlot1 == null)
+            {
+                Log.Warning($"[PERCH] {Label}: StartLoading failed - no SLING in slot 1");
+                return false;
+            }
+            if (slot1IsLoading)
+            {
+                Log.Warning($"[PERCH] {Label}: StartLoading failed - slot 1 already loading");
+                return false;
+            }
+            if (!HasNetworkConnection())
+            {
+                Log.Warning($"[PERCH] {Label}: StartLoading failed - no network connection");
+                return false;
+            }
 
             // Tell the SLING to start accepting cargo
             var sling = slingSlot1 as SLING_Thing;
@@ -491,12 +514,17 @@ namespace Arsenal
             {
                 sling.StartLoading(cargoToLoad);
             }
+            else
+            {
+                Log.Warning($"[PERCH] {Label}: Slot 1 has Thing but not SLING_Thing: {slingSlot1.GetType().Name}");
+            }
 
             slot1IsLoading = true;
             slot1LoadDestination = destination;
             slot1LoadingCargo = new Dictionary<ThingDef, int>(cargoToLoad);
 
-            string slingName = SLING_Thing.GetSlingName(slingSlot1);
+            Log.Message($"[PERCH] {Label}: {slingName} START LOADING for {destination.Label}. " +
+                       $"Cargo: {string.Join(", ", cargoToLoad.Select(c => $"{c.Key.label}x{c.Value}"))}");
             Messages.Message($"{Label}: {slingName} awaiting cargo for {destination.Label}. Colonists/MULEs will load cargo.", this, MessageTypeDefOf.NeutralEvent);
             return true;
         }
@@ -570,6 +598,13 @@ namespace Arsenal
             if (this.IsHashIntervalTick(60))
             {
                 TryMoveSlot2ToSlot1();
+            }
+
+            // Less frequently, validate and reposition SLINGs to correct positions
+            // This catches any drift or position corruption
+            if (this.IsHashIntervalTick(300))
+            {
+                RepositionSlings();
             }
         }
 
@@ -713,20 +748,29 @@ namespace Arsenal
         /// <summary>
         /// Assigns a SLING to an available slot and returns the slot position.
         /// Incoming SLINGs (with cargo) go to slot 2, returning go to slot 1.
+        /// IMPORTANT: This method sets the slot reference - do not call if SLING is already assigned.
         /// </summary>
         public IntVec3 AssignToAvailableSlot(Thing sling, bool hasCargoToUnload)
         {
+            // Safety check - don't re-assign if already in a slot
+            if (sling == slingSlot1) return GetSlot1Position();
+            if (sling == slingSlot2) return GetSlot2Position();
+
+            string slingName = SLING_Thing.GetSlingName(sling);
+
             if (hasCargoToUnload)
             {
                 // Incoming with cargo - prefer slot 2
                 if (slingSlot2 == null)
                 {
                     slingSlot2 = sling;
+                    Log.Message($"[PERCH] {Label}: Assigned {slingName} to slot 2 (cargo) at {GetSlot2Position()}");
                     return GetSlot2Position();
                 }
                 else if (slingSlot1 == null)
                 {
                     slingSlot1 = sling;
+                    Log.Message($"[PERCH] {Label}: Assigned {slingName} to slot 1 (cargo, slot2 full) at {GetSlot1Position()}");
                     return GetSlot1Position();
                 }
             }
@@ -736,38 +780,70 @@ namespace Arsenal
                 if (slingSlot1 == null)
                 {
                     slingSlot1 = sling;
+                    Log.Message($"[PERCH] {Label}: Assigned {slingName} to slot 1 (empty) at {GetSlot1Position()}");
                     return GetSlot1Position();
                 }
                 else if (slingSlot2 == null)
                 {
                     slingSlot2 = sling;
+                    Log.Message($"[PERCH] {Label}: Assigned {slingName} to slot 2 (empty, slot1 full) at {GetSlot2Position()}");
                     return GetSlot2Position();
                 }
             }
-            // Both slots full - shouldn't happen with proper routing
-            Log.Warning($"[ARSENAL] {Label}: Both slots full when assigning SLING!");
-            return GetSlot1Position(); // Return valid position even in error case
+
+            // Both slots full - emergency fallback, don't overwrite existing slots
+            Log.Error($"[PERCH] {Label}: Both slots FULL when trying to assign {slingName}! " +
+                     $"Slot1={SLING_Thing.GetSlingName(slingSlot1)}, Slot2={SLING_Thing.GetSlingName(slingSlot2)}");
+            // Return slot 1 position for spawn, but DO NOT assign to slot
+            // The SLING will need to be handled by ReceiveSling or emergency landing
+            return GetSlot1Position();
         }
 
         /// <summary>
         /// Repositions all SLINGs to their correct slot positions.
         /// Called after load and periodically to fix any position issues.
+        /// Also validates slot references and cleans up invalid ones.
         /// </summary>
         public void RepositionSlings()
         {
+            // Clean up invalid slot 1 reference
+            if (slingSlot1 != null && (slingSlot1.Destroyed || (slingSlot1 is Building b1 && b1.DestroyedOrNull())))
+            {
+                Log.Warning($"[PERCH] {Label}: Clearing invalid slot 1 reference");
+                slingSlot1 = null;
+                slot1IsLoading = false;
+                slot1LoadDestination = null;
+                slot1LoadingCargo.Clear();
+            }
+
+            // Clean up invalid slot 2 reference
+            if (slingSlot2 != null && (slingSlot2.Destroyed || (slingSlot2 is Building b2 && b2.DestroyedOrNull())))
+            {
+                Log.Warning($"[PERCH] {Label}: Clearing invalid slot 2 reference");
+                slingSlot2 = null;
+                slot2IsUnloading = false;
+                slot2IsRefueling = false;
+                slot2PendingReturnOrigin = null;
+            }
+
+            // Reposition slot 1 SLING
             if (slingSlot1 != null && slingSlot1.Spawned)
             {
                 IntVec3 correctPos = GetSlot1Position();
                 if (slingSlot1.Position != correctPos)
                 {
+                    Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot1)} from {slingSlot1.Position} to slot 1 at {correctPos}");
                     slingSlot1.Position = correctPos;
                 }
             }
+
+            // Reposition slot 2 SLING
             if (slingSlot2 != null && slingSlot2.Spawned)
             {
                 IntVec3 correctPos = GetSlot2Position();
                 if (slingSlot2.Position != correctPos)
                 {
+                    Log.Message($"[PERCH] {Label}: Repositioning {SLING_Thing.GetSlingName(slingSlot2)} from {slingSlot2.Position} to slot 2 at {correctPos}");
                     slingSlot2.Position = correctPos;
                 }
             }

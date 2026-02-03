@@ -281,6 +281,12 @@ namespace Arsenal
                 }
             }
 
+            // Check for loading SLINGs FIRST before iterating all haulables
+            // This is more efficient and ensures we detect loading SLINGs
+            var loadingPerches = ArsenalNetworkManager.GetPerchesOnMap(Map)
+                .Where(p => p.LoadingSling != null)
+                .ToList();
+
             // Hauling tasks
             var haulables = Map.listerHaulables.ThingsPotentiallyNeedingHauling();
             foreach (Thing item in haulables)
@@ -291,11 +297,15 @@ namespace Arsenal
                 // Skip if reserved by another pawn
                 if (Map.reservationManager.IsReservedByAnyoneOf(item, Faction.OfPlayer)) continue;
 
-                // Priority 1: Loading SLING (has timeout)
-                SLING_Thing loadingSling = FindLoadingSlingForItem(item);
-                if (loadingSling != null)
+                // Priority 1: Loading SLING - check pre-computed list first
+                foreach (var perch in loadingPerches)
                 {
-                    return MuleTask.CreateSlingLoadTask(item, loadingSling);
+                    var sling = perch.LoadingSling;
+                    if (sling != null && sling.WantsItem(item.def))
+                    {
+                        Log.Message($"[STABLE] {Label}: Creating SLING load task for {item.def.label} -> {sling.Label}");
+                        return MuleTask.CreateSlingLoadTask(item, sling);
+                    }
                 }
 
                 // Priority 2: MORIA storage
@@ -320,12 +330,21 @@ namespace Arsenal
         {
             // Loading happens on slot 1 (primary staging slot)
             // Use LoadingSling property which handles loading state check internally
-            foreach (var perch in ArsenalNetworkManager.GetPerchesOnMap(Map))
+            var perches = ArsenalNetworkManager.GetPerchesOnMap(Map);
+
+            foreach (var perch in perches)
             {
                 var sling = perch.LoadingSling;
                 if (sling == null) continue;
-                if (!sling.WantsItem(item.def)) continue;
 
+                // Check if SLING wants this specific item
+                if (!sling.WantsItem(item.def))
+                {
+                    // SLING is loading but doesn't want this item type
+                    continue;
+                }
+
+                Log.Message($"[STABLE] {Label}: Found loading SLING {sling.Label} at {perch.Label} for {item.def.label}");
                 return sling;
             }
             return null;

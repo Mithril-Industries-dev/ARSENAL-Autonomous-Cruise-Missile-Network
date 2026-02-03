@@ -1004,21 +1004,36 @@ namespace Arsenal
         /// <summary>
         /// Scans all world objects for SKYLINK satellites and registers them.
         /// Called after game load to ensure satellites are properly tracked.
+        /// Always re-registers to handle stale references.
         /// </summary>
         public static void ScanForOrbitingSatellites()
         {
             if (Find.WorldObjects == null) return;
 
+            // Clear any stale reference first
+            if (orbitalSatellite != null && (orbitalSatellite.Destroyed || !Find.WorldObjects.Contains(orbitalSatellite)))
+            {
+                Log.Message("[ARSENAL] Clearing stale satellite reference.");
+                orbitalSatellite = null;
+            }
+
             foreach (WorldObject wo in Find.WorldObjects.AllWorldObjects)
             {
-                if (wo is WorldObject_SkyLinkSatellite satellite)
+                if (wo is WorldObject_SkyLinkSatellite satellite && !satellite.Destroyed)
                 {
-                    if (orbitalSatellite == null)
+                    // Always register valid satellite (handles both new detection and re-registration)
+                    if (orbitalSatellite != satellite)
                     {
                         orbitalSatellite = satellite;
-                        Log.Message($"[ARSENAL] Found orbiting SKYLINK satellite, registered.");
+                        Log.Message($"[ARSENAL] SKYLINK satellite registered. IsOperational: {satellite.IsOperational}");
                     }
+                    break; // Only one satellite allowed
                 }
+            }
+
+            if (orbitalSatellite == null)
+            {
+                Log.Message("[ARSENAL] No SKYLINK satellite found in orbit.");
             }
         }
     }
@@ -1044,6 +1059,11 @@ namespace Arsenal
             // so their registrations were just cleared by Reset().
             // We must rescan to re-register all buildings on all maps.
             ArsenalNetworkManager.RescanAllBuildings();
+
+            // CRITICAL: Scan for satellites IMMEDIATELY after buildings rescan.
+            // This ensures satellite is registered before any other components
+            // check for network connectivity (which depends on satellite).
+            ArsenalNetworkManager.ScanForOrbitingSatellites();
         }
 
         public override void FinalizeInit()

@@ -58,6 +58,7 @@ Manufacturing limit: 1 SLING per PERCH (but each PERCH can hold 2 SLINGs).</desc
       </li>
     </comps>
     <tickerType>Normal</tickerType>
+    <rotatable>false</rotatable>
     <designationCategory>Security</designationCategory>
     <constructionSkillPrerequisite>8</constructionSkillPrerequisite>
     <researchPrerequisites>

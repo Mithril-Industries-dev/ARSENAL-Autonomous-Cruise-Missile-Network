@@ -50,7 +50,19 @@ namespace Arsenal
                 .OrderBy(p => p.priority)
                 .ToList();
 
-            if (sinksWithDemand.Count == 0) return;
+            if (sinksWithDemand.Count == 0)
+            {
+                // Occasionally log this for debugging
+                if (Find.TickManager.TicksGame % 600 == 0)
+                {
+                    var allSinks = ArsenalNetworkManager.GetSinkPerches();
+                    if (allSinks.Count > 0)
+                    {
+                        Log.Message($"[SLING] No SINKs with demand. Total SINKs: {allSinks.Count}");
+                    }
+                }
+                return;
+            }
 
             // Get all SOURCE perches with SLINGs ready in slot 1 (staging slot)
             var availableSources = ArsenalNetworkManager.GetAllPerches()
@@ -61,7 +73,25 @@ namespace Arsenal
                            !p.Slot1Busy)         // Slot 1 not busy (not loading)
                 .ToList();
 
-            if (availableSources.Count == 0) return;
+            if (availableSources.Count == 0)
+            {
+                // Log why no sources available
+                var allSources = ArsenalNetworkManager.GetSourcePerches();
+                if (allSources.Count > 0 && Find.TickManager.TicksGame % 600 == 0)
+                {
+                    foreach (var src in allSources)
+                    {
+                        string reason = !src.HasNetworkConnection() ? "no network" :
+                                       !src.IsPoweredOn ? "unpowered" :
+                                       !src.HasSlot1Sling ? "no SLING in slot1" :
+                                       src.Slot1Busy ? "slot1 busy (loading)" : "unknown";
+                        Log.Message($"[SLING] SOURCE {src.Label}: unavailable - {reason}");
+                    }
+                }
+                return;
+            }
+
+            Log.Message($"[SLING] Processing logistics: {sinksWithDemand.Count} sinks with demand, {availableSources.Count} sources ready");
 
             // Track demand per sink for round-robin distribution
             var sinkDemands = sinksWithDemand.ToDictionary(
