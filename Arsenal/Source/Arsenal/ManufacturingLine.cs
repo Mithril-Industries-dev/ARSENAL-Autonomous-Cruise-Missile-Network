@@ -174,7 +174,7 @@ namespace Arsenal
         }
 
         /// <summary>
-        /// Checks if destination is reachable (network connectivity for HUBs).
+        /// Checks if destination is reachable (network connectivity for HUBs, PERCHes, beacon zones).
         /// </summary>
         private bool IsDestinationReachable(Building dest)
         {
@@ -185,7 +185,17 @@ namespace Arsenal
                     return false;
                 return arsenal.CanReachHubPublic(hub);
             }
-            // QUIVERs are local, always reachable if not destroyed
+            if (dest is Building_PerchBeacon beacon)
+            {
+                // Beacon zones need network connectivity for SLING delivery
+                return beacon.HasNetworkConnection() && beacon.IsPoweredOn;
+            }
+            if (dest is Building_PERCH perch)
+            {
+                // Legacy PERCHes need network connectivity for SLING delivery
+                return perch.HasNetworkConnection() && perch.IsPoweredOn;
+            }
+            // QUIVERs and STABLEs are local, always reachable if not destroyed
             return true;
         }
 
@@ -195,6 +205,12 @@ namespace Arsenal
                 return hub.IsFull;
             if (dest is Building_Quiver quiver)
                 return quiver.IsFull;
+            if (dest is Building_Stable stable)
+                return !stable.HasSpace;
+            if (dest is Building_PerchBeacon beacon)
+                return !beacon.HasSpaceForSling;
+            if (dest is Building_PERCH perch)
+                return perch.HasSlingOnPad;
             return true;
         }
 
