@@ -20,9 +20,22 @@ namespace Arsenal
         public Thing sling;
         public string slingName;
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
+
+        // Legacy PERCH references
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
-        public Building_PerchBeacon destinationBeacon; // New beacon zone system
+
+        // New beacon zone system
+        public Building_PerchBeacon originBeaconZone;
+        public Building_PerchBeacon destinationBeaconZone;
+
+        // Backward compatibility alias
+        public Building_PerchBeacon destinationBeacon
+        {
+            get => destinationBeaconZone;
+            set => destinationBeaconZone = value;
+        }
+
         public bool isReturnFlight = false;
 
         private int nextWaypointTile = -1;
@@ -40,9 +53,24 @@ namespace Arsenal
             Scribe_Deep.Look(ref sling, "sling");
             Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
+
+            // Legacy PERCH
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
-            Scribe_References.Look(ref destinationBeacon, "destinationBeacon");
+
+            // New beacon zones
+            Scribe_References.Look(ref originBeaconZone, "originBeaconZone");
+            Scribe_References.Look(ref destinationBeaconZone, "destinationBeaconZone");
+
+            // Backward compatibility - load old "destinationBeacon" into destinationBeaconZone
+            if (Scribe.mode == LoadSaveMode.LoadingVars)
+            {
+                Building_PerchBeacon legacyBeacon = null;
+                Scribe_References.Look(ref legacyBeacon, "destinationBeacon");
+                if (legacyBeacon != null && destinationBeaconZone == null)
+                    destinationBeaconZone = legacyBeacon;
+            }
+
             Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
             Scribe_Values.Look(ref nextWaypointTile, "nextWaypointTile", -1);
             Scribe_Values.Look(ref previousTile, "previousTile", -1);
@@ -291,12 +319,12 @@ namespace Arsenal
         private void ArriveAtDestination()
         {
             // Try beacon zone landing first (new system)
-            if (destinationBeacon != null && destinationBeacon.Map != null && !destinationBeacon.Destroyed)
+            if (destinationBeaconZone != null && destinationBeaconZone.Map != null && !destinationBeaconZone.Destroyed)
             {
-                if (destinationBeacon.HasValidLandingZone && destinationBeacon.HasSpaceForSling)
+                if (destinationBeaconZone.HasValidLandingZone && destinationBeaconZone.HasSpaceForSling)
                 {
                     // Find landing spot within beacon zone
-                    IntVec3 landingSpot = destinationBeacon.FindLandingSpot();
+                    IntVec3 landingSpot = destinationBeaconZone.FindLandingSpot();
                     if (landingSpot.IsValid)
                     {
                         var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
@@ -304,12 +332,12 @@ namespace Arsenal
                         skyfaller.sling = sling;
                         skyfaller.slingName = slingName;
                         skyfaller.cargo = cargo;
-                        skyfaller.destinationBeacon = destinationBeacon;
+                        skyfaller.destinationBeacon = destinationBeaconZone;
                         skyfaller.destinationTile = destinationTile;
                         skyfaller.isWaypointStop = false;
                         skyfaller.isReturnFlight = isReturnFlight;
 
-                        GenSpawn.Spawn(skyfaller, landingSpot, destinationBeacon.Map);
+                        GenSpawn.Spawn(skyfaller, landingSpot, destinationBeaconZone.Map);
                         Destroy();
                         return;
                     }
@@ -317,7 +345,7 @@ namespace Arsenal
 
                 // Beacon zone full or invalid - try to find another beacon zone on same tile
                 var alternateBeacon = FindAvailableBeaconZoneOnTile(destinationTile);
-                if (alternateBeacon != null && alternateBeacon != destinationBeacon)
+                if (alternateBeacon != null && alternateBeacon != destinationBeaconZone)
                 {
                     IntVec3 landingSpot = alternateBeacon.FindLandingSpot();
                     if (landingSpot.IsValid)
@@ -406,7 +434,7 @@ namespace Arsenal
                 // Reverse the journey
                 destinationPerch = originPerch;
                 originPerch = null;
-                destinationBeacon = null; // Clear beacon destination
+                destinationBeaconZone = null; // Clear beacon destination
                 destinationTile = destinationPerch.Map.Tile;
                 isReturnFlight = true;
                 cargo = new Dictionary<ThingDef, int>(); // Empty cargo on return
@@ -625,8 +653,8 @@ namespace Arsenal
             if (!string.IsNullOrEmpty(slingName))
                 str += $"\n{slingName}";
 
-            if (destinationBeacon != null)
-                str += $"\nDestination: {destinationBeacon.ZoneName ?? "Beacon Zone"}";
+            if (destinationBeaconZone != null)
+                str += $"\nDestination: {destinationBeaconZone.ZoneName ?? "Beacon Zone"}";
             else if (destinationPerch != null)
                 str += $"\nDestination: {destinationPerch.Label}";
 

@@ -110,17 +110,27 @@ namespace Arsenal
 
         private SLING_Thing FindLoadingSlingForItem(Pawn pawn, Thing item)
         {
-            // Find all PERCHes with loading SLINGs
+            // Find all SLINGs on the map that are loading
+            foreach (var thing in pawn.Map.listerBuildings.AllBuildingsColonistOfClass<SLING_Thing>())
+            {
+                if (!thing.IsLoading) continue;
+                if (!thing.WantsItem(item.def)) continue;
+
+                // Check if pawn can reach the SLING
+                if (!pawn.CanReach(thing, PathEndMode.Touch, Danger.Deadly)) continue;
+
+                return thing;
+            }
+
+            // Also check legacy PERCHes for SLINGs
             foreach (var perch in ArsenalNetworkManager.GetAllPerches())
             {
                 if (perch.Map != pawn.Map) continue;
 
-                // Use LoadingSling property which directly returns the slot1 SLING if loading
                 var sling = perch.LoadingSling;
                 if (sling == null) continue;
                 if (!sling.WantsItem(item.def)) continue;
 
-                // Check if pawn can reach the SLING
                 if (!pawn.CanReach(sling, PathEndMode.Touch, Danger.Deadly)) continue;
 
                 return sling;

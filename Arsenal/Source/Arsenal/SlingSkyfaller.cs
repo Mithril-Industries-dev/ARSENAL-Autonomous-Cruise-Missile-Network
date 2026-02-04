@@ -403,7 +403,7 @@ namespace Arsenal
     }
 
     /// <summary>
-    /// Skyfaller for SLING launching from a PERCH.
+    /// Skyfaller for SLING launching from a PERCH or beacon zone.
     /// Creates the traveling world object when leaving the map.
     /// </summary>
     public class SlingLaunchingSkyfaller : Skyfaller
@@ -411,8 +411,15 @@ namespace Arsenal
         public Thing sling;
         public string slingName;
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
+
+        // Legacy PERCH references
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
+
+        // New beacon zone system
+        public Building_PerchBeacon originBeaconZone;
+        public Building_PerchBeacon destinationBeaconZone;
+
         public int destinationTile = -1;
         public bool isReturnFlight = false;
 
@@ -422,8 +429,15 @@ namespace Arsenal
             Scribe_Deep.Look(ref sling, "sling");
             Scribe_Values.Look(ref slingName, "slingName");
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
+
+            // Legacy PERCH
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
+
+            // New beacon zones
+            Scribe_References.Look(ref originBeaconZone, "originBeaconZone");
+            Scribe_References.Look(ref destinationBeaconZone, "destinationBeaconZone");
+
             Scribe_Values.Look(ref destinationTile, "destinationTile", -1);
             Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
 
@@ -491,7 +505,10 @@ namespace Arsenal
         protected override void LeaveMap()
         {
             // Create the traveling world object
-            if (destinationPerch != null && destinationTile >= 0)
+            bool hasLegacyDest = destinationPerch != null && destinationTile >= 0;
+            bool hasBeaconDest = destinationBeaconZone != null && destinationTile >= 0;
+
+            if (hasLegacyDest || hasBeaconDest)
             {
                 var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(
                     ArsenalDefOf.Arsenal_TravelingSling);
@@ -500,8 +517,15 @@ namespace Arsenal
                 traveling.sling = sling;
                 traveling.slingName = slingName;
                 traveling.cargo = cargo ?? new Dictionary<ThingDef, int>();
+
+                // Legacy PERCH references
                 traveling.originPerch = originPerch;
                 traveling.destinationPerch = destinationPerch;
+
+                // New beacon zone references
+                traveling.originBeaconZone = originBeaconZone;
+                traveling.destinationBeaconZone = destinationBeaconZone;
+
                 traveling.isReturnFlight = isReturnFlight;
                 traveling.CalculateRoute();
                 Find.WorldObjects.Add(traveling);
