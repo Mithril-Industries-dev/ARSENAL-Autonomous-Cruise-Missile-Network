@@ -204,16 +204,50 @@ namespace Arsenal
         /// </summary>
         private void TryAssignZoneNameOnLoad()
         {
-            // Force a fresh cache calculation
-            cachedZoneBeacons = CalculateZoneBeacons();
-            cachedLandingZone = cachedZoneBeacons != null ? CalculateLandingZoneFromBeacons(cachedZoneBeacons) : null;
-            lastZoneCheck = Find.TickManager.TicksGame;
+            // Skip if Map is null (can happen during certain load states)
+            if (Map == null) return;
 
-            if (cachedZoneBeacons == null || cachedZoneBeacons.Count < 4)
+            // Find all beacons on this map directly from the map's building list
+            // This is more reliable than using ArsenalNetworkManager during load
+            var allBeaconsOnMap = Map.listerBuildings.AllBuildingsColonistOfClass<Building_PerchBeacon>().ToList();
+
+            // Find beacons that could form a zone with this one
+            var otherBeacons = allBeaconsOnMap
+                .Where(b => b != this && b.Position.DistanceTo(Position) <= MAX_BEACON_DISTANCE)
+                .ToList();
+
+            if (otherBeacons.Count < 3) return;
+
+            // Try to find 3 other beacons that form a valid rectangle
+            List<Building_PerchBeacon> zoneBeacons = null;
+            foreach (var b1 in otherBeacons)
+            {
+                foreach (var b2 in otherBeacons.Where(b => b != b1))
+                {
+                    foreach (var b3 in otherBeacons.Where(b => b != b1 && b != b2))
+                    {
+                        var beacons = new List<Building_PerchBeacon> { this, b1, b2, b3 };
+                        if (IsValidRectangle(beacons))
+                        {
+                            zoneBeacons = beacons;
+                            break;
+                        }
+                    }
+                    if (zoneBeacons != null) break;
+                }
+                if (zoneBeacons != null) break;
+            }
+
+            if (zoneBeacons == null || zoneBeacons.Count < 4)
                 return;
 
-            // Find the primary beacon
-            var primary = cachedZoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
+            // Update cache
+            cachedZoneBeacons = zoneBeacons;
+            cachedLandingZone = CalculateLandingZoneFromBeacons(zoneBeacons);
+            lastZoneCheck = Find.TickManager.TicksGame;
+
+            // Find the primary beacon (lowest X, then lowest Z)
+            var primary = zoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
 
             // Only assign name if primary doesn't have one
             if (primary != null && string.IsNullOrEmpty(primary.zoneName))
@@ -282,6 +316,18 @@ namespace Arsenal
                 return cachedZoneBeacons;
             }
 
+            cachedZoneBeacons = CalculateZoneBeacons();
+            cachedLandingZone = cachedZoneBeacons != null ? CalculateLandingZoneFromBeacons(cachedZoneBeacons) : null;
+            lastZoneCheck = Find.TickManager.TicksGame;
+            return cachedZoneBeacons;
+        }
+
+        /// <summary>
+        /// Forces recalculation of zone beacons, ignoring cache.
+        /// Use this when accurate detection is needed (e.g., during network scans).
+        /// </summary>
+        public List<Building_PerchBeacon> GetZoneBeaconsForced()
+        {
             cachedZoneBeacons = CalculateZoneBeacons();
             cachedLandingZone = cachedZoneBeacons != null ? CalculateLandingZoneFromBeacons(cachedZoneBeacons) : null;
             lastZoneCheck = Find.TickManager.TicksGame;

@@ -657,19 +657,40 @@ namespace Arsenal
 
         /// <summary>
         /// Gets all valid landing zones (primary beacons only, with valid 4-beacon rectangle).
-        /// Filters for network connectivity and power status.
+        /// Forces cache refresh to ensure accurate detection.
         /// </summary>
         public static List<Building_PerchBeacon> GetAllValidBeaconZones()
         {
             var validZones = new List<Building_PerchBeacon>();
+            var processedZones = new HashSet<string>(); // Track zones by their bounds to avoid duplicates
             var allBeacons = GetAllPerchBeacons();
 
             foreach (var beacon in allBeacons)
             {
-                // Only include primary beacons with valid landing zones
-                if (beacon.HasValidLandingZone && beacon.IsPrimary)
+                // Force cache refresh for each beacon to ensure accurate detection
+                var zoneBeacons = beacon.GetZoneBeaconsForced();
+                if (zoneBeacons == null || zoneBeacons.Count < 4)
+                    continue;
+
+                // Calculate zone bounds for deduplication
+                var positions = zoneBeacons.Select(b => b.Position).ToList();
+                int minX = positions.Min(p => p.x);
+                int maxX = positions.Max(p => p.x);
+                int minZ = positions.Min(p => p.z);
+                int maxZ = positions.Max(p => p.z);
+                string zoneKey = $"{beacon.Map?.Tile ?? -1}_{minX}_{minZ}_{maxX}_{maxZ}";
+
+                // Skip if we've already processed this zone
+                if (processedZones.Contains(zoneKey))
+                    continue;
+
+                processedZones.Add(zoneKey);
+
+                // Find the primary beacon (lowest X, then lowest Z)
+                var primary = zoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
+                if (primary != null)
                 {
-                    validZones.Add(beacon);
+                    validZones.Add(primary);
                 }
             }
 
