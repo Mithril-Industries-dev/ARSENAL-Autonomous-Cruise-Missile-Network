@@ -43,24 +43,15 @@ namespace Arsenal
                 // Determine if the potential zone would be valid size
                 bool wouldBeValidSize = WouldFormValidSizeZone(center, beacon, existingBeacons);
 
-                // Color based on validity
-                Color lineColor;
+                // Draw line only for aligned beacons
                 if (isAligned)
                 {
-                    lineColor = wouldBeValidSize ? Color.white : Color.red;
-                }
-                else
-                {
-                    lineColor = new Color(0.4f, 0.4f, 0.4f, 0.3f); // Gray for non-aligned
-                }
+                    Vector3 startPos = center.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                    Vector3 endPos = beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
 
-                // Draw line
-                Vector3 startPos = center.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
-                Vector3 endPos = beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
-
-                if (isAligned)
-                {
-                    GenDraw.DrawLineBetween(startPos, endPos, lineColor, 0.2f);
+                    // Use SimpleColor for valid/invalid indication
+                    SimpleColor lineColor = wouldBeValidSize ? SimpleColor.White : SimpleColor.Red;
+                    GenDraw.DrawLineBetween(startPos, endPos, lineColor);
                 }
             }
 
@@ -305,12 +296,12 @@ namespace Arsenal
 
                 // Color based on whether this edge is long enough
                 bool validEdge = edgeLength >= Mathf.Min(MIN_WIDTH, MIN_HEIGHT);
-                Color lineColor = validEdge ? Color.white : Color.red;
+                SimpleColor lineColor = validEdge ? SimpleColor.White : SimpleColor.Red;
 
                 Vector3 startPos = placementPos.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
                 Vector3 endPos = beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
 
-                GenDraw.DrawLineBetween(startPos, endPos, lineColor, 0.25f);
+                GenDraw.DrawLineBetween(startPos, endPos, lineColor);
             }
         }
     }
