@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- WorkGiver for hauling items to loading SLING -->
+  <WorkGiverDef>
+    <defName>Arsenal_HaulToSling</defName>
+    <label>load SLING cargo</label>
+    <giverClass>Arsenal.WorkGiver_HaulToSling</giverClass>
+    <workType>Hauling</workType>
+    <priorityInType>90</priorityInType>
+    <verb>load onto SLING</verb>
+    <gerund>loading SLING cargo</gerund>
+  </WorkGiverDef>
+
+</Defs>

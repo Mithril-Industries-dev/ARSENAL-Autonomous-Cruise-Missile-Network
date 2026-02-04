@@ -20,6 +20,15 @@ namespace Arsenal
         private string customName;
         private static int hubCounter = 1;
 
+        /// <summary>
+        /// Sets the hub counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            hubCounter = System.Math.Max(1, value);
+        }
+
         private int pendingStrikeTile = -1;
 
         // Priority for auto-selection (1-10, lower = higher priority)
@@ -76,9 +85,13 @@ namespace Arsenal
             base.SpawnSetup(map, respawningAfterLoad);
             refuelableComp = GetComp<CompRefuelable>();
             powerComp = GetComp<CompPowerTrader>();
+
+            // ALWAYS register with network manager
+            ArsenalNetworkManager.RegisterHub(this);
+
+            // Only assign name if new building
             if (!respawningAfterLoad)
             {
-                ArsenalNetworkManager.RegisterHub(this);
                 customName = "HUB-" + hubCounter.ToString("D2");
                 hubCounter++;
             }

@@ -16,13 +16,17 @@ namespace Arsenal
     {
         private Building_Arsenal arsenal;
 
-        private enum Tab { Production, DaggerNetwork, DartNetwork }
+        private enum Tab { Production, DaggerNetwork, DartNetwork, Logistics }
         private Tab currentTab = Tab.Production;
 
         // Scroll positions
         private Vector2 productionScrollPos;
         private Vector2 daggerScrollPos;
         private Vector2 dartScrollPos;
+        private Vector2 logisticsScrollPos;
+
+        // Selected PERCH for configuration
+        private Building_PERCH selectedPerch;
 
         // Window settings
         public override Vector2 InitialSize => new Vector2(750f, 600f);
@@ -61,12 +65,15 @@ namespace Arsenal
                 case Tab.DartNetwork:
                     DrawDartNetworkTab(contentRect);
                     break;
+                case Tab.Logistics:
+                    DrawLogisticsTab(contentRect);
+                    break;
             }
         }
 
         private void DrawTabs(Rect rect)
         {
-            float tabWidth = rect.width / 3f;
+            float tabWidth = rect.width / 4f;
 
             // Production tab
             Color prodColor = currentTab == Tab.Production ? Color.white : Color.gray;
@@ -83,8 +90,14 @@ namespace Arsenal
             // DART Network tab
             Color dartColor = currentTab == Tab.DartNetwork ? Color.white : Color.gray;
             GUI.color = dartColor;
-            if (Widgets.ButtonText(new Rect(tabWidth * 2, rect.y, tabWidth, rect.height), "DART Network"))
+            if (Widgets.ButtonText(new Rect(tabWidth * 2, rect.y, tabWidth - 2f, rect.height), "DART Network"))
                 currentTab = Tab.DartNetwork;
+
+            // Logistics tab (SLING/PERCH)
+            Color logColor = currentTab == Tab.Logistics ? Color.white : Color.gray;
+            GUI.color = logColor;
+            if (Widgets.ButtonText(new Rect(tabWidth * 3, rect.y, tabWidth, rect.height), "Logistics"))
+                currentTab = Tab.Logistics;
 
             GUI.color = Color.white;
         }
@@ -671,6 +684,417 @@ namespace Arsenal
                 $"In Flight: {lattice.DartsInFlight}    " +
                 $"Returning: {lattice.DartsReturning}    " +
                 $"Awaiting Assignment: {lattice.DartsAwaiting}");
+        }
+
+        #endregion
+
+        #region Logistics Tab (SLING/PERCH)
+
+        private void DrawLogisticsTab(Rect rect)
+        {
+            float y = rect.y;
+
+            // Fleet status at top
+            int totalSlings = SlingLogisticsManager.GetTotalSlingCount();
+            int maxSlings = SlingLogisticsManager.GetMaxSlingCount();
+
+            Text.Font = GameFont.Medium;
+            string fleetStatus = $"SLING Fleet: {totalSlings}/{maxSlings}";
+            Color fleetColor = totalSlings < maxSlings ? Color.yellow : Color.green;
+            GUI.color = fleetColor;
+            Widgets.Label(new Rect(rect.xMax - 200f, y, 200f, 30f), fleetStatus);
+            GUI.color = Color.white;
+            Text.Font = GameFont.Small;
+
+            y += 35f;
+
+            // Split view: Network overview (left) and PERCH config (right)
+            float splitWidth = rect.width / 2f - 5f;
+            Rect leftRect = new Rect(rect.x, y, splitWidth, rect.height - 45f);
+            Rect rightRect = new Rect(rect.x + splitWidth + 10f, y, splitWidth, rect.height - 45f);
+
+            DrawNetworkOverview(leftRect);
+            DrawPerchConfiguration(rightRect);
+
+            // Fleet status at bottom
+            float summaryY = rect.y + rect.height - 35f;
+            var slingsInTransit = SlingLogisticsManager.GetSlingsInTransit();
+            Widgets.Label(new Rect(rect.x, summaryY, rect.width, 25f),
+                $"In Transit: {slingsInTransit.Count}    " +
+                $"SOURCEs: {ArsenalNetworkManager.GetSourcePerches().Count}    " +
+                $"SINKs: {ArsenalNetworkManager.GetSinkPerches().Count}");
+        }
+
+        private void DrawNetworkOverview(Rect rect)
+        {
+            Widgets.DrawBoxSolid(rect, new Color(0.08f, 0.08f, 0.08f));
+            Widgets.DrawBox(rect);
+
+            float y = rect.y + 5f;
+
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(rect.x + 10f, y, rect.width - 20f, 25f), "Network Overview");
+            Text.Font = GameFont.Small;
+            y += 30f;
+
+            // Scrollable PERCH list
+            Rect scrollRect = new Rect(rect.x + 5f, y, rect.width - 10f, rect.height - 40f);
+            var perches = ArsenalNetworkManager.GetAllPerches();
+            float contentHeight = perches.Count * 50f + 20f;
+            Rect viewRect = new Rect(0, 0, scrollRect.width - 20f, contentHeight);
+
+            Widgets.BeginScrollView(scrollRect, ref logisticsScrollPos, viewRect);
+
+            float scrollY = 5f;
+
+            if (perches.Count == 0)
+            {
+                Widgets.Label(new Rect(10f, scrollY, viewRect.width - 20f, 22f),
+                    "No PERCHes found. Build PERCHes to enable logistics.");
+            }
+            else
+            {
+                foreach (var perch in perches.OrderBy(p => p.priority))
+                {
+                    Rect perchRect = new Rect(5f, scrollY, viewRect.width - 10f, 45f);
+                    DrawPerchListItem(perchRect, perch);
+                    scrollY += 50f;
+                }
+            }
+
+            Widgets.EndScrollView();
+        }
+
+        private void DrawPerchListItem(Rect rect, Building_PERCH perch)
+        {
+            bool isSelected = selectedPerch == perch;
+            Color bgColor = isSelected ? new Color(0.25f, 0.25f, 0.35f) : new Color(0.12f, 0.12f, 0.12f);
+            Widgets.DrawBoxSolid(rect, bgColor);
+            Widgets.DrawBox(rect);
+
+            if (Widgets.ButtonInvisible(rect))
+            {
+                selectedPerch = perch;
+            }
+
+            float x = rect.x + 8f;
+            float y = rect.y + 4f;
+
+            // Row 1: Name, Role, Status
+            Widgets.Label(new Rect(x, y, 100f, 20f), perch.Label);
+
+            // Role badge
+            Color roleColor = perch.role == PerchRole.SOURCE ? new Color(0.3f, 0.7f, 0.3f) : new Color(0.7f, 0.5f, 0.2f);
+            GUI.color = roleColor;
+            Widgets.Label(new Rect(x + 105f, y, 60f, 20f), perch.role.ToString());
+            GUI.color = Color.white;
+
+            // Priority (SINK only)
+            if (perch.role == PerchRole.SINK)
+            {
+                Widgets.Label(new Rect(x + 170f, y, 40f, 20f), $"P{perch.priority}");
+            }
+
+            // Status
+            string status = GetPerchStatus(perch);
+            Color statusColor = GetPerchStatusColor(perch);
+            GUI.color = statusColor;
+            Widgets.Label(new Rect(rect.xMax - 80f, y, 70f, 20f), status);
+            GUI.color = Color.white;
+
+            // Row 2: SLING info
+            y += 20f;
+            if (perch.HasSlingOnPad)
+            {
+                string slingStatus = perch.IsBusy ? "Busy" : "Ready";
+                Widgets.Label(new Rect(x, y, 150f, 18f), $"SLING: {slingStatus}");
+            }
+            else
+            {
+                GUI.color = Color.gray;
+                Widgets.Label(new Rect(x, y, 150f, 18f), "SLING: None");
+                GUI.color = Color.white;
+            }
+
+            // Fuel
+            Widgets.Label(new Rect(x + 160f, y, 100f, 18f), $"Fuel: {perch.FuelPercent * 100f:F0}%");
+        }
+
+        private string GetPerchStatus(Building_PERCH perch)
+        {
+            if (!perch.IsPoweredOn) return "No Power";
+            if (!perch.HasNetworkConnection()) return "Offline";
+            if (perch.IsBusy) return "Busy";
+            if (perch.role == PerchRole.SINK && perch.HasDemand()) return "Demand";
+            return "Idle";
+        }
+
+        private Color GetPerchStatusColor(Building_PERCH perch)
+        {
+            if (!perch.IsPoweredOn) return Color.red;
+            if (!perch.HasNetworkConnection()) return Color.red;
+            if (perch.IsBusy) return Color.yellow;
+            if (perch.role == PerchRole.SINK && perch.HasDemand()) return new Color(1f, 0.6f, 0f);
+            return Color.green;
+        }
+
+        private void DrawPerchConfiguration(Rect rect)
+        {
+            Widgets.DrawBoxSolid(rect, new Color(0.08f, 0.08f, 0.08f));
+            Widgets.DrawBox(rect);
+
+            float y = rect.y + 5f;
+            float x = rect.x + 10f;
+            float width = rect.width - 20f;
+
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(x, y, width, 25f), "PERCH Configuration");
+            Text.Font = GameFont.Small;
+            y += 30f;
+
+            if (selectedPerch == null)
+            {
+                GUI.color = Color.gray;
+                Widgets.Label(new Rect(x, y, width, 22f), "Select a PERCH from the list to configure.");
+                GUI.color = Color.white;
+                return;
+            }
+
+            // PERCH name
+            Widgets.Label(new Rect(x, y, 80f, 22f), "Name:");
+            if (Widgets.ButtonText(new Rect(x + 85f, y, 140f, 22f), selectedPerch.Label))
+            {
+                Find.WindowStack.Add(new Dialog_RenamePerch(selectedPerch));
+            }
+            y += 28f;
+
+            // Role toggle
+            Widgets.Label(new Rect(x, y, 80f, 22f), "Role:");
+            if (Widgets.ButtonText(new Rect(x + 85f, y, 80f, 22f), selectedPerch.role.ToString()))
+            {
+                selectedPerch.SetRole(selectedPerch.role == PerchRole.SOURCE ? PerchRole.SINK : PerchRole.SOURCE);
+            }
+            y += 28f;
+
+            if (selectedPerch.role == PerchRole.SINK)
+            {
+                // Priority
+                Widgets.Label(new Rect(x, y, 80f, 22f), "Priority:");
+                if (Widgets.ButtonText(new Rect(x + 85f, y, 40f, 22f), selectedPerch.priority.ToString()))
+                {
+                    List<FloatMenuOption> options = new List<FloatMenuOption>();
+                    for (int p = 1; p <= 10; p++)
+                    {
+                        int pVal = p;
+                        string desc = p == 1 ? " (Highest)" : (p == 10 ? " (Lowest)" : "");
+                        options.Add(new FloatMenuOption(p.ToString() + desc, () => selectedPerch.SetPriority(pVal)));
+                    }
+                    Find.WindowStack.Add(new FloatMenu(options));
+                }
+                y += 28f;
+
+                // Threshold targets section
+                Widgets.Label(new Rect(x, y, width, 22f), "Threshold Targets:");
+                y += 24f;
+
+                // Add threshold button
+                if (Widgets.ButtonText(new Rect(x, y, 120f, 22f), "+ Add Resource"))
+                {
+                    ShowAddThresholdMenu();
+                }
+                y += 28f;
+
+                // Draw existing thresholds
+                var thresholds = selectedPerch.thresholdTargets.ToList();
+                foreach (var kvp in thresholds)
+                {
+                    Rect threshRect = new Rect(x, y, width, 22f);
+                    DrawThresholdRow(threshRect, kvp.Key, kvp.Value);
+                    y += 26f;
+                }
+
+                // Current demand (map-wide stock)
+                y += 10f;
+                var demand = selectedPerch.GetDemand();
+                if (demand.Count > 0)
+                {
+                    GUI.color = new Color(1f, 0.6f, 0f);
+                    Widgets.Label(new Rect(x, y, width, 22f), "Current Demand (Map Stock):");
+                    y += 22f;
+                    GUI.color = Color.white;
+
+                    foreach (var d in demand)
+                    {
+                        int current = selectedPerch.GetMapStock(d.Key);
+                        int target = selectedPerch.thresholdTargets.TryGetValue(d.Key, out int t) ? t : 0;
+                        Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f),
+                            $"{d.Key.label}: {current}/{target} (need {d.Value})");
+                        y += 20f;
+                    }
+                }
+                else
+                {
+                    GUI.color = Color.green;
+                    Widgets.Label(new Rect(x, y, width, 22f), "All thresholds satisfied");
+                    GUI.color = Color.white;
+                }
+            }
+            else // SOURCE
+            {
+                // Source filter toggle
+                bool filterEnabled = selectedPerch.filterEnabled;
+                Widgets.CheckboxLabeled(new Rect(x, y, width, 22f), "Filter exports", ref filterEnabled);
+                selectedPerch.filterEnabled = filterEnabled;
+                y += 26f;
+
+                if (selectedPerch.filterEnabled)
+                {
+                    if (Widgets.ButtonText(new Rect(x, y, 120f, 22f), "+ Add Filter"))
+                    {
+                        ShowAddFilterMenu();
+                    }
+                    y += 28f;
+
+                    foreach (var resource in selectedPerch.sourceFilter.ToList())
+                    {
+                        if (Widgets.ButtonText(new Rect(x, y, 20f, 20f), "X"))
+                        {
+                            selectedPerch.sourceFilter.Remove(resource);
+                        }
+                        Widgets.Label(new Rect(x + 25f, y, width - 25f, 20f), resource.label);
+                        y += 22f;
+                    }
+                }
+
+                // Available resources
+                y += 10f;
+                Widgets.Label(new Rect(x, y, width, 22f), "Available Resources:");
+                y += 22f;
+
+                var available = selectedPerch.GetAvailableResources();
+                if (available.Count == 0)
+                {
+                    GUI.color = Color.gray;
+                    Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f), "None in adjacent storage");
+                    GUI.color = Color.white;
+                }
+                else
+                {
+                    foreach (var r in available.Take(8))
+                    {
+                        Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f),
+                            $"{r.Key.label}: {r.Value}");
+                        y += 20f;
+                    }
+                    if (available.Count > 8)
+                    {
+                        Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f),
+                            $"...and {available.Count - 8} more");
+                    }
+                }
+            }
+        }
+
+        private void DrawThresholdRow(Rect rect, ThingDef resource, int target)
+        {
+            // Remove button
+            if (Widgets.ButtonText(new Rect(rect.x, rect.y, 20f, 20f), "X"))
+            {
+                selectedPerch.thresholdTargets.Remove(resource);
+                return;
+            }
+
+            // Resource name
+            Widgets.Label(new Rect(rect.x + 25f, rect.y, 100f, 20f), resource.label);
+
+            // Target amount
+            Widgets.Label(new Rect(rect.x + 130f, rect.y, 50f, 20f), "Target:");
+            string buffer = target.ToString();
+            buffer = Widgets.TextField(new Rect(rect.x + 180f, rect.y, 50f, 20f), buffer);
+            if (int.TryParse(buffer, out int newTarget) && newTarget != target)
+            {
+                selectedPerch.SetThreshold(resource, newTarget);
+            }
+
+            // Current amount (map-wide stock)
+            int current = selectedPerch.GetMapStock(resource);
+            Color statusColor = current >= target ? Color.green : new Color(1f, 0.6f, 0f);
+            GUI.color = statusColor;
+            Widgets.Label(new Rect(rect.x + 240f, rect.y, 80f, 20f), $"({current}/{target})");
+            GUI.color = Color.white;
+        }
+
+        private void ShowAddThresholdMenu()
+        {
+            List<FloatMenuOption> options = new List<FloatMenuOption>();
+
+            // Common resources
+            ThingDef[] commonResources = new[]
+            {
+                ThingDefOf.Steel,
+                ThingDefOf.Plasteel,
+                ThingDefOf.ComponentIndustrial,
+                ThingDefOf.ComponentSpacer,
+                ThingDefOf.Chemfuel,
+                ThingDefOf.Gold,
+                ThingDefOf.Silver,
+                ThingDefOf.Uranium
+            };
+
+            foreach (var resource in commonResources)
+            {
+                if (!selectedPerch.thresholdTargets.ContainsKey(resource))
+                {
+                    ThingDef r = resource;
+                    options.Add(new FloatMenuOption(resource.label, () =>
+                    {
+                        selectedPerch.SetThreshold(r, 100);
+                    }));
+                }
+            }
+
+            if (options.Count == 0)
+            {
+                options.Add(new FloatMenuOption("All common resources already added", null));
+            }
+
+            Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void ShowAddFilterMenu()
+        {
+            List<FloatMenuOption> options = new List<FloatMenuOption>();
+
+            ThingDef[] commonResources = new[]
+            {
+                ThingDefOf.Steel,
+                ThingDefOf.Plasteel,
+                ThingDefOf.ComponentIndustrial,
+                ThingDefOf.ComponentSpacer,
+                ThingDefOf.Chemfuel,
+                ThingDefOf.Gold,
+                ThingDefOf.Silver,
+                ThingDefOf.Uranium
+            };
+
+            foreach (var resource in commonResources)
+            {
+                if (!selectedPerch.sourceFilter.Contains(resource))
+                {
+                    ThingDef r = resource;
+                    options.Add(new FloatMenuOption(resource.label, () =>
+                    {
+                        selectedPerch.sourceFilter.Add(r);
+                    }));
+                }
+            }
+
+            if (options.Count == 0)
+            {
+                options.Add(new FloatMenuOption("All common resources already added", null));
+            }
+
+            Find.WindowStack.Add(new FloatMenu(options));
         }
 
         #endregion

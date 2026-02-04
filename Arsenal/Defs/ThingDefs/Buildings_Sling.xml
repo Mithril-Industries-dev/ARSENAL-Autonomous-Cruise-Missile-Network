@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- PERCH Landing/Launch Pad (Dual Slot) -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_PERCH</defName>
+    <label>PERCH logistics hub</label>
+    <description>A dual-slot landing and launch pad for SLING cargo craft. Each PERCH has two landing slots - one for staging/loading and one for incoming craft. Configure as SOURCE (export) or SINK (import) via the LATTICE logistics tab.
+
+SOURCEs export available resources from adjacent storage.
+SINKs import resources up to configured threshold targets.
+
+Manufacturing limit: 1 SLING per PERCH (but each PERCH can hold 2 SLINGs).</description>
+    <thingClass>Arsenal.Building_PERCH</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_PERCH</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(8,24)</drawSize>
+    </graphicData>
+    <altitudeLayer>Building</altitudeLayer>
+    <passability>PassThroughOnly</passability>
+    <pathCost>50</pathCost>
+    <blockWind>false</blockWind>
+    <fillPercent>0.4</fillPercent>
+    <canOverlapZones>false</canOverlapZones>
+    <statBases>
+      <MaxHitPoints>500</MaxHitPoints>
+      <WorkToBuild>18000</WorkToBuild>
+      <Mass>250</Mass>
+      <Flammability>0.5</Flammability>
+    </statBases>
+    <size>(8,24)</size>
+    <costList>
+      <Steel>350</Steel>
+      <ComponentIndustrial>10</ComponentIndustrial>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Power">
+        <compClass>CompPowerTrader</compClass>
+        <basePowerConsumption>500</basePowerConsumption>
+      </li>
+      <li Class="CompProperties_Refuelable">
+        <fuelConsumptionRate>0</fuelConsumptionRate>
+        <fuelCapacity>1000.0</fuelCapacity>
+        <fuelFilter>
+          <thingDefs>
+            <li>Chemfuel</li>
+          </thingDefs>
+        </fuelFilter>
+        <consumeFuelOnlyWhenUsed>true</consumeFuelOnlyWhenUsed>
+        <showAllowAutoRefuelToggle>true</showAllowAutoRefuelToggle>
+      </li>
+      <li Class="CompProperties_Flickable"/>
+      <!-- Orange glow for PERCH -->
+      <li Class="CompProperties_Glower">
+        <glowRadius>7</glowRadius>
+        <glowColor>(255,140,50,0)</glowColor>
+      </li>
+    </comps>
+    <tickerType>Normal</tickerType>
+    <designationCategory>Security</designationCategory>
+    <constructionSkillPrerequisite>8</constructionSkillPrerequisite>
+    <researchPrerequisites>
+      <li>Arsenal_SlingLogistics</li>
+    </researchPrerequisites>
+  </ThingDef>
+
+  <!-- SLING Autonomous Cargo Craft (when docked at PERCH) -->
+  <ThingDef ParentName="BuildingBase">
+    <defName>Arsenal_SLING</defName>
+    <label>SLING cargo craft</label>
+    <description>An autonomous cargo craft designed for point-to-point logistics. SLINGs transport resources between PERCH pads, following routes calculated by LATTICE. Each SLING can carry up to 750 units of mixed cargo.
+
+SLINGs are manufactured at ARSENAL facilities and automatically join the logistics pool. The fleet is limited by the number of available PERCHes.</description>
+    <thingClass>Arsenal.SLING_Thing</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_SLING</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(6,10)</drawSize>
+    </graphicData>
+    <altitudeLayer>BuildingOnTop</altitudeLayer>
+    <size>(6,10)</size>
+    <passability>PassThroughOnly</passability>
+    <pathCost>50</pathCost>
+    <blockWind>false</blockWind>
+    <fillPercent>0.5</fillPercent>
+    <tickerType>Never</tickerType>
+    <statBases>
+      <MaxHitPoints>300</MaxHitPoints>
+      <Mass>500</Mass>
+      <MarketValue>2500</MarketValue>
+      <Flammability>0.3</Flammability>
+    </statBases>
+    <building>
+      <isEdifice>false</isEdifice>
+    </building>
+    <drawerType>MapMeshAndRealTime</drawerType>
+    <canOverlapZones>true</canOverlapZones>
+  </ThingDef>
+
+</Defs>

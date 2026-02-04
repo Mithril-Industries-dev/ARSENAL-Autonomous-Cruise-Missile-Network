@@ -29,6 +29,15 @@ namespace Arsenal
         private string customName;
         private static int quiverCounter = 1;
 
+        /// <summary>
+        /// Sets the quiver counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            quiverCounter = System.Math.Max(1, value);
+        }
+
         // Visual - stored DART positions for rendering
         private List<Vector3> storedDartPositions;
 

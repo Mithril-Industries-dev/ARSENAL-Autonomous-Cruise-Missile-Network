@@ -22,6 +22,15 @@ namespace Arsenal
         private string customName;
         private static int heraldCounter = 1;
 
+        /// <summary>
+        /// Sets the herald counter to a specific value.
+        /// Called after game load to prevent duplicate names.
+        /// </summary>
+        public static void SetCounter(int value)
+        {
+            heraldCounter = System.Math.Max(1, value);
+        }
+
         #region Properties
 
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;

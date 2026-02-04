@@ -64,4 +64,48 @@
     <rotatable>false</rotatable>
   </ThingDef>
 
+  <!-- SLING Cargo Craft Landing -->
+  <ThingDef ParentName="SkyfallerBase">
+    <defName>Arsenal_SlingLanding</defName>
+    <label>SLING cargo craft (landing)</label>
+    <thingClass>Arsenal.SlingLandingSkyfaller</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_SLING</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(7,5)</drawSize>
+    </graphicData>
+    <skyfaller>
+      <movementType>Decelerate</movementType>
+      <ticksToImpactRange>300~300</ticksToImpactRange>
+      <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
+      <shadowSize>(5, 3.5)</shadowSize>
+      <impactSound>DropPod_Land</impactSound>
+    </skyfaller>
+    <size>(7,5)</size>
+    <drawerType>RealtimeOnly</drawerType>
+    <rotatable>false</rotatable>
+  </ThingDef>
+
+  <!-- SLING Cargo Craft Launching -->
+  <ThingDef ParentName="SkyfallerBase">
+    <defName>Arsenal_SlingLaunching</defName>
+    <label>SLING cargo craft (launching)</label>
+    <thingClass>Arsenal.SlingLaunchingSkyfaller</thingClass>
+    <graphicData>
+      <texPath>Arsenal/Arsenal_SLING</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(7,5)</drawSize>
+    </graphicData>
+    <skyfaller>
+      <movementType>Accelerate</movementType>
+      <reversed>true</reversed>
+      <ticksToImpactRange>300~300</ticksToImpactRange>
+      <shadow>Things/Skyfaller/SkyfallerShadowCircle</shadow>
+      <shadowSize>(5, 3.5)</shadowSize>
+    </skyfaller>
+    <size>(7,5)</size>
+    <drawerType>RealtimeOnly</drawerType>
+    <rotatable>false</rotatable>
+  </ThingDef>
+
 </Defs>

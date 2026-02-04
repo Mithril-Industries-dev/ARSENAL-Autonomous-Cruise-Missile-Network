@@ -30,6 +30,28 @@
     <tab>Main</tab>
   </ResearchProjectDef>
 
+  <!-- SLING Logistics System - autonomous cargo transport -->
+  <ResearchProjectDef>
+    <defName>Arsenal_SlingLogistics</defName>
+    <label>SLING autonomous logistics</label>
+    <description>Develop autonomous cargo craft technology for point-to-point resource transport. The SLING/PERCH system enables efficient logistics between remote outposts and primary bases via sub-orbital flight paths. LATTICE coordinates all routing, dispatch, and fleet management.
+
+Unlocks:
+- PERCH logistics hub (landing/launch pad)
+- SLING cargo craft (manufactured at ARSENAL)
+- Logistics tab in ARSENAL manager
+
+Configure PERCHes as SOURCE (export) or SINK (import) via the LATTICE UI. SLINGs automatically transport resources to maintain threshold targets at SINK locations.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>3500</baseCost>
+    <prerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </prerequisites>
+    <researchViewX>13.50</researchViewX>
+    <researchViewY>3.00</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
   <!-- SKYLINK Orbital Systems - enables global network connectivity -->
   <ResearchProjectDef>
     <defName>Arsenal_SkyLink</defName>
@@ -72,6 +94,21 @@
     </prerequisites>
     <researchViewX>16.50</researchViewX>
     <researchViewY>5.50</researchViewY>
+    <tab>Main</tab>
+  </ResearchProjectDef>
+
+  <!-- MULE Autonomous Ground Drones -->
+  <ResearchProjectDef>
+    <defName>Arsenal_MULESystem</defName>
+    <label>MULE utility drone network</label>
+    <description>Develop ground-based utility drones for autonomous mining and hauling operations. The MULE (Mobile Utility Logistics Engine) system integrates with LATTICE to automate resource extraction and delivery.\n\nUnlocks:\n- STABLE (drone bay for MULE storage and charging)\n- MORIA (automated storage vault)\n- MULE drone manufacturing at ARSENAL\n\nMULEs automatically mine designated ore and haul resources to MORIA storage vaults.</description>
+    <techLevel>Spacer</techLevel>
+    <baseCost>3500</baseCost>
+    <prerequisites>
+      <li>Arsenal_DroneSwarm</li>
+    </prerequisites>
+    <researchViewX>15.00</researchViewX>
+    <researchViewY>6.00</researchViewY>
     <tab>Main</tab>
   </ResearchProjectDef>
 
