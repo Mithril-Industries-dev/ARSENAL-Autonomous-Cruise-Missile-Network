@@ -818,10 +818,11 @@ namespace Arsenal
             float x = rect.x + 8f;
             float y = rect.y + 4f;
 
-            // Row 1: Zone size, Role, Status
+            // Row 1: Zone name, Role, Status
             var zone = beacon.GetLandingZone();
-            string zoneName = zone.HasValue ? $"Zone {zone.Value.Width}x{zone.Value.Height}" : "Invalid Zone";
-            Widgets.Label(new Rect(x, y, 90f, 20f), zoneName);
+            string displayName = !string.IsNullOrEmpty(beacon.ZoneName) ? beacon.ZoneName :
+                                 (zone.HasValue ? $"Zone {zone.Value.Width}x{zone.Value.Height}" : "Invalid Zone");
+            Widgets.Label(new Rect(x, y, 90f, 20f), displayName);
 
             // Role badge
             Color roleColor = beacon.IsSource ? new Color(0.3f, 0.7f, 0.3f) : new Color(0.7f, 0.5f, 0.2f);

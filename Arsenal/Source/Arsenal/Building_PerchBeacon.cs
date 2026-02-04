@@ -191,6 +191,36 @@ namespace Arsenal
             {
                 if (sourceFilter == null) sourceFilter = new List<ThingDef>();
                 if (thresholdTargets == null) thresholdTargets = new Dictionary<ThingDef, int>();
+
+                // Try to assign zone name if this is part of a valid zone that's unnamed
+                // (handles saves from before zone naming was implemented)
+                TryAssignZoneNameOnLoad();
+            }
+        }
+
+        /// <summary>
+        /// Called on game load to assign zone names to zones that don't have them.
+        /// This handles saves from before zone naming was implemented.
+        /// </summary>
+        private void TryAssignZoneNameOnLoad()
+        {
+            // Force a fresh cache calculation
+            cachedZoneBeacons = CalculateZoneBeacons();
+            cachedLandingZone = cachedZoneBeacons != null ? CalculateLandingZoneFromBeacons(cachedZoneBeacons) : null;
+            lastZoneCheck = Find.TickManager.TicksGame;
+
+            if (cachedZoneBeacons == null || cachedZoneBeacons.Count < 4)
+                return;
+
+            // Find the primary beacon
+            var primary = cachedZoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
+
+            // Only assign name if primary doesn't have one
+            if (primary != null && string.IsNullOrEmpty(primary.zoneName))
+            {
+                primary.zoneName = "PERCH-" + zoneCounter.ToString("D2");
+                primary.hasAssignedZoneName = true;
+                zoneCounter++;
             }
         }
 
