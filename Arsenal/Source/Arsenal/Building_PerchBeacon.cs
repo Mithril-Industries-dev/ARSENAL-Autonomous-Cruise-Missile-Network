@@ -390,18 +390,15 @@ namespace Arsenal
 
         #region Drawing
 
-        public override void Draw()
+        public override void DrawExtraSelectionOverlays()
         {
-            base.Draw();
+            base.DrawExtraSelectionOverlays();
 
             // Draw landing zone outline when selected
-            if (Find.Selector.IsSelected(this))
+            var zone = GetLandingZone();
+            if (zone.HasValue)
             {
-                var zone = GetLandingZone();
-                if (zone.HasValue)
-                {
-                    GenDraw.DrawFieldEdges(zone.Value.Cells.ToList(), Color.cyan);
-                }
+                GenDraw.DrawFieldEdges(zone.Value.Cells.ToList(), Color.cyan);
             }
         }
 
