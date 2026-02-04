@@ -25,8 +25,11 @@ namespace Arsenal
         private Vector2 dartScrollPos;
         private Vector2 logisticsScrollPos;
 
-        // Selected PERCH for configuration
+        // Selected PERCH for configuration (legacy)
         private Building_PERCH selectedPerch;
+
+        // Selected beacon zone (new system)
+        private Building_PerchBeacon selectedBeaconZone;
 
         // Window settings
         public override Vector2 InitialSize => new Vector2(750f, 600f);
@@ -719,10 +722,14 @@ namespace Arsenal
             // Fleet status at bottom
             float summaryY = rect.y + rect.height - 35f;
             var slingsInTransit = SlingLogisticsManager.GetSlingsInTransit();
+            int beaconSources = ArsenalNetworkManager.GetSourceBeacons().Count;
+            int beaconSinks = ArsenalNetworkManager.GetSinkBeacons().Count;
+            int legacySources = ArsenalNetworkManager.GetSourcePerches().Count;
+            int legacySinks = ArsenalNetworkManager.GetSinkPerches().Count;
             Widgets.Label(new Rect(rect.x, summaryY, rect.width, 25f),
                 $"In Transit: {slingsInTransit.Count}    " +
-                $"SOURCEs: {ArsenalNetworkManager.GetSourcePerches().Count}    " +
-                $"SINKs: {ArsenalNetworkManager.GetSinkPerches().Count}");
+                $"Sources: {beaconSources + legacySources}    " +
+                $"Sinks: {beaconSinks + legacySinks}");
         }
 
         private void DrawNetworkOverview(Rect rect)
@@ -737,24 +744,48 @@ namespace Arsenal
             Text.Font = GameFont.Small;
             y += 30f;
 
-            // Scrollable PERCH list
+            // Scrollable list of landing zones (both beacons and legacy PERCHes)
             Rect scrollRect = new Rect(rect.x + 5f, y, rect.width - 10f, rect.height - 40f);
-            var perches = ArsenalNetworkManager.GetAllPerches();
-            float contentHeight = perches.Count * 50f + 20f;
+
+            // Get beacon zones (primary beacons only) and legacy perches
+            var beaconZones = ArsenalNetworkManager.GetAllPerchBeacons()
+                .Where(b => b.IsPrimary && b.HasValidLandingZone)
+                .ToList();
+            var legacyPerches = ArsenalNetworkManager.GetAllPerches();
+
+            float contentHeight = (beaconZones.Count * 50f) + (legacyPerches.Count * 50f) + 60f;
             Rect viewRect = new Rect(0, 0, scrollRect.width - 20f, contentHeight);
 
             Widgets.BeginScrollView(scrollRect, ref logisticsScrollPos, viewRect);
 
             float scrollY = 5f;
 
-            if (perches.Count == 0)
+            // Beacon Landing Zones section
+            if (beaconZones.Count > 0)
             {
-                Widgets.Label(new Rect(10f, scrollY, viewRect.width - 20f, 22f),
-                    "No PERCHes found. Build PERCHes to enable logistics.");
+                GUI.color = Color.cyan;
+                Widgets.Label(new Rect(10f, scrollY, viewRect.width - 20f, 20f), "Beacon Landing Zones:");
+                GUI.color = Color.white;
+                scrollY += 22f;
+
+                foreach (var beacon in beaconZones)
+                {
+                    Rect zoneRect = new Rect(5f, scrollY, viewRect.width - 10f, 45f);
+                    DrawBeaconZoneListItem(zoneRect, beacon);
+                    scrollY += 50f;
+                }
+                scrollY += 10f;
             }
-            else
+
+            // Legacy PERCHes section
+            if (legacyPerches.Count > 0)
             {
-                foreach (var perch in perches.OrderBy(p => p.priority))
+                GUI.color = Color.yellow;
+                Widgets.Label(new Rect(10f, scrollY, viewRect.width - 20f, 20f), "Legacy PERCHes:");
+                GUI.color = Color.white;
+                scrollY += 22f;
+
+                foreach (var perch in legacyPerches.OrderBy(p => p.priority))
                 {
                     Rect perchRect = new Rect(5f, scrollY, viewRect.width - 10f, 45f);
                     DrawPerchListItem(perchRect, perch);
@@ -762,7 +793,62 @@ namespace Arsenal
                 }
             }
 
+            if (beaconZones.Count == 0 && legacyPerches.Count == 0)
+            {
+                Widgets.Label(new Rect(10f, scrollY, viewRect.width - 20f, 44f),
+                    "No landing zones found.\nPlace 4 PERCH beacons at corners to create a landing zone.");
+            }
+
             Widgets.EndScrollView();
+        }
+
+        private void DrawBeaconZoneListItem(Rect rect, Building_PerchBeacon beacon)
+        {
+            bool isSelected = selectedBeaconZone == beacon;
+            Color bgColor = isSelected ? new Color(0.2f, 0.3f, 0.35f) : new Color(0.12f, 0.12f, 0.12f);
+            Widgets.DrawBoxSolid(rect, bgColor);
+            Widgets.DrawBox(rect);
+
+            if (Widgets.ButtonInvisible(rect))
+            {
+                selectedBeaconZone = beacon;
+                selectedPerch = null;  // Deselect legacy perch
+            }
+
+            float x = rect.x + 8f;
+            float y = rect.y + 4f;
+
+            // Row 1: Zone size, Role, Status
+            var zone = beacon.GetLandingZone();
+            string zoneName = zone.HasValue ? $"Zone {zone.Value.Width}x{zone.Value.Height}" : "Invalid Zone";
+            Widgets.Label(new Rect(x, y, 90f, 20f), zoneName);
+
+            // Role badge
+            Color roleColor = beacon.IsSource ? new Color(0.3f, 0.7f, 0.3f) : new Color(0.7f, 0.5f, 0.2f);
+            GUI.color = roleColor;
+            Widgets.Label(new Rect(x + 95f, y, 60f, 20f), beacon.Role.ToString());
+            GUI.color = Color.white;
+
+            // Status
+            string status = beacon.IsPoweredOn ? "Online" : "Offline";
+            Color statusColor = beacon.IsPoweredOn ? Color.green : Color.red;
+            GUI.color = statusColor;
+            Widgets.Label(new Rect(rect.xMax - 60f, y, 50f, 20f), status);
+            GUI.color = Color.white;
+
+            // Row 2: SLING info
+            y += 20f;
+            var slings = beacon.GetDockedSlings();
+            if (slings.Count > 0)
+            {
+                Widgets.Label(new Rect(x, y, 150f, 18f), $"SLINGs: {slings.Count}");
+            }
+            else
+            {
+                GUI.color = Color.gray;
+                Widgets.Label(new Rect(x, y, 150f, 18f), "SLINGs: None");
+                GUI.color = Color.white;
+            }
         }
 
         private void DrawPerchListItem(Rect rect, Building_PERCH perch)
@@ -775,6 +861,7 @@ namespace Arsenal
             if (Widgets.ButtonInvisible(rect))
             {
                 selectedPerch = perch;
+                selectedBeaconZone = null;  // Deselect beacon zone
             }
 
             float x = rect.x + 8f;
@@ -848,14 +935,21 @@ namespace Arsenal
             float width = rect.width - 20f;
 
             Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(x, y, width, 25f), "PERCH Configuration");
+            Widgets.Label(new Rect(x, y, width, 25f), "Landing Zone Configuration");
             Text.Font = GameFont.Small;
             y += 30f;
+
+            // Handle beacon zone configuration
+            if (selectedBeaconZone != null)
+            {
+                DrawBeaconZoneConfiguration(rect, x, y, width);
+                return;
+            }
 
             if (selectedPerch == null)
             {
                 GUI.color = Color.gray;
-                Widgets.Label(new Rect(x, y, width, 22f), "Select a PERCH from the list to configure.");
+                Widgets.Label(new Rect(x, y, width, 22f), "Select a landing zone from the list to configure.");
                 GUI.color = Color.white;
                 return;
             }
@@ -993,6 +1087,222 @@ namespace Arsenal
                     }
                 }
             }
+        }
+
+        private void DrawBeaconZoneConfiguration(Rect rect, float x, float y, float width)
+        {
+            var beacon = selectedBeaconZone;
+            var zone = beacon.GetLandingZone();
+
+            // Zone info
+            if (zone.HasValue)
+            {
+                Widgets.Label(new Rect(x, y, width, 22f), $"Zone Size: {zone.Value.Width}x{zone.Value.Height}");
+            }
+            y += 26f;
+
+            // Role toggle
+            Widgets.Label(new Rect(x, y, 80f, 22f), "Role:");
+            if (Widgets.ButtonText(new Rect(x + 85f, y, 80f, 22f), beacon.Role.ToString()))
+            {
+                beacon.ToggleRole();
+            }
+            y += 28f;
+
+            // SLINGs in zone
+            var slings = beacon.GetDockedSlings();
+            Widgets.Label(new Rect(x, y, width, 22f), $"SLINGs in Zone: {slings.Count}");
+            y += 26f;
+
+            Widgets.DrawLineHorizontal(x, y, width);
+            y += 10f;
+
+            if (beacon.IsSink)
+            {
+                // Threshold targets section
+                Widgets.Label(new Rect(x, y, width, 22f), "Import Targets:");
+                y += 24f;
+
+                // Add threshold button
+                if (Widgets.ButtonText(new Rect(x, y, 120f, 22f), "+ Add Resource"))
+                {
+                    ShowAddBeaconThresholdMenu();
+                }
+                y += 28f;
+
+                // Draw existing thresholds
+                var thresholds = beacon.ThresholdTargets.ToList();
+                foreach (var kvp in thresholds)
+                {
+                    Rect threshRect = new Rect(x, y, width, 22f);
+                    DrawBeaconThresholdRow(threshRect, kvp.Key, kvp.Value);
+                    y += 26f;
+                }
+
+                // Current demand
+                y += 10f;
+                var needed = beacon.GetResourcesNeeded();
+                if (needed.Count > 0)
+                {
+                    GUI.color = new Color(1f, 0.6f, 0f);
+                    Widgets.Label(new Rect(x, y, width, 22f), "Resources Needed:");
+                    y += 22f;
+                    GUI.color = Color.white;
+
+                    foreach (var n in needed.Take(6))
+                    {
+                        Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f),
+                            $"{n.Key.label}: {n.Value}");
+                        y += 20f;
+                    }
+                }
+                else if (thresholds.Count > 0)
+                {
+                    GUI.color = Color.green;
+                    Widgets.Label(new Rect(x, y, width, 22f), "All targets satisfied");
+                    GUI.color = Color.white;
+                }
+            }
+            else // SOURCE
+            {
+                // Export filter section
+                Widgets.Label(new Rect(x, y, width, 22f), "Export Filter:");
+                y += 24f;
+
+                if (Widgets.ButtonText(new Rect(x, y, 120f, 22f), "+ Add Resource"))
+                {
+                    ShowAddBeaconFilterMenu();
+                }
+                y += 28f;
+
+                // Draw existing filters with thresholds
+                var filter = beacon.SourceFilter.ToList();
+                foreach (var resource in filter)
+                {
+                    if (Widgets.ButtonText(new Rect(x, y, 20f, 20f), "X"))
+                    {
+                        beacon.RemoveFromSourceFilter(resource);
+                        continue;
+                    }
+                    Widgets.Label(new Rect(x + 25f, y, 100f, 20f), resource.label);
+
+                    // Threshold (keep amount)
+                    int threshold = beacon.GetThreshold(resource);
+                    Widgets.Label(new Rect(x + 130f, y, 40f, 20f), "Keep:");
+                    string buffer = threshold.ToString();
+                    buffer = Widgets.TextField(new Rect(x + 170f, y, 50f, 20f), buffer);
+                    if (int.TryParse(buffer, out int newThreshold) && newThreshold != threshold)
+                    {
+                        beacon.SetThreshold(resource, newThreshold);
+                    }
+                    y += 24f;
+                }
+
+                // Available for export
+                y += 10f;
+                var available = beacon.GetAvailableForExport();
+                if (available.Count > 0)
+                {
+                    Widgets.Label(new Rect(x, y, width, 22f), "Available for Export:");
+                    y += 22f;
+
+                    foreach (var a in available.Take(6))
+                    {
+                        Widgets.Label(new Rect(x + 10f, y, width - 10f, 20f),
+                            $"{a.Key.label}: {a.Value}");
+                        y += 20f;
+                    }
+                }
+                else if (filter.Count > 0)
+                {
+                    GUI.color = Color.gray;
+                    Widgets.Label(new Rect(x, y, width, 22f), "Nothing available for export");
+                    GUI.color = Color.white;
+                }
+            }
+        }
+
+        private void DrawBeaconThresholdRow(Rect rect, ThingDef resource, int target)
+        {
+            if (Widgets.ButtonText(new Rect(rect.x, rect.y, 20f, 20f), "X"))
+            {
+                selectedBeaconZone.SetThreshold(resource, 0);
+                return;
+            }
+
+            Widgets.Label(new Rect(rect.x + 25f, rect.y, 100f, 20f), resource.label);
+
+            Widgets.Label(new Rect(rect.x + 130f, rect.y, 50f, 20f), "Target:");
+            string buffer = target.ToString();
+            buffer = Widgets.TextField(new Rect(rect.x + 180f, rect.y, 50f, 20f), buffer);
+            if (int.TryParse(buffer, out int newTarget) && newTarget != target)
+            {
+                selectedBeaconZone.SetThreshold(resource, newTarget);
+            }
+
+            int current = selectedBeaconZone.Map?.resourceCounter.GetCount(resource) ?? 0;
+            Color statusColor = current >= target ? Color.green : new Color(1f, 0.6f, 0f);
+            GUI.color = statusColor;
+            Widgets.Label(new Rect(rect.x + 240f, rect.y, 80f, 20f), $"({current}/{target})");
+            GUI.color = Color.white;
+        }
+
+        private void ShowAddBeaconThresholdMenu()
+        {
+            List<FloatMenuOption> options = new List<FloatMenuOption>();
+
+            ThingDef[] commonResources = new[]
+            {
+                ThingDefOf.Steel, ThingDefOf.Plasteel, ThingDefOf.ComponentIndustrial,
+                ThingDefOf.ComponentSpacer, ThingDefOf.Chemfuel, ThingDefOf.Gold,
+                ThingDefOf.Silver, ThingDefOf.Uranium
+            };
+
+            foreach (var resource in commonResources)
+            {
+                if (selectedBeaconZone.GetThreshold(resource) == 0)
+                {
+                    ThingDef r = resource;
+                    options.Add(new FloatMenuOption(resource.label, () =>
+                    {
+                        selectedBeaconZone.SetThreshold(r, 100);
+                    }));
+                }
+            }
+
+            if (options.Count == 0)
+                options.Add(new FloatMenuOption("All common resources already added", null));
+
+            Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void ShowAddBeaconFilterMenu()
+        {
+            List<FloatMenuOption> options = new List<FloatMenuOption>();
+
+            ThingDef[] commonResources = new[]
+            {
+                ThingDefOf.Steel, ThingDefOf.Plasteel, ThingDefOf.ComponentIndustrial,
+                ThingDefOf.ComponentSpacer, ThingDefOf.Chemfuel, ThingDefOf.Gold,
+                ThingDefOf.Silver, ThingDefOf.Uranium
+            };
+
+            foreach (var resource in commonResources)
+            {
+                if (!selectedBeaconZone.SourceFilter.Contains(resource))
+                {
+                    ThingDef r = resource;
+                    options.Add(new FloatMenuOption(resource.label, () =>
+                    {
+                        selectedBeaconZone.AddToSourceFilter(r);
+                    }));
+                }
+            }
+
+            if (options.Count == 0)
+                options.Add(new FloatMenuOption("All common resources already added", null));
+
+            Find.WindowStack.Add(new FloatMenu(options));
         }
 
         private void DrawThresholdRow(Rect rect, ThingDef resource, int target)
