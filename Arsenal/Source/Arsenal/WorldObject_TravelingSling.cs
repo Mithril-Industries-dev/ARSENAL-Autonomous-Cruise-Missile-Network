@@ -22,6 +22,7 @@ namespace Arsenal
         public Dictionary<ThingDef, int> cargo = new Dictionary<ThingDef, int>();
         public Building_PERCH originPerch;
         public Building_PERCH destinationPerch;
+        public Building_PerchBeacon destinationBeacon; // New beacon zone system
         public bool isReturnFlight = false;
 
         private int nextWaypointTile = -1;
@@ -41,6 +42,7 @@ namespace Arsenal
             Scribe_Collections.Look(ref cargo, "cargo", LookMode.Def, LookMode.Value);
             Scribe_References.Look(ref originPerch, "originPerch");
             Scribe_References.Look(ref destinationPerch, "destinationPerch");
+            Scribe_References.Look(ref destinationBeacon, "destinationBeacon");
             Scribe_Values.Look(ref isReturnFlight, "isReturnFlight", false);
             Scribe_Values.Look(ref nextWaypointTile, "nextWaypointTile", -1);
             Scribe_Values.Look(ref previousTile, "previousTile", -1);
@@ -288,7 +290,59 @@ namespace Arsenal
 
         private void ArriveAtDestination()
         {
-            // Check if destination PERCH is valid and has an available slot
+            // Try beacon zone landing first (new system)
+            if (destinationBeacon != null && destinationBeacon.Map != null && !destinationBeacon.Destroyed)
+            {
+                if (destinationBeacon.HasValidLandingZone && destinationBeacon.HasSpaceForSling)
+                {
+                    // Find landing spot within beacon zone
+                    IntVec3 landingSpot = destinationBeacon.FindLandingSpot();
+                    if (landingSpot.IsValid)
+                    {
+                        var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                            ArsenalDefOf.Arsenal_SlingLanding);
+                        skyfaller.sling = sling;
+                        skyfaller.slingName = slingName;
+                        skyfaller.cargo = cargo;
+                        skyfaller.destinationBeacon = destinationBeacon;
+                        skyfaller.destinationTile = destinationTile;
+                        skyfaller.isWaypointStop = false;
+                        skyfaller.isReturnFlight = isReturnFlight;
+
+                        GenSpawn.Spawn(skyfaller, landingSpot, destinationBeacon.Map);
+                        Destroy();
+                        return;
+                    }
+                }
+
+                // Beacon zone full or invalid - try to find another beacon zone on same tile
+                var alternateBeacon = FindAvailableBeaconZoneOnTile(destinationTile);
+                if (alternateBeacon != null && alternateBeacon != destinationBeacon)
+                {
+                    IntVec3 landingSpot = alternateBeacon.FindLandingSpot();
+                    if (landingSpot.IsValid)
+                    {
+                        Messages.Message($"{slingName ?? "SLING"} rerouted to {alternateBeacon.ZoneName} (original zone full)",
+                            alternateBeacon, MessageTypeDefOf.NeutralEvent);
+
+                        var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                            ArsenalDefOf.Arsenal_SlingLanding);
+                        skyfaller.sling = sling;
+                        skyfaller.slingName = slingName;
+                        skyfaller.cargo = cargo;
+                        skyfaller.destinationBeacon = alternateBeacon;
+                        skyfaller.destinationTile = destinationTile;
+                        skyfaller.isWaypointStop = false;
+                        skyfaller.isReturnFlight = isReturnFlight;
+
+                        GenSpawn.Spawn(skyfaller, landingSpot, alternateBeacon.Map);
+                        Destroy();
+                        return;
+                    }
+                }
+            }
+
+            // Fall back to legacy PERCH system
             Building_PERCH landingPerch = null;
 
             if (destinationPerch != null && destinationPerch.Map != null && !destinationPerch.Destroyed)
@@ -352,6 +406,7 @@ namespace Arsenal
                 // Reverse the journey
                 destinationPerch = originPerch;
                 originPerch = null;
+                destinationBeacon = null; // Clear beacon destination
                 destinationTile = destinationPerch.Map.Tile;
                 isReturnFlight = true;
                 cargo = new Dictionary<ThingDef, int>(); // Empty cargo on return
@@ -374,7 +429,7 @@ namespace Arsenal
 
                     GenSpawn.Spawn(skyfaller, dropSpot, mp.Map);
 
-                    Messages.Message($"{slingName ?? "SLING"} crash-landing - no PERCH available at destination",
+                    Messages.Message($"{slingName ?? "SLING"} crash-landing - no landing zone available at destination",
                         new TargetInfo(dropSpot, mp.Map), MessageTypeDefOf.NegativeEvent);
                 }
             }
@@ -524,6 +579,23 @@ namespace Arsenal
             return null;
         }
 
+        private Building_PerchBeacon FindAvailableBeaconZoneOnTile(int tile)
+        {
+            // Try to find a beacon zone on the specified tile with space for a SLING
+            foreach (var beacon in ArsenalNetworkManager.GetAllValidBeaconZones())
+            {
+                if (beacon.Map == null || beacon.Destroyed) continue;
+                if (beacon.Map.Tile != tile) continue;
+                if (!beacon.HasSpaceForSling) continue;
+                if (!beacon.IsPoweredOn) continue;
+
+                return beacon;
+            }
+
+            // No available beacon zone on the target tile
+            return null;
+        }
+
         private Building_PERCH FindNearestAvailablePerch(int nearTile)
         {
             Building_PERCH nearest = null;
@@ -553,7 +625,9 @@ namespace Arsenal
             if (!string.IsNullOrEmpty(slingName))
                 str += $"\n{slingName}";
 
-            if (destinationPerch != null)
+            if (destinationBeacon != null)
+                str += $"\nDestination: {destinationBeacon.ZoneName ?? "Beacon Zone"}";
+            else if (destinationPerch != null)
                 str += $"\nDestination: {destinationPerch.Label}";
 
             if (cargo != null && cargo.Count > 0)

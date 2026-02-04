@@ -13,10 +13,14 @@ namespace Arsenal
     ///
     /// Design: Beacons are simple markers. When 4 beacons form a valid rectangle,
     /// the beacon at the min corner (lowest X, then lowest Z) becomes the "primary"
-    /// beacon which holds the zone configuration (role, filters, thresholds).
+    /// beacon which holds the zone configuration (role, filters, thresholds, zone name).
     /// </summary>
     public class Building_PerchBeacon : Building
     {
+        // Zone name (stored on primary beacon)
+        private string zoneName;
+        private static int zoneCounter = 1;
+
         // Logistics role (only used if this is the primary beacon)
         public enum PerchRole { Source, Sink }
         private PerchRole role = PerchRole.Source;
@@ -39,7 +43,37 @@ namespace Arsenal
         private int lastZoneCheck = -999;
         private const int ZONE_CHECK_INTERVAL = 120;
 
+        // Track if we've already assigned a zone name
+        private bool hasAssignedZoneName = false;
+
         #region Properties
+
+        /// <summary>
+        /// The zone name (e.g., "PERCH-01"). Returns from primary beacon.
+        /// </summary>
+        public string ZoneName
+        {
+            get
+            {
+                var primary = GetPrimaryBeacon();
+                if (primary != null && primary != this)
+                    return primary.zoneName;
+                return zoneName;
+            }
+        }
+
+        public override string Label
+        {
+            get
+            {
+                // If part of a valid zone, show zone name
+                if (HasValidLandingZone && !string.IsNullOrEmpty(ZoneName))
+                {
+                    return ZoneName;
+                }
+                return base.Label;
+            }
+        }
 
         public PerchRole Role => GetPrimaryBeacon()?.role ?? role;
         public bool IsSource => Role == PerchRole.Source;
@@ -81,6 +115,34 @@ namespace Arsenal
         public List<ThingDef> SourceFilter => GetPrimaryBeacon()?.sourceFilter ?? sourceFilter;
         public Dictionary<ThingDef, int> ThresholdTargets => GetPrimaryBeacon()?.thresholdTargets ?? thresholdTargets;
 
+        /// <summary>
+        /// Network connectivity check - required for SLING logistics.
+        /// </summary>
+        public bool HasNetworkConnection()
+        {
+            if (Map == null) return false;
+            return ArsenalNetworkManager.IsTileConnected(Map.Tile);
+        }
+
+        #endregion
+
+        #region Static Methods
+
+        public static void ResetZoneCounter()
+        {
+            zoneCounter = 1;
+        }
+
+        public static void SetZoneCounter(int value)
+        {
+            zoneCounter = System.Math.Max(1, value);
+        }
+
+        public static int GetZoneCounter()
+        {
+            return zoneCounter;
+        }
+
         #endregion
 
         #region Lifecycle
@@ -99,6 +161,12 @@ namespace Arsenal
 
             // Invalidate caches of nearby beacons too (a new beacon may complete their zone)
             InvalidateNearbyBeaconCaches();
+
+            // Check if this beacon completes a zone and needs a name
+            if (!respawningAfterLoad)
+            {
+                TryAssignZoneName();
+            }
         }
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
@@ -113,7 +181,9 @@ namespace Arsenal
         public override void ExposeData()
         {
             base.ExposeData();
+            Scribe_Values.Look(ref zoneName, "zoneName");
             Scribe_Values.Look(ref role, "role", PerchRole.Source);
+            Scribe_Values.Look(ref hasAssignedZoneName, "hasAssignedZoneName", false);
             Scribe_Collections.Look(ref sourceFilter, "sourceFilter", LookMode.Def);
             Scribe_Collections.Look(ref thresholdTargets, "thresholdTargets", LookMode.Def, LookMode.Value);
 
@@ -135,6 +205,34 @@ namespace Arsenal
                     beacon.cachedZoneBeacons = null;
                     beacon.lastZoneCheck = -999;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Tries to assign a zone name when this beacon completes a valid zone.
+        /// Only the primary beacon gets the name.
+        /// </summary>
+        private void TryAssignZoneName()
+        {
+            // Force a zone check
+            cachedZoneBeacons = CalculateZoneBeacons();
+            cachedLandingZone = cachedZoneBeacons != null ? CalculateLandingZoneFromBeacons(cachedZoneBeacons) : null;
+            lastZoneCheck = Find.TickManager.TicksGame;
+
+            if (cachedZoneBeacons == null || cachedZoneBeacons.Count < 4)
+                return;
+
+            // Check if we're the primary beacon
+            var primary = cachedZoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
+
+            // If no primary has assigned a name yet, assign one now
+            if (primary != null && string.IsNullOrEmpty(primary.zoneName) && !primary.hasAssignedZoneName)
+            {
+                primary.zoneName = "PERCH-" + zoneCounter.ToString("D2");
+                primary.hasAssignedZoneName = true;
+                zoneCounter++;
+
+                Messages.Message($"Landing zone {primary.zoneName} established.", primary, MessageTypeDefOf.PositiveEvent);
             }
         }
 
@@ -355,6 +453,11 @@ namespace Arsenal
 
         public bool HasAvailableSling => GetIdleSlings().Any();
 
+        /// <summary>
+        /// Returns true if this zone has room for another SLING.
+        /// </summary>
+        public bool HasSpaceForSling => FindLandingSpot() != IntVec3.Invalid;
+
         #endregion
 
         #region Source/Sink Configuration (Primary beacon only)
@@ -488,16 +591,12 @@ namespace Arsenal
             var zone = GetLandingZone();
             if (zone.HasValue)
             {
-                str += $"Landing zone: {zone.Value.Width}x{zone.Value.Height}";
+                string zName = ZoneName ?? "Unnamed";
+                str += $"Zone: {zName} ({zone.Value.Width}x{zone.Value.Height})";
 
-                var primary = GetPrimaryBeacon();
                 if (IsPrimary)
                 {
-                    str += " (primary)";
-                }
-                else if (primary != null)
-                {
-                    str += $" (config on SW beacon)";
+                    str += " [Primary]";
                 }
             }
             else
@@ -511,6 +610,15 @@ namespace Arsenal
             if (HasValidLandingZone)
             {
                 str += $"\nRole: {Role}";
+
+                if (HasNetworkConnection())
+                {
+                    str += " | Network: Connected";
+                }
+                else
+                {
+                    str += " | <color=yellow>Network: Disconnected</color>";
+                }
 
                 var slings = GetDockedSlings();
                 str += $"\nSLINGs in zone: {slings.Count}";
@@ -555,7 +663,7 @@ namespace Arsenal
                     action = delegate
                     {
                         ToggleRole();
-                        Messages.Message($"Landing zone is now a {Role}", this, MessageTypeDefOf.NeutralEvent);
+                        Messages.Message($"{ZoneName} is now a {Role}", this, MessageTypeDefOf.NeutralEvent);
                     }
                 };
 
@@ -621,11 +729,12 @@ namespace Arsenal
                         var zoneBeacons = GetZoneBeacons();
                         if (zone.HasValue && zoneBeacons != null)
                         {
-                            Log.Message($"[PERCH BEACON] Zone: {zone.Value}, Size: {zone.Value.Width}x{zone.Value.Height}");
+                            Log.Message($"[PERCH BEACON] Zone: {ZoneName}, Rect: {zone.Value}, Size: {zone.Value.Width}x{zone.Value.Height}");
                             Log.Message($"[PERCH BEACON] Beacons in zone: {zoneBeacons.Count}");
                             Log.Message($"[PERCH BEACON] Primary: {GetPrimaryBeacon()?.Position}");
                             Log.Message($"[PERCH BEACON] This is primary: {IsPrimary}");
                             Log.Message($"[PERCH BEACON] SLINGs in zone: {GetDockedSlings().Count}");
+                            Log.Message($"[PERCH BEACON] Has network: {HasNetworkConnection()}");
                         }
                         else
                         {
@@ -659,7 +768,7 @@ namespace Arsenal
         {
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
-            listing.Label("Configure Export for Landing Zone");
+            listing.Label($"Configure Export for {beacon.ZoneName ?? "Landing Zone"}");
             listing.GapLine();
 
             if (beacon.Map != null)
@@ -733,7 +842,7 @@ namespace Arsenal
         {
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
-            listing.Label("Configure Import Targets for Landing Zone");
+            listing.Label($"Configure Import Targets for {beacon.ZoneName ?? "Landing Zone"}");
             listing.GapLine();
 
             searchText = listing.TextEntry(searchText);

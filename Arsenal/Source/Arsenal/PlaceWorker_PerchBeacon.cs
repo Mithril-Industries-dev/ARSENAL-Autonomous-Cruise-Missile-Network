@@ -9,13 +9,16 @@ namespace Arsenal
     /// <summary>
     /// PlaceWorker for PERCH Landing Beacons.
     /// Draws preview lines to other beacons when placing, similar to vanilla ShipLandingBeacon.
-    /// Shows valid/invalid landing zone status.
+    /// Shows valid/invalid landing zone status with color coding:
+    /// - White lines: Zone would be valid size (>= 9x12)
+    /// - Red lines: Zone would be too small
+    /// - Cyan zone overlay: Valid complete zone
     /// </summary>
     public class PlaceWorker_PerchBeacon : PlaceWorker
     {
         // Landing zone size requirements (SLING is 6x10, need margin)
-        private const int MIN_WIDTH = 9;
-        private const int MIN_HEIGHT = 12;
+        private const int MIN_WIDTH = Building_PerchBeacon.MIN_WIDTH;
+        private const int MIN_HEIGHT = Building_PerchBeacon.MIN_HEIGHT;
         private const int MAX_BEACON_SEARCH_DIST = 40;
 
         public override void DrawGhost(ThingDef def, IntVec3 center, Rot4 rot, Color ghostCol, Thing thing = null)
@@ -28,50 +31,94 @@ namespace Arsenal
             // Get all existing beacons on this map
             List<Building_PerchBeacon> existingBeacons = GetExistingBeacons(map, thing);
 
-            // Draw lines to nearby beacons
+            // Draw lines to all nearby beacons
             foreach (var beacon in existingBeacons)
             {
                 float dist = center.DistanceTo(beacon.Position);
                 if (dist > MAX_BEACON_SEARCH_DIST) continue;
 
-                // Determine line color based on alignment
+                // Check if this would form a valid edge (aligned on same axis)
+                bool isAligned = IsAligned(center, beacon.Position);
+
+                // Determine if the potential zone would be valid size
+                bool wouldBeValidSize = WouldFormValidSizeZone(center, beacon, existingBeacons);
+
+                // Color based on validity
                 Color lineColor;
-                if (IsAligned(center, beacon.Position))
+                if (isAligned)
                 {
-                    lineColor = new Color(0f, 0.8f, 0.8f, 0.5f); // Cyan for aligned
+                    lineColor = wouldBeValidSize ? Color.white : Color.red;
                 }
                 else
                 {
-                    lineColor = new Color(0.5f, 0.5f, 0.5f, 0.3f); // Gray for not aligned
+                    lineColor = new Color(0.4f, 0.4f, 0.4f, 0.3f); // Gray for non-aligned
                 }
 
-                GenDraw.DrawLineBetween(center.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays),
-                                        beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays),
-                                        SimpleColor.White, 0.2f);
+                // Draw line
+                Vector3 startPos = center.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                Vector3 endPos = beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+
+                if (isAligned)
+                {
+                    GenDraw.DrawLineBetween(startPos, endPos, lineColor, 0.2f);
+                }
             }
 
-            // Try to form a rectangle with existing beacons + placement position
+            // Try to form a complete zone with existing beacons + placement position
             var potentialZone = TryFormZone(center, existingBeacons);
             if (potentialZone.HasValue)
             {
-                // Draw the landing zone preview
                 CellRect zone = potentialZone.Value;
+                int width = zone.Width;
+                int height = zone.Height;
 
-                // Check if zone is valid (clear of obstructions)
-                bool isValid = IsZoneClear(zone, map);
-                Color zoneColor = isValid ? new Color(0f, 1f, 1f, 0.25f) : new Color(1f, 0.3f, 0.3f, 0.25f);
+                // Check if zone is valid size
+                bool validSize = width >= MIN_WIDTH && height >= MIN_HEIGHT;
 
-                // Draw filled zone
-                GenDraw.DrawFieldEdges(zone.Cells.ToList(), isValid ? Color.cyan : Color.red);
+                // Check if zone is clear of obstructions
+                bool isClear = IsZoneClear(zone, map);
 
-                // Draw size indicator
+                // Draw zone outline
+                Color zoneColor = (validSize && isClear) ? Color.cyan : Color.red;
+                GenDraw.DrawFieldEdges(zone.Cells.ToList(), zoneColor);
+
+                // Draw size label at center
                 Vector3 labelPos = zone.CenterVector3;
                 labelPos.y = AltitudeLayer.MetaOverlays.AltitudeFor();
+
+                string sizeText = $"{width}x{height}";
+                if (!validSize)
+                {
+                    sizeText += $" (need {MIN_WIDTH}x{MIN_HEIGHT})";
+                }
+
+                // Show zone name if this would complete a valid zone
+                if (validSize && isClear)
+                {
+                    // Check if any beacon in this potential zone already has a name
+                    string existingName = null;
+                    foreach (var beacon in existingBeacons)
+                    {
+                        if (zone.Contains(beacon.Position) && !string.IsNullOrEmpty(beacon.ZoneName))
+                        {
+                            existingName = beacon.ZoneName;
+                            break;
+                        }
+                    }
+
+                    if (existingName != null)
+                    {
+                        sizeText = $"{existingName} ({width}x{height})";
+                    }
+                    else
+                    {
+                        sizeText = $"PERCH-{Building_PerchBeacon.GetZoneCounter():D2} ({width}x{height})";
+                    }
+                }
             }
             else if (existingBeacons.Count >= 1 && existingBeacons.Count < 3)
             {
-                // Show that more beacons are needed
-                // Draw lines showing potential rectangle edges
+                // Show potential edges when we have 1-2 beacons
                 DrawPotentialEdges(center, existingBeacons, map);
             }
         }
@@ -102,21 +149,6 @@ namespace Arsenal
                 }
             }
 
-            // Also check for blueprints/frames of beacons
-            foreach (Thing t in map.listerThings.AllThings)
-            {
-                if (t == thingToIgnore) continue;
-
-                if (t.def.IsBlueprint && t.def.entityDefToBuild?.defName == "Arsenal_PerchBeacon")
-                {
-                    // Can't add blueprint as beacon, but note its position
-                }
-                else if (t.def.IsFrame && t.def.entityDefToBuild?.defName == "Arsenal_PerchBeacon")
-                {
-                    // Can't add frame as beacon, but note its position
-                }
-            }
-
             return beacons;
         }
 
@@ -126,6 +158,32 @@ namespace Arsenal
         private bool IsAligned(IntVec3 a, IntVec3 b)
         {
             return a.x == b.x || a.z == b.z;
+        }
+
+        /// <summary>
+        /// Checks if placing at 'center' with 'beacon' would potentially form a valid-size zone.
+        /// </summary>
+        private bool WouldFormValidSizeZone(IntVec3 center, Building_PerchBeacon beacon, List<Building_PerchBeacon> allBeacons)
+        {
+            // Check if center and beacon are aligned
+            if (!IsAligned(center, beacon.Position))
+                return false;
+
+            // Calculate the edge length this would create
+            int edgeLength;
+            if (center.x == beacon.Position.x)
+            {
+                // Vertical edge
+                edgeLength = Mathf.Abs(center.z - beacon.Position.z) + 1;
+            }
+            else
+            {
+                // Horizontal edge
+                edgeLength = Mathf.Abs(center.x - beacon.Position.x) + 1;
+            }
+
+            // An edge needs to be at least MIN_WIDTH or MIN_HEIGHT
+            return edgeLength >= Mathf.Min(MIN_WIDTH, MIN_HEIGHT);
         }
 
         /// <summary>
@@ -148,7 +206,7 @@ namespace Arsenal
                             existingBeacons[j].Position,
                             existingBeacons[k].Position);
 
-                        if (zone.HasValue && zone.Value.Width >= MIN_WIDTH && zone.Value.Height >= MIN_HEIGHT)
+                        if (zone.HasValue)
                         {
                             return zone;
                         }
@@ -161,6 +219,7 @@ namespace Arsenal
 
         /// <summary>
         /// Checks if 4 positions form a valid rectangle with positions at corners.
+        /// Returns the zone CellRect if valid, null otherwise.
         /// </summary>
         private CellRect? TryFormRectangle(IntVec3 a, IntVec3 b, IntVec3 c, IntVec3 d)
         {
@@ -188,7 +247,7 @@ namespace Arsenal
                 }
             }
 
-            // Return the inner zone (excluding beacon cells)
+            // Return the zone (any size - caller checks min size)
             int width = maxX - minX + 1;
             int height = maxZ - minZ + 1;
 
@@ -228,17 +287,30 @@ namespace Arsenal
         {
             if (existingBeacons.Count == 0) return;
 
-            // With 1-2 beacons, draw lines showing the edges we're creating
             foreach (var beacon in existingBeacons)
             {
-                if (IsAligned(placementPos, beacon.Position))
+                if (!IsAligned(placementPos, beacon.Position))
+                    continue;
+
+                // Calculate edge length
+                int edgeLength;
+                if (placementPos.x == beacon.Position.x)
                 {
-                    // This would form an edge of the rectangle
-                    GenDraw.DrawLineBetween(
-                        placementPos.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays),
-                        beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays),
-                        SimpleColor.Cyan, 0.3f);
+                    edgeLength = Mathf.Abs(placementPos.z - beacon.Position.z) + 1;
                 }
+                else
+                {
+                    edgeLength = Mathf.Abs(placementPos.x - beacon.Position.x) + 1;
+                }
+
+                // Color based on whether this edge is long enough
+                bool validEdge = edgeLength >= Mathf.Min(MIN_WIDTH, MIN_HEIGHT);
+                Color lineColor = validEdge ? Color.white : Color.red;
+
+                Vector3 startPos = placementPos.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                Vector3 endPos = beacon.Position.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+
+                GenDraw.DrawLineBetween(startPos, endPos, lineColor, 0.25f);
             }
         }
     }

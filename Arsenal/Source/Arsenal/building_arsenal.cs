@@ -26,6 +26,7 @@ namespace Arsenal
         private List<Building_Quiver> cachedQuivers = new List<Building_Quiver>();
         private List<Building_Stable> cachedStables = new List<Building_Stable>();
         private List<Building_PERCH> cachedPerches = new List<Building_PERCH>();
+        private List<Building_PerchBeacon> cachedBeaconZones = new List<Building_PerchBeacon>(); // Primary beacons with valid zones
         private List<Building_Hop> cachedHops = new List<Building_Hop>();
         private Building_Lattice cachedLattice;
         private int lastCacheRefresh = -999;
@@ -262,8 +263,9 @@ namespace Arsenal
             cachedStables = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Stable>().ToList();
             cachedLattice = Map.listerBuildings.AllBuildingsColonistOfClass<Building_Lattice>().FirstOrDefault();
 
-            // PERCHes are searched GLOBALLY for SLING logistics
+            // PERCHes and beacon zones are searched GLOBALLY for SLING logistics
             cachedPerches = ArsenalNetworkManager.GetAllPerches().ToList();
+            cachedBeaconZones = ArsenalNetworkManager.GetAllValidBeaconZones().ToList();
 
             lastCacheRefresh = Find.TickManager.TicksGame;
         }
@@ -364,11 +366,20 @@ namespace Arsenal
             }
             else if (product.destinationType == typeof(Building_PERCH))
             {
-                // PERCHes require network connectivity for SLING delivery
-                // Fleet limit: total SLINGs cannot exceed total PERCHes
-                if (!SlingLogisticsManager.CanAddSling())
+                // SLING destinations can be either legacy PERCHes OR beacon zones
+                // Fleet limit: total SLINGs cannot exceed total landing zones
+                if (!CanAddSlingToFleet())
                     return null;
 
+                // First check beacon zones (new system, preferred)
+                var validBeaconZone = cachedBeaconZones
+                    .Where(b => b.IsPoweredOn && b.HasNetworkConnection() && b.HasSpaceForSling)
+                    .FirstOrDefault();
+
+                if (validBeaconZone != null)
+                    return validBeaconZone;
+
+                // Fall back to legacy PERCHes
                 return cachedPerches
                     .Where(p => p.IsPoweredOn && p.HasNetworkConnection() && !p.HasSlingOnPad)
                     .OrderBy(p => p.priority)
@@ -381,6 +392,7 @@ namespace Arsenal
         /// <summary>
         /// Gets all valid destinations for a product (for UI dropdown).
         /// Only shows HUBs with network connectivity for DAGGERs.
+        /// SLING destinations include both legacy PERCHes and beacon zones.
         /// </summary>
         public List<Building> GetAllDestinationsFor(MithrilProductDef product)
         {
@@ -401,9 +413,35 @@ namespace Arsenal
             else if (product.destinationType == typeof(Building_Stable))
                 return cachedStables.Cast<Building>().ToList();
             else if (product.destinationType == typeof(Building_PERCH))
-                return cachedPerches.Where(p => p.HasNetworkConnection()).Cast<Building>().ToList();
+            {
+                // SLING destinations: both beacon zones and legacy PERCHes
+                var destinations = new List<Building>();
+
+                // Add beacon zones (primary beacons with valid landing zones)
+                destinations.AddRange(cachedBeaconZones
+                    .Where(b => b.HasNetworkConnection())
+                    .Cast<Building>());
+
+                // Add legacy PERCHes
+                destinations.AddRange(cachedPerches
+                    .Where(p => p.HasNetworkConnection())
+                    .Cast<Building>());
+
+                return destinations;
+            }
 
             return new List<Building>();
+        }
+
+        /// <summary>
+        /// Checks if the fleet can accept another SLING.
+        /// Fleet limit is total landing zones (beacon zones + legacy PERCHes).
+        /// </summary>
+        private bool CanAddSlingToFleet()
+        {
+            int totalSlings = SlingLogisticsManager.GetTotalSlingCount();
+            int totalLandingZones = cachedBeaconZones.Count + cachedPerches.Count;
+            return totalSlings < totalLandingZones;
         }
 
         /// <summary>
@@ -694,27 +732,33 @@ namespace Arsenal
             }
             else if (product.destinationType == typeof(Building_PERCH))
             {
-                // SLING - spawn at PERCH pad via skyfaller
+                // SLING destinations can be beacon zones (Building_PerchBeacon) or legacy PERCHes (Building_PERCH)
+                Building_PerchBeacon targetBeaconZone = destination as Building_PerchBeacon;
                 Building_PERCH targetPerch = destination as Building_PERCH;
-                if (targetPerch == null || !targetPerch.HasNetworkConnection())
+
+                // Validate destination
+                bool hasValidDestination = (targetBeaconZone != null && targetBeaconZone.HasNetworkConnection() && targetBeaconZone.HasValidLandingZone) ||
+                                           (targetPerch != null && targetPerch.HasNetworkConnection());
+
+                if (!hasValidDestination)
                 {
                     // No valid target - drop SLING item
                     Thing slingItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
                     GenPlace.TryPlaceThing(slingItem, Position, Map, ThingPlaceMode.Near);
-                    Messages.Message(Label + ": SLING completed but no valid PERCH available.", this, MessageTypeDefOf.NeutralEvent);
+                    Messages.Message(Label + ": SLING completed but no valid landing zone available.", this, MessageTypeDefOf.NeutralEvent);
                     return;
                 }
 
                 // Check fleet capacity
-                if (!SlingLogisticsManager.CanAddSling())
+                if (!CanAddSlingToFleet())
                 {
                     Thing slingItem = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
                     GenPlace.TryPlaceThing(slingItem, Position, Map, ThingPlaceMode.Near);
-                    Messages.Message(Label + ": SLING completed but fleet is at capacity (need more PERCHes).", this, MessageTypeDefOf.NeutralEvent);
+                    Messages.Message(Label + ": SLING completed but fleet is at capacity (need more landing zones).", this, MessageTypeDefOf.NeutralEvent);
                     return;
                 }
 
-                // Create SLING item and deliver to PERCH
+                // Create SLING item
                 Thing sling = ThingMaker.MakeThing(ArsenalDefOf.Arsenal_SLING);
 
                 // Assign name to the SLING immediately
@@ -725,32 +769,72 @@ namespace Arsenal
                     newSlingName = slingThing.CustomName;
                 }
 
-                // If PERCH is on the same map, spawn landing skyfaller
-                if (targetPerch.Map == Map)
+                // Handle beacon zone destination (new system)
+                if (targetBeaconZone != null)
                 {
-                    var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(ArsenalDefOf.Arsenal_SlingLanding);
-                    skyfaller.sling = sling;
-                    skyfaller.slingName = newSlingName;
-                    skyfaller.destinationPerch = targetPerch;
-                    skyfaller.isWaypointStop = false;
-                    GenSpawn.Spawn(skyfaller, targetPerch.Position, Map);
-                }
-                else
-                {
-                    // Different map - create traveling world object
-                    var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_TravelingSling);
-                    traveling.Tile = Map.Tile;
-                    traveling.destinationTile = targetPerch.Map.Tile;
-                    traveling.sling = sling;
-                    traveling.slingName = newSlingName;
-                    traveling.cargo = new System.Collections.Generic.Dictionary<ThingDef, int>();
-                    traveling.destinationPerch = targetPerch;
-                    traveling.CalculateRoute();
-                    Find.WorldObjects.Add(traveling);
-                }
+                    // Find landing spot in beacon zone
+                    IntVec3 landingSpot = targetBeaconZone.FindLandingSpot();
 
-                Messages.Message(Label + " Line " + (line.index + 1) + ": " + (newSlingName ?? "SLING") + " en route to " + targetPerch.Label,
-                    this, MessageTypeDefOf.NeutralEvent);
+                    if (targetBeaconZone.Map == Map)
+                    {
+                        // Same map - spawn landing skyfaller
+                        var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(ArsenalDefOf.Arsenal_SlingLanding);
+                        skyfaller.sling = sling;
+                        skyfaller.slingName = newSlingName;
+                        skyfaller.destinationBeacon = targetBeaconZone;
+                        skyfaller.destinationTile = targetBeaconZone.Map.Tile;
+                        skyfaller.isWaypointStop = false;
+
+                        IntVec3 skyfallerPos = landingSpot.IsValid ? landingSpot : targetBeaconZone.Position;
+                        GenSpawn.Spawn(skyfaller, skyfallerPos, Map);
+                    }
+                    else
+                    {
+                        // Different map - create traveling world object
+                        var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_TravelingSling);
+                        traveling.Tile = Map.Tile;
+                        traveling.destinationTile = targetBeaconZone.Map.Tile;
+                        traveling.sling = sling;
+                        traveling.slingName = newSlingName;
+                        traveling.cargo = new System.Collections.Generic.Dictionary<ThingDef, int>();
+                        traveling.destinationBeacon = targetBeaconZone;
+                        traveling.CalculateRoute();
+                        Find.WorldObjects.Add(traveling);
+                    }
+
+                    Messages.Message(Label + " Line " + (line.index + 1) + ": " + (newSlingName ?? "SLING") + " en route to " + targetBeaconZone.ZoneName,
+                        this, MessageTypeDefOf.NeutralEvent);
+                }
+                // Handle legacy PERCH destination
+                else if (targetPerch != null)
+                {
+                    if (targetPerch.Map == Map)
+                    {
+                        // Same map - spawn landing skyfaller
+                        var skyfaller = (SlingLandingSkyfaller)SkyfallerMaker.MakeSkyfaller(ArsenalDefOf.Arsenal_SlingLanding);
+                        skyfaller.sling = sling;
+                        skyfaller.slingName = newSlingName;
+                        skyfaller.destinationPerch = targetPerch;
+                        skyfaller.isWaypointStop = false;
+                        GenSpawn.Spawn(skyfaller, targetPerch.Position, Map);
+                    }
+                    else
+                    {
+                        // Different map - create traveling world object
+                        var traveling = (WorldObject_TravelingSling)WorldObjectMaker.MakeWorldObject(ArsenalDefOf.Arsenal_TravelingSling);
+                        traveling.Tile = Map.Tile;
+                        traveling.destinationTile = targetPerch.Map.Tile;
+                        traveling.sling = sling;
+                        traveling.slingName = newSlingName;
+                        traveling.cargo = new System.Collections.Generic.Dictionary<ThingDef, int>();
+                        traveling.destinationPerch = targetPerch;
+                        traveling.CalculateRoute();
+                        Find.WorldObjects.Add(traveling);
+                    }
+
+                    Messages.Message(Label + " Line " + (line.index + 1) + ": " + (newSlingName ?? "SLING") + " en route to " + targetPerch.Label,
+                        this, MessageTypeDefOf.NeutralEvent);
+                }
             }
         }
 

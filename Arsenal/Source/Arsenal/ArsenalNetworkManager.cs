@@ -655,6 +655,47 @@ namespace Arsenal
             return GetAllPerchBeacons().Where(b => b.IsSink && b.HasValidLandingZone).ToList();
         }
 
+        /// <summary>
+        /// Gets all valid landing zones (primary beacons only, with valid 4-beacon rectangle).
+        /// Filters for network connectivity and power status.
+        /// </summary>
+        public static List<Building_PerchBeacon> GetAllValidBeaconZones()
+        {
+            var validZones = new List<Building_PerchBeacon>();
+            var allBeacons = GetAllPerchBeacons();
+
+            foreach (var beacon in allBeacons)
+            {
+                // Only include primary beacons with valid landing zones
+                if (beacon.HasValidLandingZone && beacon.IsPrimary)
+                {
+                    validZones.Add(beacon);
+                }
+            }
+
+            return validZones;
+        }
+
+        /// <summary>
+        /// Gets all valid landing zones with network connectivity (for SLING delivery).
+        /// </summary>
+        public static List<Building_PerchBeacon> GetConnectedBeaconZones()
+        {
+            return GetAllValidBeaconZones()
+                .Where(b => b.HasNetworkConnection() && b.IsPoweredOn)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Gets beacon zones that have space for a new SLING.
+        /// </summary>
+        public static List<Building_PerchBeacon> GetBeaconZonesWithSpace()
+        {
+            return GetConnectedBeaconZones()
+                .Where(b => b.HasSpaceForSling)
+                .ToList();
+        }
+
         #endregion
 
         public static void RegisterArsenal(Building_Arsenal arsenal)
@@ -827,6 +868,9 @@ namespace Arsenal
             mules.Clear();
             stables.Clear();
             morias.Clear();
+
+            // Reset beacon zone counter
+            Building_PerchBeacon.ResetZoneCounter();
         }
 
         /// <summary>
@@ -919,6 +963,14 @@ namespace Arsenal
                             foundCount++;
                         }
                     }
+                    else if (building is Building_PerchBeacon beacon)
+                    {
+                        if (!perchBeacons.Contains(beacon))
+                        {
+                            perchBeacons.Add(beacon);
+                            foundCount++;
+                        }
+                    }
                     else if (building is Building_Stable stable)
                     {
                         if (!stables.Contains(stable))
@@ -997,6 +1049,7 @@ namespace Arsenal
             int maxQuiver = 0, maxArgus = 0, maxHerald = 0;
             int maxPerch = 0, maxStable = 0, maxMoria = 0, maxMule = 0;
             int maxSling = 0;
+            int maxBeaconZone = 0;
 
             foreach (var hub in hubs)
                 maxHub = System.Math.Max(maxHub, ExtractIdFromName(hub.Label, "HUB"));
@@ -1018,6 +1071,15 @@ namespace Arsenal
                 maxMoria = System.Math.Max(maxMoria, ExtractIdFromName(moria.Label, "MORIA"));
             foreach (var mule in mules)
                 maxMule = System.Math.Max(maxMule, ExtractIdFromName(mule.Label, "MULE"));
+
+            // Check beacon zones (zone names stored on primary beacons)
+            foreach (var beacon in perchBeacons)
+            {
+                if (beacon.HasValidLandingZone && beacon.IsPrimary)
+                {
+                    maxBeaconZone = System.Math.Max(maxBeaconZone, ExtractIdFromName(beacon.ZoneName, "PERCH"));
+                }
+            }
 
             // Also check docked mules in stables
             foreach (var stable in stables)
@@ -1049,6 +1111,7 @@ namespace Arsenal
             Building_Moria.SetCounter(maxMoria + 1);
             MULE_Pawn.SetCounter(maxMule + 1);
             SLING_Thing.SetCounter(maxSling + 1);
+            Building_PerchBeacon.SetZoneCounter(maxBeaconZone + 1);
         }
 
         /// <summary>
