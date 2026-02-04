@@ -435,13 +435,15 @@ namespace Arsenal
 
         /// <summary>
         /// Checks if the fleet can accept another SLING.
-        /// Fleet limit is total landing zones (beacon zones + legacy PERCHes).
+        /// Fleet limit is 1 SLING per 2 landing zones (need source + destination).
         /// </summary>
         private bool CanAddSlingToFleet()
         {
             int totalSlings = SlingLogisticsManager.GetTotalSlingCount();
             int totalLandingZones = cachedBeaconZones.Count + cachedPerches.Count;
-            return totalSlings < totalLandingZones;
+            // 1:2 ratio - need at least 2 landing zones per SLING
+            int maxSlings = totalLandingZones / 2;
+            return totalSlings < maxSlings;
         }
 
         /// <summary>

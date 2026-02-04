@@ -50,15 +50,24 @@ namespace Arsenal
 
         /// <summary>
         /// The zone name (e.g., "PERCH-01"). Returns from primary beacon.
+        /// Lazily assigns a name if the zone is valid but unnamed.
         /// </summary>
         public string ZoneName
         {
             get
             {
                 var primary = GetPrimaryBeacon();
-                if (primary != null && primary != this)
-                    return primary.zoneName;
-                return zoneName;
+                if (primary == null) return null;
+
+                // Lazily assign name if zone is valid but unnamed
+                if (string.IsNullOrEmpty(primary.zoneName))
+                {
+                    primary.zoneName = "PERCH-" + zoneCounter.ToString("D2");
+                    primary.hasAssignedZoneName = true;
+                    zoneCounter++;
+                }
+
+                return primary.zoneName;
             }
         }
 
@@ -442,21 +451,27 @@ namespace Arsenal
             // Inner zone (excluding beacon corners)
             CellRect innerZone = landingZone.ContractedBy(1);
 
-            // Try to find a clear spot within the inner zone
-            IntVec3 center = innerZone.CenterCell;
+            // Calculate the ideal landing position to center the SLING in the zone
+            // SLING spawns from SW corner, so offset by half the SLING dimensions
+            IntVec3 zoneCenter = innerZone.CenterCell;
+            IntVec3 idealLandingPos = new IntVec3(
+                zoneCenter.x - slingWidth / 2,
+                0,
+                zoneCenter.z - slingHeight / 2
+            );
 
-            // Check center first
-            if (IsValidLandingSpot(center, slingWidth, slingHeight, innerZone))
+            // Check ideal centered position first
+            if (IsValidLandingSpot(idealLandingPos, slingWidth, slingHeight, innerZone))
             {
-                return center;
+                return idealLandingPos;
             }
 
-            // Spiral outward from center
+            // Spiral outward from ideal position
             for (int radius = 1; radius <= Mathf.Max(innerZone.Width, innerZone.Height); radius++)
             {
-                foreach (IntVec3 cell in GenRadial.RadialCellsAround(center, radius, true))
+                foreach (IntVec3 cell in GenRadial.RadialCellsAround(idealLandingPos, radius, true))
                 {
-                    if (innerZone.Contains(cell) && IsValidLandingSpot(cell, slingWidth, slingHeight, innerZone))
+                    if (IsValidLandingSpot(cell, slingWidth, slingHeight, innerZone))
                     {
                         return cell;
                     }
