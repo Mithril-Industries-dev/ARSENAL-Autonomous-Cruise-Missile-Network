@@ -56,6 +56,9 @@ The landing zone must be kept clear - no buildings or roofs within the beacon re
     <researchPrerequisites>
       <li>Arsenal_SlingLogistics</li>
     </researchPrerequisites>
+    <placeWorkers>
+      <li>Arsenal.PlaceWorker_PerchBeacon</li>
+    </placeWorkers>
   </ThingDef>
 
 </Defs>

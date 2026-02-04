@@ -10,48 +10,76 @@ namespace Arsenal
     /// PERCH Landing Beacon - marks the corner of a landing zone for SLING cargo craft.
     /// Four beacons placed at corners define a landing pad (minimum 9x12 for SLING size 6x10).
     /// Similar to vanilla ship landing beacons but for SLING logistics.
+    ///
+    /// Design: Beacons are simple markers. When 4 beacons form a valid rectangle,
+    /// the beacon at the min corner (lowest X, then lowest Z) becomes the "primary"
+    /// beacon which holds the zone configuration (role, filters, thresholds).
     /// </summary>
     public class Building_PerchBeacon : Building
     {
-        // Naming
-        private string customName;
-        private static int beaconCounter = 1;
-
-        // Logistics role
+        // Logistics role (only used if this is the primary beacon)
         public enum PerchRole { Source, Sink }
         private PerchRole role = PerchRole.Source;
 
-        // Source configuration (what to export)
+        // Source configuration - what to export (only used if primary)
         private List<ThingDef> sourceFilter = new List<ThingDef>();
         private Dictionary<ThingDef, int> thresholdTargets = new Dictionary<ThingDef, int>();
 
         // Landing zone constants
         public const int MIN_WIDTH = 9;   // Minimum landing zone width (SLING is 6 wide + margin)
         public const int MIN_HEIGHT = 12; // Minimum landing zone height (SLING is 10 tall + margin)
-        public const int MAX_BEACON_DISTANCE = 30; // Max distance to search for other beacons
+        public const int MAX_BEACON_DISTANCE = 40; // Max distance to search for other beacons
 
         // Components
         private CompPowerTrader powerComp;
 
-        // Cached landing zone (updated periodically)
+        // Cached landing zone and zone beacons (updated periodically)
         private CellRect? cachedLandingZone;
+        private List<Building_PerchBeacon> cachedZoneBeacons;
         private int lastZoneCheck = -999;
         private const int ZONE_CHECK_INTERVAL = 120;
 
         #region Properties
 
-        public override string Label => !string.IsNullOrEmpty(customName) ? customName : base.Label;
-        public PerchRole Role => role;
-        public bool IsSource => role == PerchRole.Source;
-        public bool IsSink => role == PerchRole.Sink;
+        public PerchRole Role => GetPrimaryBeacon()?.role ?? role;
+        public bool IsSource => Role == PerchRole.Source;
+        public bool IsSink => Role == PerchRole.Sink;
         public bool IsPoweredOn => powerComp == null || powerComp.PowerOn;
-        public List<ThingDef> SourceFilter => sourceFilter;
-        public Dictionary<ThingDef, int> ThresholdTargets => thresholdTargets;
+
+        /// <summary>
+        /// Returns true if this beacon is the primary (configuration holder) for its zone.
+        /// Primary is determined by position: lowest X, then lowest Z among zone beacons.
+        /// </summary>
+        public bool IsPrimary
+        {
+            get
+            {
+                var zoneBeacons = GetZoneBeacons();
+                if (zoneBeacons == null || zoneBeacons.Count < 4) return false;
+                var primary = zoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
+                return primary == this;
+            }
+        }
+
+        /// <summary>
+        /// Gets the primary beacon for this zone (may be this beacon or another).
+        /// Returns null if not part of a valid zone.
+        /// </summary>
+        public Building_PerchBeacon GetPrimaryBeacon()
+        {
+            var zoneBeacons = GetZoneBeacons();
+            if (zoneBeacons == null || zoneBeacons.Count < 4) return null;
+            return zoneBeacons.OrderBy(b => b.Position.x).ThenBy(b => b.Position.z).First();
+        }
 
         /// <summary>
         /// Returns true if this beacon is part of a valid 4-beacon landing zone.
         /// </summary>
         public bool HasValidLandingZone => GetLandingZone().HasValue;
+
+        // Config accessors - delegate to primary beacon
+        public List<ThingDef> SourceFilter => GetPrimaryBeacon()?.sourceFilter ?? sourceFilter;
+        public Dictionary<ThingDef, int> ThresholdTargets => GetPrimaryBeacon()?.thresholdTargets ?? thresholdTargets;
 
         #endregion
 
@@ -64,19 +92,20 @@ namespace Arsenal
 
             ArsenalNetworkManager.RegisterPerchBeacon(this);
 
-            if (!respawningAfterLoad)
-            {
-                customName = "PERCH-" + beaconCounter.ToString("D2");
-                beaconCounter++;
-            }
-
             // Invalidate cache
             cachedLandingZone = null;
+            cachedZoneBeacons = null;
             lastZoneCheck = -999;
+
+            // Invalidate caches of nearby beacons too (a new beacon may complete their zone)
+            InvalidateNearbyBeaconCaches();
         }
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
+            // Invalidate caches of zone beacons before deregistering
+            InvalidateNearbyBeaconCaches();
+
             ArsenalNetworkManager.DeregisterPerchBeacon(this);
             base.DeSpawn(mode);
         }
@@ -84,7 +113,6 @@ namespace Arsenal
         public override void ExposeData()
         {
             base.ExposeData();
-            Scribe_Values.Look(ref customName, "customName");
             Scribe_Values.Look(ref role, "role", PerchRole.Source);
             Scribe_Collections.Look(ref sourceFilter, "sourceFilter", LookMode.Def);
             Scribe_Collections.Look(ref thresholdTargets, "thresholdTargets", LookMode.Def, LookMode.Value);
@@ -96,9 +124,41 @@ namespace Arsenal
             }
         }
 
+        private void InvalidateNearbyBeaconCaches()
+        {
+            if (Map == null) return;
+            foreach (var beacon in ArsenalNetworkManager.GetPerchBeaconsOnMap(Map))
+            {
+                if (beacon != this)
+                {
+                    beacon.cachedLandingZone = null;
+                    beacon.cachedZoneBeacons = null;
+                    beacon.lastZoneCheck = -999;
+                }
+            }
+        }
+
         #endregion
 
         #region Landing Zone Detection
+
+        /// <summary>
+        /// Gets all beacons that form a valid zone with this beacon.
+        /// Returns null if no valid zone can be formed.
+        /// </summary>
+        public List<Building_PerchBeacon> GetZoneBeacons()
+        {
+            // Use cache if recent
+            if (Find.TickManager.TicksGame - lastZoneCheck < ZONE_CHECK_INTERVAL)
+            {
+                return cachedZoneBeacons;
+            }
+
+            cachedZoneBeacons = CalculateZoneBeacons();
+            cachedLandingZone = cachedZoneBeacons != null ? CalculateLandingZoneFromBeacons(cachedZoneBeacons) : null;
+            lastZoneCheck = Find.TickManager.TicksGame;
+            return cachedZoneBeacons;
+        }
 
         /// <summary>
         /// Gets the landing zone defined by this beacon and 3 others forming a rectangle.
@@ -106,24 +166,18 @@ namespace Arsenal
         /// </summary>
         public CellRect? GetLandingZone()
         {
-            // Use cache if recent
-            if (Find.TickManager.TicksGame - lastZoneCheck < ZONE_CHECK_INTERVAL && cachedLandingZone.HasValue)
-            {
-                return cachedLandingZone;
-            }
-
-            cachedLandingZone = CalculateLandingZone();
-            lastZoneCheck = Find.TickManager.TicksGame;
+            // Ensure cache is fresh
+            GetZoneBeacons();
             return cachedLandingZone;
         }
 
-        private CellRect? CalculateLandingZone()
+        private List<Building_PerchBeacon> CalculateZoneBeacons()
         {
             if (Map == null) return null;
 
             // Find all other powered beacons on this map
             var otherBeacons = ArsenalNetworkManager.GetPerchBeaconsOnMap(Map)
-                .Where(b => b != this && b.IsPoweredOn)
+                .Where(b => b != this && b.IsPoweredOn && b.Position.DistanceTo(Position) <= MAX_BEACON_DISTANCE)
                 .ToList();
 
             if (otherBeacons.Count < 3) return null;
@@ -135,10 +189,10 @@ namespace Arsenal
                 {
                     foreach (var b3 in otherBeacons.Where(b => b != b1 && b != b2))
                     {
-                        var zone = TryFormRectangle(this, b1, b2, b3);
-                        if (zone.HasValue)
+                        var beacons = new List<Building_PerchBeacon> { this, b1, b2, b3 };
+                        if (IsValidRectangle(beacons))
                         {
-                            return zone;
+                            return beacons;
                         }
                     }
                 }
@@ -147,35 +201,31 @@ namespace Arsenal
             return null;
         }
 
-        /// <summary>
-        /// Tries to form a valid landing rectangle from 4 beacons.
-        /// Returns the CellRect if valid, null otherwise.
-        /// </summary>
-        private CellRect? TryFormRectangle(Building_PerchBeacon a, Building_PerchBeacon b, Building_PerchBeacon c, Building_PerchBeacon d)
+        private bool IsValidRectangle(List<Building_PerchBeacon> beacons)
         {
-            // Get all 4 positions
-            var positions = new List<IntVec3> { a.Position, b.Position, c.Position, d.Position };
+            if (beacons.Count != 4) return false;
 
-            // Find min/max to form rectangle
+            var positions = beacons.Select(b => b.Position).ToList();
+
             int minX = positions.Min(p => p.x);
             int maxX = positions.Max(p => p.x);
             int minZ = positions.Min(p => p.z);
             int maxZ = positions.Max(p => p.z);
 
-            // Check that all 4 beacons are at corners
-            var corners = new HashSet<IntVec3>
+            // All 4 beacons must be at corners
+            var corners = new HashSet<(int x, int z)>
             {
-                new IntVec3(minX, 0, minZ),
-                new IntVec3(minX, 0, maxZ),
-                new IntVec3(maxX, 0, minZ),
-                new IntVec3(maxX, 0, maxZ)
+                (minX, minZ),
+                (minX, maxZ),
+                (maxX, minZ),
+                (maxX, maxZ)
             };
 
             foreach (var pos in positions)
             {
-                if (!corners.Contains(new IntVec3(pos.x, 0, pos.z)))
+                if (!corners.Contains((pos.x, pos.z)))
                 {
-                    return null; // Not at a corner
+                    return false;
                 }
             }
 
@@ -183,14 +233,25 @@ namespace Arsenal
             int width = maxX - minX + 1;
             int height = maxZ - minZ + 1;
 
-            if (width < MIN_WIDTH || height < MIN_HEIGHT)
-            {
-                return null; // Too small
-            }
+            return width >= MIN_WIDTH && height >= MIN_HEIGHT;
+        }
 
-            // Create the landing zone (inside the beacons, not including beacon cells)
-            CellRect zone = new CellRect(minX + 1, minZ + 1, width - 2, height - 2);
-            return zone;
+        private CellRect? CalculateLandingZoneFromBeacons(List<Building_PerchBeacon> beacons)
+        {
+            if (beacons == null || beacons.Count != 4) return null;
+
+            var positions = beacons.Select(b => b.Position).ToList();
+
+            int minX = positions.Min(p => p.x);
+            int maxX = positions.Max(p => p.x);
+            int minZ = positions.Min(p => p.z);
+            int maxZ = positions.Max(p => p.z);
+
+            int width = maxX - minX + 1;
+            int height = maxZ - minZ + 1;
+
+            // Return the full zone including beacon positions
+            return new CellRect(minX, minZ, width, height);
         }
 
         /// <summary>
@@ -204,22 +265,24 @@ namespace Arsenal
 
             CellRect landingZone = zone.Value;
 
-            // Try to find a clear spot within the zone
-            // Start from center and work outward
-            IntVec3 center = landingZone.CenterCell;
+            // Inner zone (excluding beacon corners)
+            CellRect innerZone = landingZone.ContractedBy(1);
+
+            // Try to find a clear spot within the inner zone
+            IntVec3 center = innerZone.CenterCell;
 
             // Check center first
-            if (IsValidLandingSpot(center, slingWidth, slingHeight, landingZone))
+            if (IsValidLandingSpot(center, slingWidth, slingHeight, innerZone))
             {
                 return center;
             }
 
             // Spiral outward from center
-            for (int radius = 1; radius <= Mathf.Max(landingZone.Width, landingZone.Height); radius++)
+            for (int radius = 1; radius <= Mathf.Max(innerZone.Width, innerZone.Height); radius++)
             {
                 foreach (IntVec3 cell in GenRadial.RadialCellsAround(center, radius, true))
                 {
-                    if (landingZone.Contains(cell) && IsValidLandingSpot(cell, slingWidth, slingHeight, landingZone))
+                    if (innerZone.Contains(cell) && IsValidLandingSpot(cell, slingWidth, slingHeight, innerZone))
                     {
                         return cell;
                     }
@@ -229,12 +292,8 @@ namespace Arsenal
             return IntVec3.Invalid;
         }
 
-        /// <summary>
-        /// Checks if a cell is valid for landing a SLING of given size.
-        /// </summary>
         private bool IsValidLandingSpot(IntVec3 cell, int width, int height, CellRect zone)
         {
-            // Check all cells the SLING would occupy
             for (int x = 0; x < width; x++)
             {
                 for (int z = 0; z < height; z++)
@@ -246,14 +305,10 @@ namespace Arsenal
                     if (!checkCell.Standable(Map)) return false;
                     if (checkCell.Roofed(Map)) return false;
 
-                    // Check for blocking things
                     foreach (Thing t in checkCell.GetThingList(Map))
                     {
-                        // Allow beacons
                         if (t is Building_PerchBeacon) continue;
-                        // Block on other buildings
                         if (t is Building) return false;
-                        // Block on existing SLINGs
                         if (t is SLING_Thing) return false;
                     }
                 }
@@ -298,47 +353,64 @@ namespace Arsenal
             return GetDockedSlings().Where(s => !s.IsLoading).ToList();
         }
 
-        /// <summary>
-        /// Checks if this beacon's zone has any idle SLINGs available.
-        /// </summary>
         public bool HasAvailableSling => GetIdleSlings().Any();
 
         #endregion
 
-        #region Source/Sink Configuration
+        #region Source/Sink Configuration (Primary beacon only)
 
         public void SetRole(PerchRole newRole)
         {
-            role = newRole;
+            var primary = GetPrimaryBeacon();
+            if (primary != null && primary != this)
+            {
+                primary.role = newRole;
+            }
+            else
+            {
+                role = newRole;
+            }
         }
 
         public void ToggleRole()
         {
-            role = role == PerchRole.Source ? PerchRole.Sink : PerchRole.Source;
+            var primary = GetPrimaryBeacon();
+            if (primary != null)
+            {
+                primary.role = primary.role == PerchRole.Source ? PerchRole.Sink : PerchRole.Source;
+            }
+            else
+            {
+                role = role == PerchRole.Source ? PerchRole.Sink : PerchRole.Source;
+            }
         }
 
         public void AddToSourceFilter(ThingDef def)
         {
-            if (!sourceFilter.Contains(def))
-                sourceFilter.Add(def);
+            var primary = GetPrimaryBeacon() ?? this;
+            if (!primary.sourceFilter.Contains(def))
+                primary.sourceFilter.Add(def);
         }
 
         public void RemoveFromSourceFilter(ThingDef def)
         {
-            sourceFilter.Remove(def);
+            var primary = GetPrimaryBeacon() ?? this;
+            primary.sourceFilter.Remove(def);
         }
 
         public void SetThreshold(ThingDef def, int amount)
         {
+            var primary = GetPrimaryBeacon() ?? this;
             if (amount <= 0)
-                thresholdTargets.Remove(def);
+                primary.thresholdTargets.Remove(def);
             else
-                thresholdTargets[def] = amount;
+                primary.thresholdTargets[def] = amount;
         }
 
         public int GetThreshold(ThingDef def)
         {
-            return thresholdTargets.TryGetValue(def, out int val) ? val : 0;
+            var primary = GetPrimaryBeacon() ?? this;
+            return primary.thresholdTargets.TryGetValue(def, out int val) ? val : 0;
         }
 
         /// <summary>
@@ -349,7 +421,8 @@ namespace Arsenal
             var available = new Dictionary<ThingDef, int>();
             if (Map == null || !IsSource) return available;
 
-            foreach (ThingDef def in sourceFilter)
+            var filter = SourceFilter;
+            foreach (ThingDef def in filter)
             {
                 int onMap = Map.resourceCounter.GetCount(def);
                 int threshold = GetThreshold(def);
@@ -372,7 +445,8 @@ namespace Arsenal
             var needed = new Dictionary<ThingDef, int>();
             if (Map == null || !IsSink) return needed;
 
-            foreach (var kvp in thresholdTargets)
+            var targets = ThresholdTargets;
+            foreach (var kvp in targets)
             {
                 int onMap = Map.resourceCounter.GetCount(kvp.Key);
                 int deficit = kvp.Value - onMap;
@@ -394,7 +468,6 @@ namespace Arsenal
         {
             base.DrawExtraSelectionOverlays();
 
-            // Draw landing zone outline when selected
             var zone = GetLandingZone();
             if (zone.HasValue)
             {
@@ -416,37 +489,49 @@ namespace Arsenal
             if (zone.HasValue)
             {
                 str += $"Landing zone: {zone.Value.Width}x{zone.Value.Height}";
-            }
-            else
-            {
-                str += "No valid landing zone (need 4 beacons at corners)";
-            }
 
-            str += $"\nRole: {role}";
-            str += $"\nPowered: {(IsPoweredOn ? "Yes" : "No")}";
-
-            if (HasValidLandingZone)
-            {
-                var slings = GetDockedSlings();
-                str += $"\nSLINGs in zone: {slings.Count}";
-            }
-
-            if (IsSource)
-            {
-                var available = GetAvailableForExport();
-                if (available.Any())
+                var primary = GetPrimaryBeacon();
+                if (IsPrimary)
                 {
-                    str += "\nExportable: " + string.Join(", ", available.Take(3).Select(a => $"{a.Key.label} x{a.Value}"));
-                    if (available.Count > 3) str += "...";
+                    str += " (primary)";
+                }
+                else if (primary != null)
+                {
+                    str += $" (config on SW beacon)";
                 }
             }
             else
             {
-                var needed = GetResourcesNeeded();
-                if (needed.Any())
+                str += "No valid landing zone (need 4 beacons at corners, min 9x12)";
+            }
+
+            str += $"\nPowered: {(IsPoweredOn ? "Yes" : "No")}";
+
+            // Only show role/config info if we have a valid zone
+            if (HasValidLandingZone)
+            {
+                str += $"\nRole: {Role}";
+
+                var slings = GetDockedSlings();
+                str += $"\nSLINGs in zone: {slings.Count}";
+
+                if (IsSource)
                 {
-                    str += "\nNeeded: " + string.Join(", ", needed.Take(3).Select(n => $"{n.Key.label} x{n.Value}"));
-                    if (needed.Count > 3) str += "...";
+                    var available = GetAvailableForExport();
+                    if (available.Any())
+                    {
+                        str += "\nExportable: " + string.Join(", ", available.Take(3).Select(a => $"{a.Key.label} x{a.Value}"));
+                        if (available.Count > 3) str += "...";
+                    }
+                }
+                else
+                {
+                    var needed = GetResourcesNeeded();
+                    if (needed.Any())
+                    {
+                        str += "\nNeeded: " + string.Join(", ", needed.Take(3).Select(n => $"{n.Key.label} x{n.Value}"));
+                        if (needed.Count > 3) str += "...";
+                    }
                 }
             }
 
@@ -458,59 +543,51 @@ namespace Arsenal
             foreach (Gizmo g in base.GetGizmos())
                 yield return g;
 
-            // Rename
-            yield return new Command_Action
+            // Only show configuration gizmos if we have a valid zone
+            if (HasValidLandingZone)
             {
-                defaultLabel = "Rename",
-                defaultDesc = "Rename this beacon.",
-                icon = ContentFinder<Texture2D>.Get("UI/Buttons/Rename", false),
-                action = delegate
-                {
-                    Find.WindowStack.Add(new Dialog_RenameBeacon(this));
-                }
-            };
-
-            // Toggle Role
-            yield return new Command_Action
-            {
-                defaultLabel = $"Role: {role}",
-                defaultDesc = "Toggle between SOURCE (exports resources) and SINK (imports resources).",
-                icon = ContentFinder<Texture2D>.Get("UI/Designators/ZoneCreate", false),
-                action = delegate
-                {
-                    ToggleRole();
-                    Messages.Message($"{Label} is now a {role}", this, MessageTypeDefOf.NeutralEvent);
-                }
-            };
-
-            // Configure filter (for sources)
-            if (IsSource)
-            {
+                // Toggle Role
                 yield return new Command_Action
                 {
-                    defaultLabel = "Configure Export",
-                    defaultDesc = "Set which resources to export and threshold amounts.",
-                    icon = ContentFinder<Texture2D>.Get("UI/Commands/LoadTransporter", false),
+                    defaultLabel = $"Role: {Role}",
+                    defaultDesc = "Toggle between SOURCE (exports resources) and SINK (imports resources).\nConfiguration is shared by all beacons in this landing zone.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Designators/ZoneCreate", false),
                     action = delegate
                     {
-                        Find.WindowStack.Add(new Dialog_ConfigureBeaconExport(this));
+                        ToggleRole();
+                        Messages.Message($"Landing zone is now a {Role}", this, MessageTypeDefOf.NeutralEvent);
                     }
                 };
-            }
 
-            // Configure thresholds (for sinks)
-            if (IsSink)
-            {
-                yield return new Command_Action
+                // Configure filter (for sources)
+                if (IsSource)
                 {
-                    defaultLabel = "Configure Import",
-                    defaultDesc = "Set target resource levels for this location.",
-                    icon = ContentFinder<Texture2D>.Get("UI/Commands/LoadTransporter", false),
-                    action = delegate
+                    yield return new Command_Action
                     {
-                        Find.WindowStack.Add(new Dialog_ConfigureBeaconImport(this));
-                    }
-                };
+                        defaultLabel = "Configure Export",
+                        defaultDesc = "Set which resources to export and threshold amounts.",
+                        icon = ContentFinder<Texture2D>.Get("UI/Commands/LoadTransporter", false),
+                        action = delegate
+                        {
+                            Find.WindowStack.Add(new Dialog_ConfigureBeaconExport(this));
+                        }
+                    };
+                }
+
+                // Configure thresholds (for sinks)
+                if (IsSink)
+                {
+                    yield return new Command_Action
+                    {
+                        defaultLabel = "Configure Import",
+                        defaultDesc = "Set target resource levels for this location.",
+                        icon = ContentFinder<Texture2D>.Get("UI/Commands/LoadTransporter", false),
+                        action = delegate
+                        {
+                            Find.WindowStack.Add(new Dialog_ConfigureBeaconImport(this));
+                        }
+                    };
+                }
             }
 
             // Dev gizmos
@@ -537,13 +614,17 @@ namespace Arsenal
 
                 yield return new Command_Action
                 {
-                    defaultLabel = $"DEV: Zone Info",
+                    defaultLabel = "DEV: Zone Info",
                     action = delegate
                     {
                         var zone = GetLandingZone();
-                        if (zone.HasValue)
+                        var zoneBeacons = GetZoneBeacons();
+                        if (zone.HasValue && zoneBeacons != null)
                         {
                             Log.Message($"[PERCH BEACON] Zone: {zone.Value}, Size: {zone.Value.Width}x{zone.Value.Height}");
+                            Log.Message($"[PERCH BEACON] Beacons in zone: {zoneBeacons.Count}");
+                            Log.Message($"[PERCH BEACON] Primary: {GetPrimaryBeacon()?.Position}");
+                            Log.Message($"[PERCH BEACON] This is primary: {IsPrimary}");
                             Log.Message($"[PERCH BEACON] SLINGs in zone: {GetDockedSlings().Count}");
                         }
                         else
@@ -556,58 +637,9 @@ namespace Arsenal
         }
 
         #endregion
-
-        #region Static
-
-        public static void ResetCounter()
-        {
-            beaconCounter = 1;
-        }
-
-        public static void SetCounter(int value)
-        {
-            beaconCounter = System.Math.Max(1, value);
-        }
-
-        #endregion
     }
 
     #region Dialogs
-
-    public class Dialog_RenameBeacon : Window
-    {
-        private Building_PerchBeacon beacon;
-        private string newName;
-
-        public Dialog_RenameBeacon(Building_PerchBeacon beacon)
-        {
-            this.beacon = beacon;
-            this.newName = beacon.Label;
-            this.doCloseX = true;
-            this.absorbInputAroundWindow = true;
-            this.closeOnClickedOutside = true;
-        }
-
-        public override Vector2 InitialSize => new Vector2(300f, 150f);
-
-        public override void DoWindowContents(Rect inRect)
-        {
-            Listing_Standard listing = new Listing_Standard();
-            listing.Begin(inRect);
-            listing.Label("Enter new name:");
-            newName = listing.TextEntry(newName);
-            listing.Gap();
-
-            if (listing.ButtonText("Confirm"))
-            {
-                typeof(Building_PerchBeacon)
-                    .GetField("customName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                    ?.SetValue(beacon, newName);
-                Close();
-            }
-            listing.End();
-        }
-    }
 
     public class Dialog_ConfigureBeaconExport : Window
     {
@@ -627,7 +659,7 @@ namespace Arsenal
         {
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
-            listing.Label($"Configure Export for {beacon.Label}");
+            listing.Label("Configure Export for Landing Zone");
             listing.GapLine();
 
             if (beacon.Map != null)
@@ -701,7 +733,7 @@ namespace Arsenal
         {
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
-            listing.Label($"Configure Import Targets for {beacon.Label}");
+            listing.Label("Configure Import Targets for Landing Zone");
             listing.GapLine();
 
             searchText = listing.TextEntry(searchText);
