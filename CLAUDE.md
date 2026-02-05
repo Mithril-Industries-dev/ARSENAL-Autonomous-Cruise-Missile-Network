@@ -15,6 +15,27 @@ This is a sophisticated RimWorld mod implementing three integrated defense/logis
 
 ---
 
+## RimWorld Source Reference
+
+Decompiled vanilla + all DLC source is at `~/RimWorldSource/`.
+All namespaces (RimWorld, Verse, Verse.AI, etc.) include Royalty, Ideology, Biotech, Anomaly, and Odyssey code.
+
+**Key files to consult before implementing new systems:**
+- `Skyfaller.cs`, `ActiveDropPod.cs` — orbital/air transit mechanics
+- `ThingWithComps.cs`, `ThingComp.cs`, `CompProperties.cs` — component architecture
+- `MapComponent.cs`, `GameComponent.cs`, `WorldComponent.cs` — singleton managers
+- `Building.cs`, `Building_WorkTable.cs` — building behavior patterns
+- `JobDriver.cs`, `Toil.cs` — job/work systems
+- `ITab.cs`, `Window.cs` — UI patterns
+- `CompTransporter.cs`, `TransportPodsArrivalAction.cs` — transport pod/shuttle systems
+- `WorldObject.cs`, `TravelingTransportPods.cs` — world map travel
+
+**Always consult relevant vanilla source before writing new systems. Match vanilla and DLC patterns.**
+
+Use `grep -r` and `find` to locate relevant classes when unsure of exact filenames.
+
+---
+
 ## Directory Structure
 
 ```
