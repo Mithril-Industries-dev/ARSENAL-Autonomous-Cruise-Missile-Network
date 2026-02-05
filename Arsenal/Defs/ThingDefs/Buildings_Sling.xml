@@ -84,7 +84,7 @@ SLINGs are manufactured at ARSENAL facilities and automatically join the logisti
     <pathCost>50</pathCost>
     <blockWind>false</blockWind>
     <fillPercent>0.5</fillPercent>
-    <tickerType>Never</tickerType>
+    <tickerType>Normal</tickerType>
     <statBases>
       <MaxHitPoints>300</MaxHitPoints>
       <Mass>500</Mass>
@@ -96,6 +96,17 @@ SLINGs are manufactured at ARSENAL facilities and automatically join the logisti
     </building>
     <drawerType>MapMeshAndRealTime</drawerType>
     <canOverlapZones>true</canOverlapZones>
+    <comps>
+      <!-- Transporter for cargo - uses vanilla loading UI and hauling -->
+      <li Class="CompProperties_Transporter">
+        <massCapacity>750</massCapacity>
+        <pawnCapacity>0</pawnCapacity>
+        <canChangeAssignedThingsAfterStarting>true</canChangeAssignedThingsAfterStarting>
+      </li>
+    </comps>
+    <inspectorTabs>
+      <li>ITab_ContentsTransporter</li>
+    </inspectorTabs>
   </ThingDef>
 
 </Defs>

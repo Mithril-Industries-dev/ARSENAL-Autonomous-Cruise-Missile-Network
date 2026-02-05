@@ -162,9 +162,6 @@ namespace Arsenal
 
         #region Beacon Zone Logistics
 
-        // Track pending beacon zone dispatches (SLING -> destination beacon zone)
-        private static Dictionary<SLING_Thing, Building_PerchBeacon> pendingBeaconDispatches = new Dictionary<SLING_Thing, Building_PerchBeacon>();
-
         /// <summary>
         /// Processes logistics for beacon zone system (Building_PerchBeacon).
         /// This is the new system using 4-beacon landing zones.
@@ -205,8 +202,8 @@ namespace Arsenal
 
                 var sling = idleSlings.First();
 
-                // Skip if this SLING already has a pending dispatch
-                if (pendingBeaconDispatches.ContainsKey(sling)) continue;
+                // Skip if this SLING already has a pending dispatch (tracked on SLING itself)
+                if (sling.IsLoading || sling.PendingDestination != null) continue;
 
                 var available = sourceZone.GetAvailableForExport();
                 if (available.Count == 0) continue;
@@ -224,7 +221,7 @@ namespace Arsenal
                     // Check route viability (fuel)
                     if (!IsBeaconRouteViable(sourceZone, sinkZone)) continue;
 
-                    // Start loading the SLING
+                    // Start loading the SLING (destination tracked on SLING via PendingDestination)
                     if (StartBeaconLoading(sourceZone, sinkZone, sling, cargoToLoad))
                     {
                         Log.Message($"[SLING] Beacon dispatch: {sling.Label} from {sourceZone.ZoneName} to {sinkZone.ZoneName}");
@@ -236,35 +233,36 @@ namespace Arsenal
 
         /// <summary>
         /// Checks for SLINGs that have completed loading and dispatches them.
+        /// SLINGs track their own pending destination via PendingDestination property.
         /// </summary>
         private static void CheckAndDispatchLoadedSlings()
         {
-            // Check all beacon zones for loading SLINGs
+            // Find all SLINGs in beacon zones that have pending destinations
             var allZones = ArsenalNetworkManager.GetAllValidBeaconZones();
-            var toRemove = new List<SLING_Thing>();
 
-            foreach (var kvp in pendingBeaconDispatches.ToList())
+            foreach (var zone in allZones)
             {
-                var sling = kvp.Key;
-                var destination = kvp.Value;
-
-                if (sling == null || sling.Destroyed || destination == null || destination.Destroyed)
+                foreach (var sling in zone.GetDockedSlings().ToList())
                 {
-                    toRemove.Add(sling);
-                    continue;
-                }
+                    if (sling == null || sling.Destroyed) continue;
 
-                // Check if loading is complete or has cargo (dispatch with what we have)
-                if (sling.IsLoadingComplete() || (sling.CurrentCargoCount > 0 && !sling.IsLoading))
-                {
-                    DispatchSlingFromBeaconZone(sling, destination);
-                    toRemove.Add(sling);
-                }
-            }
+                    // Check if SLING has a pending destination
+                    var destination = sling.PendingDestination;
+                    if (destination == null) continue;
 
-            foreach (var sling in toRemove)
-            {
-                pendingBeaconDispatches.Remove(sling);
+                    if (destination.Destroyed)
+                    {
+                        // Destination was destroyed - cancel loading
+                        sling.CancelLoading();
+                        continue;
+                    }
+
+                    // Check if loading is complete or has cargo (dispatch with what we have)
+                    if (sling.IsLoadingComplete() || (sling.CurrentCargoCount > 0 && !sling.IsLoading))
+                    {
+                        DispatchSlingFromBeaconZone(sling, destination);
+                    }
+                }
             }
         }
 
@@ -356,6 +354,7 @@ namespace Arsenal
 
         /// <summary>
         /// Starts loading a SLING at a beacon zone for dispatch to another zone.
+        /// The destination is tracked on the SLING itself via PendingDestination.
         /// </summary>
         private static bool StartBeaconLoading(
             Building_PerchBeacon sourceZone,
@@ -365,11 +364,8 @@ namespace Arsenal
         {
             if (sling == null || sling.IsLoading) return false;
 
-            // Start the SLING's loading process
-            sling.StartLoading(cargoToLoad);
-
-            // Track the pending dispatch so we dispatch to correct destination when complete
-            pendingBeaconDispatches[sling] = sinkZone;
+            // Start the SLING's loading process - destination is tracked on SLING
+            sling.StartLoading(cargoToLoad, sinkZone);
 
             Log.Message($"[SLING] {sling.Label} starting to load at {sourceZone.ZoneName} for {sinkZone.ZoneName}. " +
                        $"Cargo: {string.Join(", ", cargoToLoad.Select(c => $"{c.Key.label}x{c.Value}"))}");

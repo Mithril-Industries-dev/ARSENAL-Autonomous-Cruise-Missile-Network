@@ -8,10 +8,10 @@ namespace Arsenal
 {
     /// <summary>
     /// Custom Thing class for SLING cargo craft.
-    /// Supports custom naming, cargo container for physical hauling,
-    /// and loading state management.
+    /// Uses vanilla CompTransporter for cargo handling, providing familiar UI and hauling.
+    /// Adds custom naming and autonomous loading state management.
     /// </summary>
-    public class SLING_Thing : Building, IThingHolder
+    public class SLING_Thing : Building
     {
         private string customName;
         private static int slingCounter = 1;
@@ -25,12 +25,13 @@ namespace Arsenal
             slingCounter = System.Math.Max(1, value);
         }
 
-        // Cargo container - holds items being transported
-        private ThingOwner<Thing> cargoContainer;
-
-        // Loading state
-        private bool isLoading;
+        // Autonomous loading state (separate from vanilla loading UI)
+        private bool isAutonomousLoading;
         private Dictionary<ThingDef, int> targetCargo = new Dictionary<ThingDef, int>();
+        private Building_PerchBeacon pendingDestination;
+
+        // Cached transporter component
+        private CompTransporter cachedTransporter;
 
         public const int MAX_CARGO_CAPACITY = 750;
 
@@ -52,40 +53,55 @@ namespace Arsenal
             }
         }
 
-        public bool IsLoading => isLoading;
-        public ThingOwner CargoContainer => cargoContainer;
-        public int CurrentCargoCount => cargoContainer?.TotalStackCount ?? 0;
+        /// <summary>
+        /// The CompTransporter that handles cargo.
+        /// </summary>
+        public CompTransporter Transporter
+        {
+            get
+            {
+                if (cachedTransporter == null)
+                    cachedTransporter = GetComp<CompTransporter>();
+                return cachedTransporter;
+            }
+        }
+
+        /// <summary>
+        /// Direct access to cargo container via transporter.
+        /// </summary>
+        public ThingOwner CargoContainer => Transporter?.innerContainer;
+
+        /// <summary>
+        /// True if autonomous loading is in progress (logistics-driven).
+        /// Separate from vanilla's loading UI.
+        /// </summary>
+        public bool IsLoading => isAutonomousLoading;
+
+        /// <summary>
+        /// Total items in cargo.
+        /// </summary>
+        public int CurrentCargoCount => CargoContainer?.TotalStackCount ?? 0;
+
+        /// <summary>
+        /// Remaining cargo capacity.
+        /// </summary>
         public int RemainingCapacity => MAX_CARGO_CAPACITY - CurrentCargoCount;
 
-        #endregion
-
-        #region IThingHolder
-
-        public void GetChildHolders(List<IThingHolder> outChildren)
-        {
-            ThingOwnerUtility.AppendThingHoldersFromThings(outChildren, GetDirectlyHeldThings());
-        }
-
-        public ThingOwner GetDirectlyHeldThings()
-        {
-            return cargoContainer;
-        }
+        /// <summary>
+        /// The destination for the current autonomous loading operation.
+        /// </summary>
+        public Building_PerchBeacon PendingDestination => pendingDestination;
 
         #endregion
 
         #region Lifecycle
 
-        public SLING_Thing()
-        {
-            cargoContainer = new ThingOwner<Thing>(this, false);
-        }
-
         public override void SpawnSetup(Map map, bool respawningAfterLoad)
         {
             base.SpawnSetup(map, respawningAfterLoad);
 
-            if (cargoContainer == null)
-                cargoContainer = new ThingOwner<Thing>(this, false);
+            // Cache transporter
+            cachedTransporter = GetComp<CompTransporter>();
 
             // Assign name only if not already named (preserves name through transit)
             if (string.IsNullOrEmpty(customName))
@@ -95,19 +111,25 @@ namespace Arsenal
             }
         }
 
+        public override void Tick()
+        {
+            base.Tick();
+
+            // Check if autonomous loading is complete
+            if (isAutonomousLoading && this.IsHashIntervalTick(60))
+            {
+                CheckAutonomousLoadingProgress();
+            }
+        }
+
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
-            // Don't drop cargo when despawning for transit
             base.DeSpawn(mode);
         }
 
         public override void Destroy(DestroyMode mode = DestroyMode.Vanish)
         {
-            // Drop all cargo if destroyed
-            if (mode != DestroyMode.Vanish && cargoContainer != null)
-            {
-                cargoContainer.TryDropAll(Position, Map, ThingPlaceMode.Near);
-            }
+            // CompTransporter handles dropping cargo on destruction
             base.Destroy(mode);
         }
 
@@ -115,14 +137,12 @@ namespace Arsenal
         {
             base.ExposeData();
             Scribe_Values.Look(ref customName, "customName");
-            Scribe_Values.Look(ref isLoading, "isLoading", false);
-            Scribe_Deep.Look(ref cargoContainer, "cargoContainer", this);
+            Scribe_Values.Look(ref isAutonomousLoading, "isAutonomousLoading", false);
             Scribe_Collections.Look(ref targetCargo, "targetCargo", LookMode.Def, LookMode.Value);
+            Scribe_References.Look(ref pendingDestination, "pendingDestination");
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
-                if (cargoContainer == null)
-                    cargoContainer = new ThingOwner<Thing>(this, false);
                 if (targetCargo == null)
                     targetCargo = new Dictionary<ThingDef, int>();
             }
@@ -130,26 +150,84 @@ namespace Arsenal
 
         #endregion
 
-        #region Loading System
+        #region Autonomous Loading System
 
         /// <summary>
-        /// Starts loading mode - SLING will accept hauled items matching target cargo.
+        /// Starts autonomous loading mode for logistics-driven cargo transfer.
+        /// This uses vanilla's CompTransporter loading but tracks our own target manifest.
         /// </summary>
-        public void StartLoading(Dictionary<ThingDef, int> cargo)
+        public void StartLoading(Dictionary<ThingDef, int> cargo, Building_PerchBeacon destination = null)
         {
-            isLoading = true;
+            isAutonomousLoading = true;
             targetCargo = new Dictionary<ThingDef, int>(cargo);
-            Log.Message($"[SLING] {Label}: Started loading. Target: {string.Join(", ", cargo.Select(c => $"{c.Key.label}x{c.Value}"))}");
+            pendingDestination = destination;
+
+            // Set up the transporter for loading
+            var transporter = Transporter;
+            if (transporter != null)
+            {
+                // Add items to the transporter's transfer list
+                foreach (var kvp in cargo)
+                {
+                    // Find items on map to add to loading list
+                    if (Map != null)
+                    {
+                        var items = Map.listerThings.ThingsOfDef(kvp.Key)
+                            .Where(t => !t.IsForbidden(Faction.OfPlayer) && t.Spawned)
+                            .ToList();
+
+                        int remaining = kvp.Value;
+                        foreach (var item in items)
+                        {
+                            if (remaining <= 0) break;
+                            int toAdd = Mathf.Min(remaining, item.stackCount);
+                            TransferableOneWay transferable = new TransferableOneWay();
+                            transferable.things.Add(item);
+                            transporter.AddToTheToLoadList(transferable, toAdd);
+                            remaining -= toAdd;
+                        }
+                    }
+                }
+            }
+
+            Log.Message($"[SLING] {Label}: Started autonomous loading. Target: {string.Join(", ", cargo.Select(c => $"{c.Key.label}x{c.Value}"))}");
         }
 
         /// <summary>
-        /// Stops loading mode and returns whether loading was successful.
+        /// Simplified StartLoading that takes only cargo manifest.
+        /// </summary>
+        public void StartLoading(Dictionary<ThingDef, int> cargo)
+        {
+            StartLoading(cargo, null);
+        }
+
+        /// <summary>
+        /// Checks loading progress and triggers dispatch when complete.
+        /// </summary>
+        private void CheckAutonomousLoadingProgress()
+        {
+            if (!isAutonomousLoading) return;
+
+            // Check if we have enough cargo loaded
+            if (IsLoadingComplete() || CurrentCargoCount > 0)
+            {
+                // Dispatch will be triggered by SlingLogisticsManager
+                // Just log progress
+                if (IsLoadingComplete())
+                {
+                    Log.Message($"[SLING] {Label}: Autonomous loading complete. Loaded: {CurrentCargoCount}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Stops autonomous loading mode.
         /// </summary>
         public bool CompleteLoading()
         {
-            isLoading = false;
-            bool success = IsLoadingComplete();
-            Log.Message($"[SLING] {Label}: Loading complete. Success: {success}, Loaded: {CurrentCargoCount}");
+            isAutonomousLoading = false;
+            bool success = IsLoadingComplete() || CurrentCargoCount > 0;
+            Log.Message($"[SLING] {Label}: Loading finalized. Success: {success}, Loaded: {CurrentCargoCount}");
             return success;
         }
 
@@ -158,11 +236,19 @@ namespace Arsenal
         /// </summary>
         public void CancelLoading()
         {
-            isLoading = false;
+            isAutonomousLoading = false;
             targetCargo.Clear();
-            if (Map != null && cargoContainer.Count > 0)
+            pendingDestination = null;
+
+            var transporter = Transporter;
+            if (transporter != null)
             {
-                cargoContainer.TryDropAll(Position, Map, ThingPlaceMode.Near);
+                transporter.CancelLoad();
+            }
+
+            if (Map != null && CargoContainer != null && CargoContainer.Count > 0)
+            {
+                CargoContainer.TryDropAll(Position, Map, ThingPlaceMode.Near);
             }
         }
 
@@ -171,6 +257,9 @@ namespace Arsenal
         /// </summary>
         public bool IsLoadingComplete()
         {
+            if (targetCargo == null || targetCargo.Count == 0)
+                return CurrentCargoCount > 0;
+
             foreach (var target in targetCargo)
             {
                 int loaded = GetLoadedAmount(target.Key);
@@ -185,8 +274,10 @@ namespace Arsenal
         /// </summary>
         public int GetLoadedAmount(ThingDef def)
         {
+            if (CargoContainer == null) return 0;
+
             int total = 0;
-            foreach (Thing t in cargoContainer)
+            foreach (Thing t in CargoContainer)
             {
                 if (t.def == def)
                     total += t.stackCount;
@@ -209,49 +300,8 @@ namespace Arsenal
         /// </summary>
         public bool WantsItem(ThingDef def)
         {
-            if (!isLoading) return false;
+            if (!isAutonomousLoading) return false;
             return GetRemainingNeeded(def) > 0;
-        }
-
-        /// <summary>
-        /// Tries to add an item to the cargo. Returns the amount actually added.
-        /// Handles items that are in pawn carry trackers.
-        /// </summary>
-        public int TryAddCargo(Thing item)
-        {
-            if (item == null || item.Destroyed) return 0;
-            if (!isLoading) return 0;
-            if (!WantsItem(item.def)) return 0;
-
-            int remaining = GetRemainingNeeded(item.def);
-            int toAdd = Mathf.Min(remaining, item.stackCount, RemainingCapacity);
-
-            if (toAdd <= 0) return 0;
-
-            if (toAdd >= item.stackCount)
-            {
-                // Take the whole stack - use TryAddOrTransfer to handle items in other containers
-                if (cargoContainer.TryAddOrTransfer(item, true))
-                {
-                    return toAdd;
-                }
-            }
-            else
-            {
-                // Split the stack first
-                Thing split = item.SplitOff(toAdd);
-                if (cargoContainer.TryAddOrTransfer(split, true))
-                {
-                    return toAdd;
-                }
-                else
-                {
-                    // Failed to add, merge back
-                    item.TryAbsorbStack(split, true);
-                }
-            }
-
-            return 0;
         }
 
         /// <summary>
@@ -260,7 +310,9 @@ namespace Arsenal
         public Dictionary<ThingDef, int> GetCargoManifest()
         {
             var manifest = new Dictionary<ThingDef, int>();
-            foreach (Thing t in cargoContainer)
+            if (CargoContainer == null) return manifest;
+
+            foreach (Thing t in CargoContainer)
             {
                 if (manifest.ContainsKey(t.def))
                     manifest[t.def] += t.stackCount;
@@ -275,7 +327,7 @@ namespace Arsenal
         /// </summary>
         public void UnloadAllCargo(IntVec3 dropCell, Map map)
         {
-            cargoContainer.TryDropAll(dropCell, map, ThingPlaceMode.Near);
+            CargoContainer?.TryDropAll(dropCell, map, ThingPlaceMode.Near);
         }
 
         /// <summary>
@@ -283,6 +335,8 @@ namespace Arsenal
         /// </summary>
         public void LoadCargoFromManifest(Dictionary<ThingDef, int> manifest)
         {
+            if (CargoContainer == null) return;
+
             foreach (var kvp in manifest)
             {
                 int remaining = kvp.Value;
@@ -291,7 +345,7 @@ namespace Arsenal
                     int toCreate = Mathf.Min(remaining, kvp.Key.stackLimit);
                     Thing t = ThingMaker.MakeThing(kvp.Key);
                     t.stackCount = toCreate;
-                    cargoContainer.TryAdd(t, false);
+                    CargoContainer.TryAdd(t, false);
                     remaining -= toCreate;
                 }
             }
@@ -308,9 +362,9 @@ namespace Arsenal
             if (!str.NullOrEmpty())
                 str += "\n";
 
-            if (isLoading)
+            if (isAutonomousLoading)
             {
-                str += "Status: Loading cargo";
+                str += "Status: Loading cargo (autonomous)";
                 str += $"\nLoaded: {CurrentCargoCount}/{MAX_CARGO_CAPACITY}";
 
                 // Show loading progress
@@ -318,6 +372,11 @@ namespace Arsenal
                 {
                     int loaded = GetLoadedAmount(target.Key);
                     str += $"\n  {target.Key.label}: {loaded}/{target.Value}";
+                }
+
+                if (pendingDestination != null)
+                {
+                    str += $"\nDestination: {pendingDestination.ZoneName ?? "Beacon Zone"}";
                 }
             }
             else if (CurrentCargoCount > 0)
@@ -337,6 +396,35 @@ namespace Arsenal
             foreach (var g in base.GetGizmos())
                 yield return g;
 
+            // Load cargo button (like vanilla shuttles)
+            if (!isAutonomousLoading && Transporter != null)
+            {
+                var loadCommand = new Command_LoadToTransporter
+                {
+                    transComp = Transporter,
+                    defaultLabel = "Load Cargo",
+                    defaultDesc = "Select items to load onto this SLING for transport.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Commands/LoadTransporter", true)
+                };
+                yield return loadCommand;
+            }
+
+            // Launch button (when loaded and not in autonomous mode)
+            if (!isAutonomousLoading && CurrentCargoCount > 0)
+            {
+                yield return new Command_Action
+                {
+                    defaultLabel = "Launch",
+                    defaultDesc = "Launch this SLING to a destination.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Commands/LaunchShip", true),
+                    action = delegate
+                    {
+                        // Open destination picker
+                        Find.WindowStack.Add(new Dialog_SelectSlingDestination(this));
+                    }
+                };
+            }
+
             if (Prefs.DevMode)
             {
                 yield return new Command_Action
@@ -355,7 +443,7 @@ namespace Arsenal
                     }
                 };
 
-                if (isLoading)
+                if (isAutonomousLoading)
                 {
                     yield return new Command_Action
                     {
@@ -422,5 +510,132 @@ namespace Arsenal
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Dialog for selecting a destination for manual SLING launch.
+    /// </summary>
+    public class Dialog_SelectSlingDestination : Window
+    {
+        private SLING_Thing sling;
+        private Vector2 scrollPosition;
+
+        public Dialog_SelectSlingDestination(SLING_Thing sling)
+        {
+            this.sling = sling;
+            this.doCloseX = true;
+            this.absorbInputAroundWindow = true;
+        }
+
+        public override Vector2 InitialSize => new Vector2(400f, 500f);
+
+        public override void DoWindowContents(Rect inRect)
+        {
+            Listing_Standard listing = new Listing_Standard();
+            listing.Begin(inRect);
+            listing.Label($"Select destination for {sling.Label}");
+            listing.GapLine();
+
+            // Get all valid landing zones
+            var beaconZones = ArsenalNetworkManager.GetConnectedBeaconZones()
+                .Where(b => b.Map != sling.Map && b.HasSpaceForSling)
+                .ToList();
+            var perches = ArsenalNetworkManager.GetAllPerches()
+                .Where(p => p.Map != null && p.Map != sling.Map && p.HasAvailableSlot)
+                .ToList();
+
+            Rect scrollRect = listing.GetRect(inRect.height - 80f);
+            int totalCount = beaconZones.Count + perches.Count;
+            Rect viewRect = new Rect(0, 0, scrollRect.width - 20f, totalCount * 35f);
+
+            Widgets.BeginScrollView(scrollRect, ref scrollPosition, viewRect);
+            float y = 0;
+
+            // List beacon zones
+            foreach (var zone in beaconZones)
+            {
+                Rect rowRect = new Rect(0, y, viewRect.width, 30f);
+                string label = $"{zone.ZoneName ?? "Beacon Zone"} (Tile {zone.Map.Tile})";
+                if (Widgets.ButtonText(rowRect, label))
+                {
+                    LaunchToBeaconZone(zone);
+                    Close();
+                }
+                y += 35f;
+            }
+
+            // List legacy perches
+            foreach (var perch in perches)
+            {
+                Rect rowRect = new Rect(0, y, viewRect.width, 30f);
+                string label = $"{perch.Label} (Tile {perch.Map.Tile})";
+                if (Widgets.ButtonText(rowRect, label))
+                {
+                    LaunchToPerch(perch);
+                    Close();
+                }
+                y += 35f;
+            }
+
+            if (totalCount == 0)
+            {
+                Widgets.Label(new Rect(0, 0, viewRect.width, 30f), "No available destinations");
+            }
+
+            Widgets.EndScrollView();
+            listing.End();
+        }
+
+        private void LaunchToBeaconZone(Building_PerchBeacon destination)
+        {
+            if (sling == null || !sling.Spawned) return;
+
+            var cargo = sling.GetCargoManifest();
+            string slingName = sling.Label;
+            Map sourceMap = sling.Map;
+            IntVec3 launchPos = sling.Position;
+
+            sling.DeSpawn(DestroyMode.Vanish);
+
+            var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                ArsenalDefOf.Arsenal_SlingLaunching);
+            launchingSkyfaller.sling = sling;
+            launchingSkyfaller.slingName = slingName;
+            launchingSkyfaller.cargo = cargo;
+            launchingSkyfaller.destinationBeaconZone = destination;
+            launchingSkyfaller.destinationTile = destination.Map.Tile;
+            launchingSkyfaller.isReturnFlight = false;
+
+            GenSpawn.Spawn(launchingSkyfaller, launchPos, sourceMap);
+
+            Messages.Message($"{slingName} launching to {destination.ZoneName ?? "destination"}",
+                MessageTypeDefOf.PositiveEvent);
+        }
+
+        private void LaunchToPerch(Building_PERCH destination)
+        {
+            if (sling == null || !sling.Spawned) return;
+
+            var cargo = sling.GetCargoManifest();
+            string slingName = sling.Label;
+            Map sourceMap = sling.Map;
+            IntVec3 launchPos = sling.Position;
+
+            sling.DeSpawn(DestroyMode.Vanish);
+
+            var launchingSkyfaller = (SlingLaunchingSkyfaller)SkyfallerMaker.MakeSkyfaller(
+                ArsenalDefOf.Arsenal_SlingLaunching);
+            launchingSkyfaller.sling = sling;
+            launchingSkyfaller.slingName = slingName;
+            launchingSkyfaller.cargo = cargo;
+            launchingSkyfaller.destinationPerch = destination;
+            launchingSkyfaller.destinationTile = destination.Map.Tile;
+            launchingSkyfaller.isReturnFlight = false;
+
+            GenSpawn.Spawn(launchingSkyfaller, launchPos, sourceMap);
+
+            Messages.Message($"{slingName} launching to {destination.Label}",
+                MessageTypeDefOf.PositiveEvent);
+        }
     }
 }
