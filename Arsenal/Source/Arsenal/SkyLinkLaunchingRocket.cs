@@ -47,6 +47,7 @@ namespace Arsenal
 
         protected override void Tick()
         {
+            base.Tick();
             ticksAlive++;
 
             // Accelerate

@@ -59,10 +59,8 @@ namespace Arsenal
             base.SpawnSetup(map, respawningAfterLoad);
             powerComp = GetComp<CompPowerTrader>();
 
-            if (!respawningAfterLoad)
-            {
-                ArsenalNetworkManager.RegisterTerminal(this);
-            }
+            // Always register - static managers are reset on game load
+            ArsenalNetworkManager.RegisterTerminal(this);
         }
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
